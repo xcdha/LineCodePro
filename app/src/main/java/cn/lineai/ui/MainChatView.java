@@ -1,10 +1,13 @@
 package cn.lineai.ui;
 
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 import cn.lineai.model.ChatUiState;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProviderPreset;
@@ -17,7 +20,6 @@ import cn.lineai.ui.component.ComposerView;
 import cn.lineai.ui.component.AboutScreenView;
 import cn.lineai.ui.component.AgentExtensionEditScreenView;
 import cn.lineai.ui.component.DataSettingsScreenView;
-import cn.lineai.ui.component.DebugSettingsScreenView;
 import cn.lineai.ui.component.DrawerView;
 import cn.lineai.ui.component.ExperimentalSettingsScreenView;
 import cn.lineai.ui.component.ExtensionDetailScreenView;
@@ -42,9 +44,18 @@ import cn.lineai.ui.component.StorageManagementScreenView;
 import cn.lineai.ui.component.ThemeSettingsScreenView;
 import cn.lineai.ui.component.TutorialScreenView;
 import cn.lineai.ui.theme.LineTheme;
+import cn.lineai.ui.util.KeyboardController;
 import java.util.List;
 
 public final class MainChatView extends FrameLayout implements MainContract.View {
+    public interface WorkspaceHost {
+        void openExternalProjectPicker();
+
+        void openManageAllFilesPermissionSettings();
+
+        void requestLegacyStoragePermissions();
+    }
+
     private final MainContract.Presenter presenter;
     private final HeaderView headerView;
     private final ChatMessageListView messageListView;
@@ -52,6 +63,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     private final DrawerView drawerView;
     private final BottomSheetView bottomSheetView;
     private final FrameLayout screenHost;
+    private ChatUiState lastState;
 
     public MainChatView(Context context, MainContract.Presenter presenter) {
         super(context);
@@ -95,6 +107,13 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         ));
 
         messageListView = new ChatMessageListView(context);
+        messageListView.setToolReviewListener(new cn.lineai.ui.component.toolcall.ToolReviewListener() {
+            @Override
+            public void onToolReview(String toolCallId, String state, String diffId) {
+                MainChatView.this.presenter.onToolReview(toolCallId, state, diffId);
+            }
+        });
+        messageListView.setMarkdownLinkHandler(url -> MainChatView.this.presenter.onOpenUrl(url));
         content.addView(messageListView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
@@ -128,6 +147,26 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             public void onNewConversation() {
                 MainChatView.this.presenter.onNewConversation();
             }
+
+            @Override
+            public void onConversationSelected(String id) {
+                MainChatView.this.presenter.onConversationSelected(id);
+            }
+
+            @Override
+            public void onConversationDeleted(String id) {
+                MainChatView.this.presenter.onConversationDeleted(id);
+            }
+
+            @Override
+            public void onFileNodeSelected(String path) {
+                MainChatView.this.presenter.onFileNodeSelected(path);
+            }
+
+            @Override
+            public void onFileTreeRefresh() {
+                MainChatView.this.presenter.onFileTreeRefresh();
+            }
         });
         addView(drawerView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
@@ -151,31 +190,41 @@ public final class MainChatView extends FrameLayout implements MainContract.View
 
     @Override
     public void render(ChatUiState state) {
+        lastState = state;
         headerView.render(state);
         messageListView.render(state);
         composerView.render(state);
+        if (drawerView.getVisibility() == VISIBLE) {
+            renderDrawer(state);
+        }
     }
 
     @Override
     public void showDrawer() {
+        KeyboardController.clearFocusAndHide(this);
         bottomSheetView.close();
+        renderDrawer(lastState);
         drawerView.open();
     }
 
     @Override
     public void showSheet(String title, List<SheetOption> options) {
+        KeyboardController.clearFocusAndHide(this);
         drawerView.close();
         bottomSheetView.show(title, options);
     }
 
     @Override
     public void hideOverlays() {
+        KeyboardController.clearFocusAndHide(this);
         drawerView.close();
         bottomSheetView.close();
     }
 
     @Override
     public void showScreen(String screenId) {
+        KeyboardController.clearFocusAndHide(screenHost);
+        KeyboardController.clearFocusAndHide(this);
         screenHost.removeAllViews();
         screenHost.addView(buildScreen(screenId), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         screenHost.setVisibility(VISIBLE);
@@ -184,8 +233,71 @@ public final class MainChatView extends FrameLayout implements MainContract.View
 
     @Override
     public void showChatScreen() {
+        KeyboardController.clearFocusAndHide(screenHost);
+        KeyboardController.clearFocusAndHide(this);
         screenHost.removeAllViews();
         screenHost.setVisibility(GONE);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        KeyboardController.clearFocusAndHide(this);
+        super.onDetachedFromWindow();
+    }
+
+    @Override
+    public void openExternalProjectPicker() {
+        Context context = getContext();
+        if (context instanceof WorkspaceHost) {
+            ((WorkspaceHost) context).openExternalProjectPicker();
+        }
+    }
+
+    @Override
+    public void openManageAllFilesPermissionSettings() {
+        Context context = getContext();
+        if (context instanceof WorkspaceHost) {
+            ((WorkspaceHost) context).openManageAllFilesPermissionSettings();
+        }
+    }
+
+    @Override
+    public void requestLegacyStoragePermissions() {
+        Context context = getContext();
+        if (context instanceof WorkspaceHost) {
+            ((WorkspaceHost) context).requestLegacyStoragePermissions();
+        }
+    }
+
+    @Override
+    public void openExternalUrl(String url) {
+        String safeUrl = url == null ? "" : url.trim();
+        if (safeUrl.length() == 0) {
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        } catch (RuntimeException e) {
+            Toast.makeText(getContext(), "无法打开链接: " + safeUrl, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void renderDrawer(ChatUiState state) {
+        String projectLabel = state == null ? "" : state.getProjectLabel();
+        String projectPath = state == null ? "" : state.getProjectPath();
+        if (state == null) {
+            projectLabel = "";
+            projectPath = "";
+        }
+        drawerView.render(
+                presenter.getConversationMetas(),
+                presenter.getCurrentConversationId(),
+                projectLabel.length() == 0 ? "LineCode" : projectLabel,
+                projectPath.length() == 0 ? "" : projectPath,
+                presenter.getFileTree()
+        );
     }
 
     public boolean handleBackPressed() {
@@ -235,6 +347,16 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 public void onSelectModel(String id) {
                     presenter.onModelSelected(id);
                 }
+
+                @Override
+                public void onEditModel(String id) {
+                    presenter.onSettingsItemSelected("modelEdit:" + id);
+                }
+
+                @Override
+                public void onDeleteModels(List<String> ids) {
+                    presenter.onModelsDeleted(ids);
+                }
             });
         }
         if ("extensions".equals(screenId)) {
@@ -251,13 +373,83 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             });
         }
         if ("llm".equals(screenId)) {
-            return new LLMSettingsScreenView(context, presenter::onScreenBack);
+            return new LLMSettingsScreenView(context, presenter.getAiBehaviorSettings(), new LLMSettingsScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    presenter.onScreenBack();
+                }
+
+                @Override
+                public void onToneModeChanged(String toneMode) {
+                    presenter.onAiToneModeChanged(toneMode);
+                }
+
+                @Override
+                public void onReasoningEffortChanged(String effort) {
+                    presenter.onAiReasoningEffortChanged(effort);
+                }
+
+                @Override
+                public void onThinkingScrollChanged(boolean enabled) {
+                    presenter.onAiThinkingScrollChanged(enabled);
+                }
+
+                @Override
+                public void onThinkingAutoExpandChanged(boolean enabled) {
+                    presenter.onAiThinkingAutoExpandChanged(enabled);
+                }
+
+                @Override
+                public void onPreserveReasoningChanged(boolean enabled) {
+                    presenter.onAiPreserveReasoningChanged(enabled);
+                }
+
+                @Override
+                public void onLearningModeChanged(boolean enabled) {
+                    presenter.onAiLearningModeChanged(enabled);
+                }
+            });
         }
         if ("mcp".equals(screenId)) {
-            return new MCPSettingsScreenView(context, presenter::onScreenBack);
+            return new MCPSettingsScreenView(context, presenter.getMcpSettingsState(), new MCPSettingsScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    presenter.onScreenBack();
+                }
+
+                @Override
+                public void onExecutionModeChanged(String mode) {
+                    presenter.onMcpExecutionModeChanged(mode);
+                }
+
+                @Override
+                public void onToolGroupChanged(String id, boolean enabled) {
+                    presenter.onMcpToolGroupChanged(id, enabled);
+                }
+
+                @Override
+                public void onWebSearchConfigChanged(cn.lineai.model.WebSearchConfig config) {
+                    presenter.onMcpWebSearchConfigChanged(config);
+                }
+            });
         }
         if ("output".equals(screenId)) {
-            return new OutputSettingsScreenView(context, presenter::onScreenBack);
+            return new OutputSettingsScreenView(context, presenter.getOutputSettings(), new OutputSettingsScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    presenter.onScreenBack();
+                }
+
+                @Override
+                public void onCodeWrapChanged(boolean enabled) {
+                    presenter.onCodeWrapChanged(enabled);
+                }
+
+                @Override
+                public void onBrowserModeChanged(String mode) {
+                    presenter.onBrowserModeChanged(mode);
+                }
+            });
         }
         if ("theme".equals(screenId)) {
             return new ThemeSettingsScreenView(context, presenter::onScreenBack);
@@ -272,7 +464,27 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             return new StorageManagementScreenView(context, presenter::onScreenBack);
         }
         if ("memory".equals(screenId)) {
-            return new MemorySettingsScreenView(context, presenter::onScreenBack);
+            return new MemorySettingsScreenView(context, new MemorySettingsScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    presenter.onScreenBack();
+                }
+
+                @Override
+                public cn.lineai.model.MemoryOverviewState getMemoryOverview() {
+                    return presenter.getMemoryOverview();
+                }
+
+                @Override
+                public void onMemorySaved(String id, String scope, String content) {
+                    presenter.onMemorySaved(id, scope, content);
+                }
+
+                @Override
+                public void onMemoryDeleted(String id) {
+                    presenter.onMemoryDeleted(id);
+                }
+            });
         }
         if ("keepAlive".equals(screenId)) {
             return new KeepAliveSettingsScreenView(context, presenter::onScreenBack);
@@ -288,18 +500,10 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 public void onOpenLicenses() {
                     presenter.onSettingsItemSelected("licenses");
                 }
-
-                @Override
-                public void onOpenDebug() {
-                    presenter.onSettingsItemSelected("debug");
-                }
             });
         }
         if ("licenses".equals(screenId)) {
             return new LicensesScreenView(context, presenter::onScreenBack);
-        }
-        if ("debug".equals(screenId)) {
-            return new DebugSettingsScreenView(context, presenter::onScreenBack);
         }
         if ("tutorial".equals(screenId)) {
             return new TutorialScreenView(context, presenter::onScreenBack);
@@ -307,8 +511,11 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         if ("pluginPage".equals(screenId)) {
             return new PluginPageScreenView(context, "插件页面", presenter::onScreenBack);
         }
+        if (screenId != null && screenId.startsWith("browser:")) {
+            return new InAppBrowserScreenView(context, screenId.substring("browser:".length()), presenter::onScreenBack);
+        }
         if ("browser".equals(screenId)) {
-            return new InAppBrowserScreenView(context, "https://example.com", presenter::onScreenBack);
+            return new InAppBrowserScreenView(context, "about:blank", presenter::onScreenBack);
         }
         if ("agentEdit".equals(screenId)) {
             return new AgentExtensionEditScreenView(context, presenter::onScreenBack);
@@ -336,7 +543,8 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             });
         }
         if ("shellCommand".equals(screenId)) {
-            return new ShellCommandScreenView(context, "cd /home/LangLang/AndroidStudioProjects/LineCode && ./gradlew :app:assembleDebug", presenter::onScreenBack);
+            String workspace = lastState == null || lastState.getProjectPath().length() == 0 ? "." : lastState.getProjectPath();
+            return new ShellCommandScreenView(context, "cd " + shellQuote(workspace) + " && ls", presenter::onScreenBack);
         }
         if ("modelAddOptions".equals(screenId)) {
             return new ModelAddOptionsScreenView(context, new ModelAddOptionsScreenView.Listener() {
@@ -370,11 +578,32 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         if (screenId != null && screenId.startsWith("modelAdd:preset:")) {
             return modelAddScreen(context, ModelProviderPresets.find(screenId.substring("modelAdd:preset:".length())), false);
         }
+        if (screenId != null && screenId.startsWith("modelEdit:")) {
+            ModelConfig model = presenter.getModel(screenId.substring("modelEdit:".length()));
+            if (model != null) {
+                return modelEditScreen(context, model);
+            }
+            return modelAddScreen(context, null, false);
+        }
         return simpleScreen(screenId);
     }
 
     private View modelAddScreen(Context context, ModelProviderPreset preset, boolean local) {
-        return new ModelAddScreenView(context, preset, local, new ModelAddScreenView.Listener() {
+        return new ModelAddScreenView(context, preset, local, null, new ModelAddScreenView.Listener() {
+            @Override
+            public void onBack() {
+                presenter.onScreenBack();
+            }
+
+            @Override
+            public void onSave(ModelConfig model) {
+                presenter.onModelSaved(model);
+            }
+        });
+    }
+
+    private View modelEditScreen(Context context, ModelConfig model) {
+        return new ModelAddScreenView(context, null, model.getProtocolType().name().equals("LOCAL_GGUF"), model, new ModelAddScreenView.Listener() {
             @Override
             public void onBack() {
                 presenter.onScreenBack();
@@ -422,7 +651,6 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         if ("about".equals(screenId)) return "关于 LineCode";
         if ("modelAddOptions".equals(screenId)) return "添加模型";
         if ("licenses".equals(screenId)) return "开源许可";
-        if ("debug".equals(screenId)) return "调试设置";
         if ("tutorial".equals(screenId)) return "教程";
         if (screenId != null && screenId.startsWith("extension:")) return "扩展详情";
         return "LineCode";
@@ -439,16 +667,20 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         if ("llm".equals(screenId)) return new String[] {"交流语气", "思考强度", "保留 reasoning", "数学公式渲染"};
         if ("mcp".equals(screenId)) return new String[] {"MCP 执行模式", "SSH 工具", "网页搜索", "工具确认策略"};
         if ("theme".equals(screenId)) return new String[] {"深色主题", "浅色主题", "咖啡主题", "高对比模式"};
-        if ("output".equals(screenId)) return new String[] {"回复布局", "代码自动换行", "网页打开方式", "长消息虚拟化"};
-        if ("experimental".equals(screenId)) return new String[] {"实验性键盘避让", "实验性消息渲染", "调试日志"};
+        if ("output".equals(screenId)) return new String[] {"代码自动换行", "网页打开方式", "Markdown 预览"};
+        if ("experimental".equals(screenId)) return new String[] {"实验性键盘避让", "实验性消息渲染"};
         if ("storage".equals(screenId)) return new String[] {"聊天记录", "配置文件", "Diff 缓存", "工作区占用"};
         if ("memory".equals(screenId)) return new String[] {"长期记忆", "项目记忆", "短期记忆", "检索索引"};
         if ("data".equals(screenId)) return new String[] {"热更新", "完整导出", ".linecode 导入", "数据归档"};
         if ("keepAlive".equals(screenId)) return new String[] {"Wake Lock", "前台服务", "模拟音乐播放", "电池白名单"};
-        if ("about".equals(screenId)) return new String[] {"版本 1.0", "开源许可", "诊断信息", "调试设置"};
+        if ("about".equals(screenId)) return new String[] {"版本 1.0", "开源许可"};
         if ("modelAddOptions".equals(screenId)) return new String[] {"自定义 API 模型", "本地 GGUF 模型", "OpenAI 兼容供应商", "Codex 预设"};
         if ("tutorial".equals(screenId)) return new String[] {"初学者教程", "专业模式教程", "工具调用说明"};
         if (screenId != null && screenId.startsWith("extension:")) return new String[] {"启用状态", "权限范围", "配置项", "删除扩展"};
         return new String[] {"界面骨架", "业务逻辑待接入"};
+    }
+
+    private String shellQuote(String value) {
+        return "'" + (value == null ? "" : value.replace("'", "'\\''")) + "'";
     }
 }

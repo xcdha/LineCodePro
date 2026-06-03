@@ -8,9 +8,11 @@ import cn.lineai.ui.theme.LineTheme;
 
 public class ScreenScaffoldView extends LinearLayout {
     private final LinearLayout content;
+    private final View rightAction;
 
     public ScreenScaffoldView(Context context, String title, Runnable onBack, View rightAction) {
         super(context);
+        this.rightAction = rightAction;
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
         addView(new ScreenHeaderView(context, title, onBack, rightAction), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
@@ -26,5 +28,9 @@ public class ScreenScaffoldView extends LinearLayout {
 
     public LinearLayout getContent() {
         return content;
+    }
+
+    protected View getRightAction() {
+        return rightAction;
     }
 }

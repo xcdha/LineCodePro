@@ -34,13 +34,13 @@ public final class ModelProviderPresets {
 
     public static ModelProviderPreset find(String id) {
         if (id == null) {
-            return CUSTOM;
+            return null;
         }
         for (ModelProviderPreset preset : PRESETS) {
             if (preset.getId().equals(id)) {
                 return preset;
             }
         }
-        return CUSTOM;
+        return null;
     }
 }

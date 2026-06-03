@@ -1,8 +1,15 @@
 package cn.lineai.mvp;
 
 import cn.lineai.model.ChatUiState;
+import cn.lineai.data.repository.ConversationRecord;
+import cn.lineai.model.AiBehaviorSettings;
+import cn.lineai.model.FileTreeNode;
+import cn.lineai.model.MemoryOverviewState;
+import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.ModelConfig;
+import cn.lineai.model.OutputSettings;
 import cn.lineai.model.SheetOption;
+import cn.lineai.model.WebSearchConfig;
 import java.util.List;
 
 public interface MainContract {
@@ -18,6 +25,14 @@ public interface MainContract {
         void showScreen(String screenId);
 
         void showChatScreen();
+
+        void openExternalProjectPicker();
+
+        void openManageAllFilesPermissionSettings();
+
+        void requestLegacyStoragePermissions();
+
+        void openExternalUrl(String url);
     }
 
     interface Presenter {
@@ -33,11 +48,21 @@ public interface MainContract {
 
         void onNewConversation();
 
+        void onConversationSelected(String id);
+
+        void onConversationDeleted(String id);
+
+        void onFileNodeSelected(String path);
+
+        void onFileTreeRefresh();
+
         void onMoreClick();
 
         void onSendMessage(String text);
 
         void onStopGeneration();
+
+        void onToolReview(String toolCallId, String state, String diffId);
 
         void onSheetOptionSelected(String id);
 
@@ -45,12 +70,64 @@ public interface MainContract {
 
         void onSettingsItemSelected(String id);
 
+        void onOpenUrl(String url);
+
+        AiBehaviorSettings getAiBehaviorSettings();
+
+        void onAiToneModeChanged(String toneMode);
+
+        void onAiReasoningEffortChanged(String effort);
+
+        void onAiThinkingScrollChanged(boolean enabled);
+
+        void onAiThinkingAutoExpandChanged(boolean enabled);
+
+        void onAiPreserveReasoningChanged(boolean enabled);
+
+        void onAiLearningModeChanged(boolean enabled);
+
+        MemoryOverviewState getMemoryOverview();
+
+        void onMemorySaved(String id, String scope, String content);
+
+        void onMemoryDeleted(String id);
+
+        OutputSettings getOutputSettings();
+
+        void onCodeWrapChanged(boolean enabled);
+
+        void onBrowserModeChanged(String mode);
+
+        McpSettingsState getMcpSettingsState();
+
+        void onMcpExecutionModeChanged(String mode);
+
+        void onMcpToolGroupChanged(String id, boolean enabled);
+
+        void onMcpWebSearchConfigChanged(WebSearchConfig config);
+
         List<ModelConfig> getModels();
+
+        ModelConfig getModel(String id);
+
+        List<ConversationRecord> getConversationMetas();
+
+        String getCurrentConversationId();
+
+        FileTreeNode getFileTree();
 
         String getSelectedModelId();
 
         void onModelSelected(String id);
 
         void onModelSaved(ModelConfig model);
+
+        void onModelsDeleted(List<String> ids);
+
+        void onExternalProjectTreePicked(String treeUri);
+
+        void onExternalProjectPickerCancelled();
+
+        void onStoragePermissionResult();
     }
 }

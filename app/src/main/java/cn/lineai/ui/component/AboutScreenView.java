@@ -13,8 +13,6 @@ public final class AboutScreenView extends ScreenScaffoldView {
         void onBack();
 
         void onOpenLicenses();
-
-        void onOpenDebug();
     }
 
     public AboutScreenView(Context context, Listener listener) {
@@ -58,10 +56,6 @@ public final class AboutScreenView extends ScreenScaffoldView {
         addGroupTitle(content, "开发者");
         addItem(content, IconButtonView.USER, "作者", "LangLang03", null);
         addItem(content, IconButtonView.MESSAGE_CIRCLE, "QQ", "3772548978", null);
-
-        addGroupTitle(content, "诊断");
-        addItem(content, IconButtonView.BUG, "调试模式", "错误处理器测试和最近错误报告", listener::onOpenDebug);
-        addItem(content, IconButtonView.DOWNLOAD, "导出最近一次崩溃日志", "保存本机最后一份崩溃文本", null);
 
         addGroupTitle(content, "法律信息");
         addItem(content, IconButtonView.FILE_TEXT, "开源许可列表", "", listener::onOpenLicenses);

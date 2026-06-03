@@ -2,19 +2,34 @@ package cn.lineai.ui.component;
 
 import android.content.Context;
 import android.graphics.Typeface;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import cn.lineai.data.repository.ConversationRecord;
+import cn.lineai.model.FileTreeNode;
 import cn.lineai.ui.theme.LineTheme;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
 
 public final class DrawerView extends FrameLayout {
     public interface Listener {
         void onCloseDrawer();
 
         void onNewConversation();
+
+        void onConversationSelected(String id);
+
+        void onConversationDeleted(String id);
+
+        void onFileNodeSelected(String path);
+
+        void onFileTreeRefresh();
     }
 
     private static final int TAB_CONVERSATIONS = 0;
@@ -26,6 +41,11 @@ public final class DrawerView extends FrameLayout {
     private final LinearLayout headerActions;
     private final LinearLayout body;
     private final LinearLayout tabs;
+    private List<ConversationRecord> conversations;
+    private String currentConversationId = "";
+    private String projectLabel = "LineCode";
+    private String projectPath = "";
+    private FileTreeNode fileTree;
     private Listener listener;
     private int activeTab = TAB_CONVERSATIONS;
 
@@ -82,6 +102,22 @@ public final class DrawerView extends FrameLayout {
         this.listener = listener;
     }
 
+    public void render(
+            List<ConversationRecord> conversations,
+            String currentConversationId,
+            String projectLabel,
+            String projectPath,
+            FileTreeNode fileTree
+    ) {
+        this.conversations = conversations;
+        this.currentConversationId = currentConversationId == null ? "" : currentConversationId;
+        this.projectLabel = projectLabel == null ? "LineCode" : projectLabel;
+        this.projectPath = projectPath == null ? "" : projectPath;
+        this.fileTree = fileTree;
+        renderChrome();
+        renderBody();
+    }
+
     public void open() {
         if (getVisibility() == VISIBLE) {
             return;
@@ -122,7 +158,13 @@ public final class DrawerView extends FrameLayout {
         headerActions.removeAllViews();
 
         if (activeTab == TAB_FILES) {
-            headerActions.addView(headerIcon(context, IconButtonView.FOLDER_OPEN, LineTheme.ACCENT, 16));
+            IconButtonView refresh = headerIcon(context, IconButtonView.FOLDER_OPEN, LineTheme.ACCENT, 16);
+            refresh.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onFileTreeRefresh();
+                }
+            });
+            headerActions.addView(refresh);
             headerActions.addView(headerIcon(context, IconButtonView.FOLDER_PLUS, LineTheme.ACCENT, 16));
             headerActions.addView(headerIcon(context, IconButtonView.ARCHIVE, LineTheme.ACCENT, 16));
         }
@@ -178,10 +220,23 @@ public final class DrawerView extends FrameLayout {
         scrollView.addView(list, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         body.addView(scrollView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
-        addConversationItem(list, "Java 原生 UI 重写", "6/1 18:28", true);
-        addConversationItem(list, "LineAI 结构分析", "6/1 17:54", false);
-        addConversationItem(list, "模型与权限设置", "5/31 23:10", false);
-        addConversationItem(list, "本地文件工具", "5/31 19:42", false);
+        if (conversations == null || conversations.isEmpty()) {
+            TextView empty = LineTheme.text(context, "暂无对话记录", LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            empty.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams emptyParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            emptyParams.topMargin = LineTheme.dp(context, 80);
+            list.addView(empty, emptyParams);
+            return;
+        }
+        for (ConversationRecord conversation : conversations) {
+            addConversationItem(
+                    list,
+                    conversation.getId(),
+                    conversation.getTitle(),
+                    formatTime(conversation.getUpdatedAt()),
+                    conversation.getId().equals(currentConversationId)
+            );
+        }
     }
 
     private void renderFiles() {
@@ -191,10 +246,13 @@ public final class DrawerView extends FrameLayout {
         strip.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_LIGHT, 8, LineTheme.BORDER_LIGHT));
         LineTheme.padding(strip, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
 
-        TextView project = LineTheme.text(context, "LineCode", LineTheme.FONT_SM, LineTheme.TEXT, Typeface.BOLD);
+        TextView project = LineTheme.text(context, projectLabel, LineTheme.FONT_SM, LineTheme.TEXT, Typeface.BOLD);
         strip.addView(project, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        TextView path = LineTheme.text(context, "/home/LangLang/AndroidStudioProjects/LineCode", LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        path.setSingleLine(true);
+        TextView path = LineTheme.text(context, projectPath, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        path.setSingleLine(false);
+        path.setMaxLines(2);
+        path.setEllipsize(TextUtils.TruncateAt.END);
+        path.setHorizontallyScrolling(false);
         LinearLayout.LayoutParams pathParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         pathParams.topMargin = LineTheme.dp(context, 2);
         strip.addView(path, pathParams);
@@ -212,13 +270,15 @@ public final class DrawerView extends FrameLayout {
         scrollView.addView(tree, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         body.addView(scrollView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
-        addFileRow(tree, IconButtonView.FOLDER_OPEN, "LineCode", 0, true, LineTheme.ACCENT, 16);
-        addFileRow(tree, IconButtonView.FOLDER, "app", 1, false, LineTheme.TEXT_SECONDARY, 16);
-        addFileRow(tree, IconButtonView.FOLDER, "src", 2, false, LineTheme.TEXT_SECONDARY, 16);
-        addFileRow(tree, IconButtonView.FILE, "MainActivity.java", 3, false, LineTheme.TEXT_TERTIARY, 14);
-        addFileRow(tree, IconButtonView.FILE, "MainChatView.java", 3, false, LineTheme.TEXT_TERTIARY, 14);
-        addFileRow(tree, IconButtonView.FOLDER, "res", 2, false, LineTheme.TEXT_SECONDARY, 16);
-        addFileRow(tree, IconButtonView.FILE, "styles.xml", 3, false, LineTheme.TEXT_TERTIARY, 14);
+        if (fileTree == null) {
+            TextView empty = LineTheme.text(context, "目录不可访问", LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            empty.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams emptyParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            emptyParams.topMargin = LineTheme.dp(context, 80);
+            tree.addView(empty, emptyParams);
+            return;
+        }
+        addFileNode(tree, fileTree, 0, true);
     }
 
     private IconButtonView headerIcon(Context context, int type, int color, int iconSizeDp) {
@@ -266,12 +326,19 @@ public final class DrawerView extends FrameLayout {
         return icon;
     }
 
-    private void addConversationItem(LinearLayout list, String title, String time, boolean active) {
+    private void addConversationItem(LinearLayout list, String id, String title, String time, boolean active) {
         Context context = list.getContext();
         LinearLayout item = new LinearLayout(context);
         item.setOrientation(LinearLayout.HORIZONTAL);
         item.setGravity(Gravity.CENTER_VERTICAL);
         item.setBackground(active ? LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 8) : null);
+        item.setClickable(true);
+        item.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onConversationSelected(id);
+            }
+            close();
+        });
         LineTheme.padding(item, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
         list.addView(item, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
@@ -301,14 +368,47 @@ public final class DrawerView extends FrameLayout {
         texts.addView(timeView, timeParams);
 
         IconButtonView trash = sizedIcon(context, IconButtonView.TRASH_2, LineTheme.TEXT_TERTIARY, 22, 14);
+        trash.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onConversationDeleted(id);
+            }
+        });
         item.addView(trash, new LinearLayout.LayoutParams(LineTheme.dp(context, 22), LineTheme.dp(context, 22)));
     }
 
-    private void addFileRow(LinearLayout tree, int iconType, String name, int depth, boolean root, int iconColor, int iconSize) {
+    private void addFileNode(LinearLayout tree, FileTreeNode node, int depth, boolean root) {
+        int iconType;
+        int iconColor;
+        int iconSize;
+        if (node.isDirectory()) {
+            iconType = node.isExpanded() ? IconButtonView.FOLDER_OPEN : IconButtonView.FOLDER;
+            iconColor = node.isExpanded() ? LineTheme.ACCENT : LineTheme.TEXT_SECONDARY;
+            iconSize = 16;
+        } else {
+            iconType = iconForFile(node.getName());
+            iconColor = colorForFile(node.getName(), iconType);
+            iconSize = 14;
+        }
+        addFileRow(tree, node.getPath(), iconType, node.getName(), depth, root, iconColor, iconSize);
+        if (node.isDirectory() && node.isExpanded()) {
+            List<FileTreeNode> children = node.getChildren();
+            for (int i = 0; i < children.size(); i++) {
+                addFileNode(tree, children.get(i), depth + 1, false);
+            }
+        }
+    }
+
+    private void addFileRow(LinearLayout tree, String path, int iconType, String name, int depth, boolean root, int iconColor, int iconSize) {
         Context context = tree.getContext();
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClickable(true);
+        row.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onFileNodeSelected(path);
+            }
+        });
         int left = LineTheme.SM + depth * 16;
         LineTheme.padding(row, left, 4, LineTheme.SM, 4);
         tree.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
@@ -326,6 +426,40 @@ public final class DrawerView extends FrameLayout {
             IconButtonView plus = sizedIcon(context, IconButtonView.PLUS, LineTheme.TEXT_TERTIARY, 22, 14);
             row.addView(plus, new LinearLayout.LayoutParams(LineTheme.dp(context, 22), LineTheme.dp(context, 22)));
         }
+    }
+
+    private String formatTime(long updatedAt) {
+        if (updatedAt <= 0) {
+            return "";
+        }
+        return new SimpleDateFormat("M/d HH:mm", Locale.US).format(new Date(updatedAt));
+    }
+
+    private int iconForFile(String name) {
+        String lower = name == null ? "" : name.toLowerCase(Locale.US);
+        if (lower.endsWith(".java") || lower.endsWith(".kt") || lower.endsWith(".js")
+                || lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".jsx")
+                || lower.endsWith(".xml") || lower.endsWith(".json") || lower.endsWith(".gradle")) {
+            return IconButtonView.FILE_CODE;
+        }
+        if (lower.endsWith(".md") || lower.endsWith(".txt") || lower.endsWith(".log")) {
+            return IconButtonView.FILE_TEXT;
+        }
+        return IconButtonView.FILE;
+    }
+
+    private int colorForFile(String name, int iconType) {
+        String lower = name == null ? "" : name.toLowerCase(Locale.US);
+        if (iconType == IconButtonView.FILE_CODE) {
+            if (lower.endsWith(".xml")) {
+                return LineTheme.WARNING;
+            }
+            return android.graphics.Color.parseColor("#F0DB4F");
+        }
+        if (iconType == IconButtonView.FILE_TEXT) {
+            return LineTheme.TEXT_SECONDARY;
+        }
+        return LineTheme.TEXT_TERTIARY;
     }
 
     private IconButtonView sizedIcon(Context context, int type, int color, int containerSize, int iconSize) {

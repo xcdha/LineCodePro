@@ -14,6 +14,10 @@ public final class ScreenHeaderView extends LinearLayout {
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public ScreenHeaderView(Context context, String title, Runnable onBack, View rightAction) {
+        this(context, title, onBack == null ? null : backButtonView(context, onBack), rightAction);
+    }
+
+    public ScreenHeaderView(Context context, String title, View leftAction, View rightAction) {
         super(context);
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
@@ -21,7 +25,7 @@ public final class ScreenHeaderView extends LinearLayout {
         setWillNotDraw(false);
         LineTheme.padding(this, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
 
-        View left = onBack == null ? spacer(context) : backButton(context, onBack);
+        View left = leftAction == null ? spacer(context) : leftAction;
         addView(left, new LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 36)));
 
         TextView titleView = LineTheme.text(context, title, LineTheme.FONT_LG, LineTheme.TEXT, Typeface.BOLD);
@@ -51,7 +55,7 @@ public final class ScreenHeaderView extends LinearLayout {
         return new View(context);
     }
 
-    private View backButton(Context context, Runnable onBack) {
+    private static View backButtonView(Context context, Runnable onBack) {
         IconButtonView button = new IconButtonView(context, IconButtonView.CHEVRON_LEFT);
         button.setIconColor(LineTheme.TEXT);
         button.setIconSizeDp(36, 22);

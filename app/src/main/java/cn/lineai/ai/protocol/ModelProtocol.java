@@ -3,6 +3,7 @@ package cn.lineai.ai.protocol;
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCompletionResponse;
 import cn.lineai.ai.ModelCancellationToken;
+import cn.lineai.ai.ModelRequestOptions;
 import cn.lineai.ai.ModelStreamCallback;
 import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.model.ModelConfig;
@@ -30,5 +31,15 @@ public interface ModelProtocol {
             }
         }
         return response;
+    }
+
+    default ModelCompletionResponse stream(
+            ModelConfig config,
+            List<ModelMessage> messages,
+            ModelStreamCallback callback,
+            ModelCancellationToken cancellationToken,
+            ModelRequestOptions options
+    ) throws ModelCompletionException {
+        return stream(config, messages, callback, cancellationToken);
     }
 }

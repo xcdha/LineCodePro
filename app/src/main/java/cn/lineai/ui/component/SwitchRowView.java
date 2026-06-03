@@ -12,6 +12,10 @@ import cn.lineai.ui.theme.LineTheme;
 
 public final class SwitchRowView extends LinearLayout {
     public SwitchRowView(Context context, int iconType, String label, String desc, boolean value) {
+        this(context, iconType, label, desc, value, null);
+    }
+
+    public SwitchRowView(Context context, int iconType, String label, String desc, boolean value, CompoundButton.OnCheckedChangeListener listener) {
         super(context);
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
@@ -43,22 +47,20 @@ public final class SwitchRowView extends LinearLayout {
 
         Switch toggle = new Switch(context);
         toggle.setChecked(value);
-        tintSwitch(toggle);
+        tintSwitch(toggle, listener);
         addView(toggle, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
         setOnClickListener(v -> toggle.setChecked(!toggle.isChecked()));
     }
 
-    private void tintSwitch(Switch toggle) {
+    private void tintSwitch(Switch toggle, CompoundButton.OnCheckedChangeListener listener) {
         int[][] states = new int[][] {
                 new int[] {android.R.attr.state_checked},
                 new int[] {-android.R.attr.state_checked}
         };
         toggle.setThumbTintList(new ColorStateList(states, new int[] {LineTheme.ACCENT, LineTheme.TEXT_TERTIARY}));
         toggle.setTrackTintList(new ColorStateList(states, new int[] {LineTheme.ACCENT_DIM, LineTheme.SURFACE_LIGHT}));
-        toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-            }
-        });
+        if (listener != null) {
+            toggle.setOnCheckedChangeListener(listener);
+        }
     }
 }

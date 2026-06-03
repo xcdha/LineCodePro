@@ -34,6 +34,10 @@ public final class LineTheme {
     public static final int WARNING = Color.parseColor("#FF9F0A");
     public static final int SUCCESS = Color.parseColor("#30D158");
     public static final int OVERLAY = Color.argb(165, 0, 0, 0);
+    public static final int DIFF_ADD_BG = Color.argb(46, 48, 209, 88);
+    public static final int DIFF_DEL_BG = Color.argb(46, 255, 69, 58);
+    public static final int DIFF_ADD_TEXT = Color.parseColor("#30D158");
+    public static final int DIFF_DEL_TEXT = Color.parseColor("#FF453A");
 
     public static final int XS = 4;
     public static final int SM = 8;

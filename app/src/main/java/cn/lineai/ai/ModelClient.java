@@ -20,7 +20,17 @@ public final class ModelClient {
             ModelStreamCallback callback,
             ModelCancellationToken cancellationToken
     ) throws ModelCompletionException {
+        return stream(config, messages, callback, cancellationToken, ModelRequestOptions.defaults());
+    }
+
+    public ModelCompletionResponse stream(
+            ModelConfig config,
+            List<ModelMessage> messages,
+            ModelStreamCallback callback,
+            ModelCancellationToken cancellationToken,
+            ModelRequestOptions options
+    ) throws ModelCompletionException {
         ModelProtocol protocol = protocolFactory.create(config.getProtocolType());
-        return protocol.stream(config, messages, callback, cancellationToken);
+        return protocol.stream(config, messages, callback, cancellationToken, options == null ? ModelRequestOptions.defaults() : options);
     }
 }

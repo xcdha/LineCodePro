@@ -3,13 +3,19 @@ package cn.lineai.ai.protocol;
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCompletionResponse;
 import cn.lineai.ai.ModelCancellationToken;
+import cn.lineai.ai.ModelRequestOptions;
 import cn.lineai.ai.ModelStreamCallback;
 import cn.lineai.ai.message.ModelMessage;
+import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.ai.stream.ThinkTagParser;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelContextParser;
+import cn.lineai.tool.ToolCall;
+import cn.lineai.tool.ToolRegistry;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -44,15 +50,21 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             ModelConfig config,
             List<ModelMessage> messages,
             ModelStreamCallback callback,
-            ModelCancellationToken cancellationToken
+            ModelCancellationToken cancellationToken,
+            ModelRequestOptions options
     ) throws ModelCompletionException {
         try {
+            ModelRequestOptions requestOptions = options == null ? ModelRequestOptions.defaults() : options;
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config.getModelId()));
-            body.put("messages", messagesJson(messages));
+            body.put("messages", messagesJson(messages, requestOptions.isPreserveReasoning()));
             body.put("temperature", 0.2);
             body.put("stream", true);
-            applyReasoningRequest(config, body);
+            if (!requestOptions.getTools().isEmpty()) {
+                body.put("tools", ToolRegistry.toJsonArray(requestOptions.getTools()));
+                body.put("tool_choice", "auto");
+            }
+            applyReasoningRequest(config, body, requestOptions);
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
@@ -60,6 +72,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             StringBuilder text = new StringBuilder();
             StringBuilder reasoning = new StringBuilder();
             ThinkTagParser thinkTagParser = new ThinkTagParser();
+            HashMap<Integer, ToolCallBuilder> toolCallBuilders = new HashMap<>();
 
             postJsonSse(endpoint(config.getBaseUrl(), "/chat/completions"), body, headers, cancellationToken, (eventType, data) -> {
                 if ("[DONE]".equals(data.trim())) {
@@ -85,6 +98,11 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     return;
                 }
 
+                JSONArray toolCalls = delta.optJSONArray("tool_calls");
+                if (toolCalls != null) {
+                    appendToolCallDeltas(toolCallBuilders, toolCalls);
+                }
+
                 String reasoningDelta = extractReasoningDelta(delta);
                 if (reasoningDelta.length() > 0) {
                     reasoning.append(reasoningDelta);
@@ -100,7 +118,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             });
 
             appendParsedDelta(text, reasoning, thinkTagParser.flush(), callback);
-            return new ModelCompletionResponse(text.toString(), reasoning.toString());
+            return new ModelCompletionResponse(text.toString(), reasoning.toString(), buildToolCalls(toolCallBuilders));
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
@@ -109,14 +127,94 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
     }
 
     private JSONArray messagesJson(List<ModelMessage> messages) throws Exception {
+        return messagesJson(messages, false);
+    }
+
+    private JSONArray messagesJson(List<ModelMessage> messages, boolean preserveReasoning) throws Exception {
         JSONArray array = new JSONArray();
         for (ModelMessage message : messages) {
             JSONObject object = new JSONObject();
             object.put("role", message.getRole());
-            object.put("content", message.getContent());
+            if ("tool".equals(message.getRole())) {
+                object.put("tool_call_id", message.getToolCallId());
+                object.put("content", message.getContent());
+                array.put(object);
+                continue;
+            }
+            if ("assistant".equals(message.getRole()) && !message.getToolCalls().isEmpty()) {
+                object.put("content", message.getContent().length() == 0 ? JSONObject.NULL : message.getContent());
+                JSONArray toolCalls = new JSONArray();
+                for (ToolCall call : message.getToolCalls()) {
+                    JSONObject function = new JSONObject()
+                            .put("name", call.getName())
+                            .put("arguments", call.getArguments());
+                    toolCalls.put(new JSONObject()
+                            .put("id", call.getId())
+                            .put("type", "function")
+                            .put("function", function));
+                }
+                object.put("tool_calls", toolCalls);
+            } else {
+                object.put("content", message.getContent());
+            }
+            if (preserveReasoning
+                    && "assistant".equals(message.getRole())
+                    && message.getReasoningContent().length() > 0) {
+                object.put("reasoning_content", message.getReasoningContent());
+            }
             array.put(object);
         }
         return array;
+    }
+
+    private void appendToolCallDeltas(Map<Integer, ToolCallBuilder> builders, JSONArray toolCalls) {
+        for (int i = 0; i < toolCalls.length(); i++) {
+            JSONObject item = toolCalls.optJSONObject(i);
+            if (item == null) {
+                continue;
+            }
+            int index = item.optInt("index", i);
+            ToolCallBuilder builder = builders.get(index);
+            if (builder == null) {
+                builder = new ToolCallBuilder();
+                builders.put(index, builder);
+            }
+            if (item.has("id") && !item.isNull("id")) {
+                builder.id = item.optString("id");
+            }
+            JSONObject function = item.optJSONObject("function");
+            if (function == null) {
+                continue;
+            }
+            if (function.has("name") && !function.isNull("name")) {
+                builder.name = function.optString("name");
+            }
+            if (function.has("arguments") && !function.isNull("arguments")) {
+                builder.arguments.append(function.optString("arguments"));
+            }
+        }
+    }
+
+    private List<ToolCall> buildToolCalls(Map<Integer, ToolCallBuilder> builders) {
+        ArrayList<Integer> indexes = new ArrayList<>(builders.keySet());
+        indexes.sort(Integer::compareTo);
+        ArrayList<ToolCall> calls = new ArrayList<>();
+        for (Integer index : indexes) {
+            ToolCallBuilder builder = builders.get(index);
+            if (builder == null || builder.name.length() == 0) {
+                continue;
+            }
+            String id = builder.id.length() == 0 ? "call_" + index + "_" + System.currentTimeMillis() : builder.id;
+            String args = builder.arguments.length() == 0 ? "{}" : builder.arguments.toString();
+            calls.add(new ToolCall(id, builder.name, args));
+        }
+        return calls;
+    }
+
+    private static final class ToolCallBuilder {
+        String id = "";
+        String name = "";
+        final StringBuilder arguments = new StringBuilder();
     }
 
     private void appendParsedDelta(
@@ -192,29 +290,60 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         return "";
     }
 
-    private void applyReasoningRequest(ModelConfig config, JSONObject body) throws Exception {
+    private void applyReasoningRequest(ModelConfig config, JSONObject body, ModelRequestOptions options) throws Exception {
         String base = config.getBaseUrl().toLowerCase();
         String model = ModelContextParser.apiModelId(config.getModelId()).toLowerCase();
+        String effort = options.getReasoningEffort();
+        boolean enabled = !AiBehaviorSettings.REASONING_OFF.equals(effort);
         if (base.contains("dashscope") || base.contains("aliyuncs") || model.contains("qwen")) {
-            body.put("enable_thinking", true);
-            body.put("thinking_budget", 4096);
+            body.put("enable_thinking", enabled);
+            if (enabled) {
+                body.put("thinking_budget", thinkingBudget(effort));
+            }
+            if (options.isPreserveReasoning()) {
+                body.put("preserve_thinking", true);
+            }
             return;
         }
         if (base.contains("minimax") || model.contains("minimax") || model.contains("abab") || model.contains("m2")) {
-            body.put("reasoning_split", true);
+            body.put("reasoning_split", enabled);
             return;
         }
         if (base.contains("deepseek") || model.contains("deepseek")) {
-            body.put("thinking", new JSONObject().put("type", "enabled"));
-            body.put("reasoning_effort", "high");
+            body.put("thinking", new JSONObject().put("type", enabled ? "enabled" : "disabled"));
+            if (enabled) {
+                body.put("reasoning_effort", AiBehaviorSettings.REASONING_MAX.equals(effort) ? "max" : "high");
+            }
             return;
         }
         if (base.contains("moonshot") || base.contains("kimi") || model.contains("kimi")
                 || base.contains("bigmodel") || base.contains("zhipu") || model.contains("glm")
                 || base.contains("mimo") || base.contains("xiaomi") || model.contains("mimo")) {
-            body.put("thinking", new JSONObject().put("type", "enabled"));
+            JSONObject thinking = new JSONObject().put("type", enabled ? "enabled" : "disabled");
+            if (options.isPreserveReasoning() && (base.contains("moonshot") || base.contains("kimi") || model.contains("kimi"))) {
+                thinking.put("keep", "all");
+            }
+            body.put("thinking", thinking);
+            if (options.isPreserveReasoning() && (base.contains("bigmodel") || base.contains("zhipu") || model.contains("glm"))) {
+                body.put("clear_thinking", false);
+            }
             return;
         }
-        body.put("reasoning", new JSONObject().put("effort", "medium"));
+        if (enabled) {
+            body.put("reasoning", new JSONObject().put("effort", effort));
+        }
+    }
+
+    private int thinkingBudget(String effort) {
+        if (AiBehaviorSettings.REASONING_LOW.equals(effort)) {
+            return 1024;
+        }
+        if (AiBehaviorSettings.REASONING_HIGH.equals(effort)) {
+            return 8192;
+        }
+        if (AiBehaviorSettings.REASONING_MAX.equals(effort)) {
+            return 16000;
+        }
+        return 4096;
     }
 }

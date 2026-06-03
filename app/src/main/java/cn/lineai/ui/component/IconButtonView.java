@@ -77,6 +77,12 @@ public final class IconButtonView extends ImageButton {
     public static final int SHIELD_CHECK = 68;
     public static final int CLOCK_3 = 69;
     public static final int MESSAGE_SQUARE_TEXT = 70;
+    public static final int BOT = 71;
+    public static final int CIRCLE_CHECK = 72;
+    public static final int CIRCLE_X = 73;
+    public static final int LOADER = 74;
+    public static final int FILE_PEN_LINE = 75;
+    public static final int WRENCH = 76;
 
     private int iconType;
     private int iconColor = Color.WHITE;
@@ -268,6 +274,18 @@ public final class IconButtonView extends ImageButton {
                 return R.drawable.ic_lucide_clock_3;
             case MESSAGE_SQUARE_TEXT:
                 return R.drawable.ic_lucide_message_square_text;
+            case BOT:
+                return R.drawable.ic_lucide_bot;
+            case CIRCLE_CHECK:
+                return R.drawable.ic_lucide_circle_check;
+            case CIRCLE_X:
+                return R.drawable.ic_lucide_circle_x;
+            case LOADER:
+                return R.drawable.ic_lucide_loader;
+            case FILE_PEN_LINE:
+                return R.drawable.ic_lucide_file_pen_line;
+            case WRENCH:
+                return R.drawable.ic_lucide_wrench;
             default:
                 return R.drawable.ic_lucide_plus;
         }

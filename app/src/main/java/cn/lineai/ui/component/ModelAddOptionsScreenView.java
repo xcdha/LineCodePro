@@ -6,6 +6,8 @@ import android.view.Gravity;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import cn.lineai.model.ModelProviderPreset;
+import cn.lineai.model.ModelProviderPresets;
 import cn.lineai.ui.theme.LineTheme;
 
 public final class ModelAddOptionsScreenView extends ScreenScaffoldView {
@@ -46,16 +48,9 @@ public final class ModelAddOptionsScreenView extends ScreenScaffoldView {
         headerParams.bottomMargin = LineTheme.dp(context, LineTheme.SM);
         content.addView(sectionHeader, headerParams);
 
-        addProvider(content, "deepseek", "DeepSeek", "DeepSeek Chat / Reasoner · OpenAI 兼容", listener);
-        addProvider(content, "glm", "GLM", "智谱 GLM / Z.ai · OpenAI 兼容", listener);
-        addProvider(content, "mimo", "Mimo", "小米 Mimo API · OpenAI 兼容", listener);
-        addProvider(content, "mimo-token-plan", "Mimo Token 计划", "小米 Mimo Token 计划 · OpenAI 兼容", listener);
-        addProvider(content, "kimi", "Kimi", "Moonshot AI · OpenAI 兼容", listener);
-        addProvider(content, "qwen", "Qwen", "DashScope 兼容模式 · OpenAI 兼容", listener);
-        addProvider(content, "openai", "OpenAI", "GPT / o 系列 · OpenAI 兼容", listener);
-        addProvider(content, "claude", "Claude", "Anthropic Messages API · Anthropic", listener);
-        addProvider(content, "gemini", "Gemini", "Google OpenAI 兼容端点 · OpenAI 兼容", listener);
-        addProvider(content, "openrouter", "OpenRouter", "多模型聚合 · OpenAI 兼容", listener);
+        for (ModelProviderPreset preset : ModelProviderPresets.all()) {
+            addProvider(content, preset, listener);
+        }
     }
 
     private void addLargeCard(LinearLayout content, int iconType, String title, String desc, Runnable onClick) {
@@ -102,14 +97,15 @@ public final class ModelAddOptionsScreenView extends ScreenScaffoldView {
         content.addView(card, cardParams);
     }
 
-    private void addProvider(LinearLayout content, String id, String name, String desc, Listener listener) {
+    private void addProvider(LinearLayout content, ModelProviderPreset preset, Listener listener) {
         Context context = content.getContext();
+        String name = preset.getLabel();
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_ELEVATED, 12, LineTheme.BORDER_LIGHT));
         row.setClickable(true);
-        row.setOnClickListener(v -> listener.onProvider(id));
+        row.setOnClickListener(v -> listener.onProvider(preset.getId()));
         LineTheme.padding(row, LineTheme.MD, LineTheme.MD, LineTheme.MD, LineTheme.MD);
 
         TextView initial = LineTheme.text(context, name.substring(0, 1), LineTheme.FONT_MD, LineTheme.ACCENT, Typeface.BOLD);
@@ -126,7 +122,7 @@ public final class ModelAddOptionsScreenView extends ScreenScaffoldView {
         TextView title = LineTheme.text(context, name, LineTheme.FONT_MD, LineTheme.TEXT, Typeface.BOLD);
         title.setSingleLine(true);
         text.addView(title, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        TextView sub = LineTheme.text(context, desc, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        TextView sub = LineTheme.text(context, preset.getDesc() + " · " + protocolLabel(preset), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         sub.setSingleLine(true);
         LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         subParams.topMargin = LineTheme.dp(context, 3);
@@ -141,5 +137,19 @@ public final class ModelAddOptionsScreenView extends ScreenScaffoldView {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         params.bottomMargin = LineTheme.dp(context, LineTheme.SM);
         content.addView(row, params);
+    }
+
+    private String protocolLabel(ModelProviderPreset preset) {
+        switch (preset.getProtocolType()) {
+            case CODEX_RESPONSES:
+                return "Codex";
+            case ANTHROPIC_MESSAGES:
+                return "Anthropic";
+            case LOCAL_GGUF:
+                return "本地 GGUF";
+            case OPENAI_COMPATIBLE:
+            default:
+                return "OpenAI 兼容";
+        }
     }
 }

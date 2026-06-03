@@ -3,8 +3,10 @@ package cn.lineai.ai.protocol;
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCompletionResponse;
 import cn.lineai.ai.ModelCancellationToken;
+import cn.lineai.ai.ModelRequestOptions;
 import cn.lineai.ai.ModelStreamCallback;
 import cn.lineai.ai.message.ModelMessage;
+import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelContextParser;
 import java.util.HashMap;
@@ -41,14 +43,20 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             ModelConfig config,
             List<ModelMessage> messages,
             ModelStreamCallback callback,
-            ModelCancellationToken cancellationToken
+            ModelCancellationToken cancellationToken,
+            ModelRequestOptions options
     ) throws ModelCompletionException {
         try {
+            ModelRequestOptions requestOptions = options == null ? ModelRequestOptions.defaults() : options;
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config.getModelId()));
             body.put("input", inputJson(messages));
             body.put("stream", true);
-            body.put("reasoning", new JSONObject().put("effort", "medium"));
+            if (!AiBehaviorSettings.REASONING_OFF.equals(requestOptions.getReasoningEffort())) {
+                body.put("reasoning", new JSONObject()
+                        .put("effort", AiBehaviorSettings.REASONING_MAX.equals(requestOptions.getReasoningEffort()) ? "high" : requestOptions.getReasoningEffort())
+                        .put("summary", "auto"));
+            }
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
@@ -115,11 +123,37 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
         JSONArray array = new JSONArray();
         for (ModelMessage message : messages) {
             JSONObject object = new JSONObject();
-            object.put("role", message.getRole());
-            object.put("content", message.getContent());
+            if ("tool".equals(message.getRole())) {
+                object.put("role", "user");
+                object.put("content", toolResultText(message));
+            } else {
+                object.put("role", message.getRole());
+                object.put("content", message.getContent());
+            }
             array.put(object);
         }
         return array;
+    }
+
+    private String toolResultText(ModelMessage message) {
+        return "<tool_result tool_call_id=\"" + escapeAttribute(message.getToolCallId())
+                + "\" name=\"" + escapeAttribute(message.getToolName())
+                + "\" is_error=\"" + message.isToolError()
+                + "\"><![CDATA[" + escapeCdata(message.getContent()) + "]]></tool_result>";
+    }
+
+    private String escapeAttribute(String value) {
+        String text = value == null ? "" : value;
+        return text
+                .replace("&", "&amp;")
+                .replace("\"", "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
+    }
+
+    private String escapeCdata(String value) {
+        String text = value == null ? "" : value;
+        return text.replace("]]>", "]]]]><![CDATA[>");
     }
 
     private String extractOutputText(JSONArray output) {

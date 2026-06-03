@@ -20,8 +20,23 @@ public enum ModelProtocolType {
         if (value == null) {
             return OPENAI_COMPATIBLE;
         }
+        String normalized = value.trim();
+        if ("openai".equalsIgnoreCase(normalized) || "openai_compatible".equalsIgnoreCase(normalized)) {
+            return OPENAI_COMPATIBLE;
+        }
+        if ("codex".equalsIgnoreCase(normalized) || "codex_responses".equalsIgnoreCase(normalized)) {
+            return CODEX_RESPONSES;
+        }
+        if ("anthropic".equalsIgnoreCase(normalized) || "claude".equalsIgnoreCase(normalized)
+                || "anthropic_messages".equalsIgnoreCase(normalized)) {
+            return ANTHROPIC_MESSAGES;
+        }
+        if ("local".equalsIgnoreCase(normalized) || "gguf".equalsIgnoreCase(normalized)
+                || "local_gguf".equalsIgnoreCase(normalized)) {
+            return LOCAL_GGUF;
+        }
         for (ModelProtocolType type : values()) {
-            if (type.name().equals(value)) {
+            if (type.name().equals(normalized)) {
                 return type;
             }
         }

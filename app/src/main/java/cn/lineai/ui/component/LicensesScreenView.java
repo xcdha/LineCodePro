@@ -20,7 +20,7 @@ public final class LicensesScreenView extends ScreenScaffoldView {
         addLicense(content, "react-native", "0.85.3 · MIT", "LineAI 参考工程中的 React Native 运行时许可。");
         addLicense(content, "react", "19.2.3 · MIT", "LineAI 参考工程中的 React 许可。");
         addLicense(content, "highlight.js", "11.11.1 · BSD-3-Clause", "代码高亮依赖许可。");
-        addLicense(content, "react-native-markdown-display", "7.0.2 · MIT", "教程与 Markdown 显示依赖许可。");
+        addLicense(content, "commonmark-java", "0.28.0 · BSD-2-Clause", "Markdown 解析与 GFM 表格扩展依赖许可。");
     }
 
     private void addLicense(LinearLayout content, String name, String meta, String text) {

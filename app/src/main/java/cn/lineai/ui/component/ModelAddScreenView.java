@@ -1,14 +1,21 @@
 package cn.lineai.ui.component;
 
+import android.app.Dialog;
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -16,10 +23,15 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import cn.lineai.ai.ModelCompletionException;
+import cn.lineai.ai.protocol.ModelCatalogClient;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProtocolType;
 import cn.lineai.model.ModelProviderPreset;
 import cn.lineai.ui.theme.LineTheme;
+import cn.lineai.ui.util.KeyboardController;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class ModelAddScreenView extends LinearLayout {
     public interface Listener {
@@ -34,6 +46,10 @@ public final class ModelAddScreenView extends LinearLayout {
     private final TextView providerLabelView;
     private final EditText nameInput;
     private final ModelProviderPreset preset;
+    private final ModelConfig editingModel;
+    private final ModelCatalogClient catalogClient = new ModelCatalogClient();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ArrayList<String> fetchedModelIds = new ArrayList<>();
     private LinearLayout queryButton;
     private TextView queryLabel;
     private TextView queryText;
@@ -44,27 +60,35 @@ public final class ModelAddScreenView extends LinearLayout {
     private EditText baseUrlInput;
     private EditText apiKeyInput;
     private EditText modelIdInput;
+    private EditText toolCallLimitInput;
     private final String[] selectedModelId = new String[] {""};
     private final boolean local;
     private final boolean lockedPreset;
     private final String providerLabel;
     private final ModelProtocolType[] protocolType = new ModelProtocolType[1];
     private boolean saveEnabled;
+    private boolean fetchingModels;
 
     public ModelAddScreenView(Context context, ModelProviderPreset preset, boolean local, Listener listener) {
+        this(context, preset, local, null, listener);
+    }
+
+    public ModelAddScreenView(Context context, ModelProviderPreset preset, boolean local, ModelConfig editingModel, Listener listener) {
         super(context);
-        this.local = local;
+        this.editingModel = editingModel;
+        boolean editing = editingModel != null;
+        this.local = local || (editing && editingModel.getProtocolType() == ModelProtocolType.LOCAL_GGUF);
         this.preset = preset;
-        this.lockedPreset = preset != null;
-        this.protocolType[0] = local ? ModelProtocolType.LOCAL_GGUF : preset == null ? ModelProtocolType.OPENAI_COMPATIBLE : preset.getProtocolType();
-        this.providerLabel = local ? "本地" : preset == null ? null : preset.getLabel();
+        this.lockedPreset = preset != null || editing;
+        this.protocolType[0] = editing ? editingModel.getProtocolType() : this.local ? ModelProtocolType.LOCAL_GGUF : preset == null ? ModelProtocolType.OPENAI_COMPATIBLE : preset.getProtocolType();
+        this.providerLabel = this.local ? "本地" : editing ? cleanProviderLabel(editingModel.getProviderLabel()) : preset == null ? null : preset.getLabel();
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
 
         saveAction = LineTheme.textMedium(context, "保存", LineTheme.FONT_MD, LineTheme.TEXT_TERTIARY);
         saveAction.setGravity(Gravity.CENTER);
         LineTheme.padding(saveAction, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
-        addView(new ScreenHeaderView(context, "添加模型", listener::onBack, saveAction), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        addView(new ScreenHeaderView(context, editing ? "修改模型" : "添加模型", listener::onBack, saveAction), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         ScrollView scrollView = new ScrollView(context);
         LinearLayout content = new LinearLayout(context);
@@ -73,7 +97,7 @@ public final class ModelAddScreenView extends LinearLayout {
         scrollView.addView(content, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
-        providerLabelView = label(context, preset == null ? "提供商" : "提供商：" + preset.getLabel());
+        providerLabelView = label(context, providerTitle());
         content.addView(providerLabelView, labelParams(context, LineTheme.LG, LineTheme.SM));
         LinearLayout providerRow = new LinearLayout(context);
         providerRow.setOrientation(HORIZONTAL);
@@ -85,14 +109,20 @@ public final class ModelAddScreenView extends LinearLayout {
                     Toast.makeText(context, "请从“加载本地模型”进入本地模型表单。", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                if (local) {
+                if (this.local) {
                     Toast.makeText(context, "请返回后进入自定义模型表单。", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 if (!lockedPreset) {
                     protocolType[0] = protocolForIndex(index);
+                    fetchedModelIds.clear();
+                    selectedModelId[0] = "";
+                    if (modelIdInput != null) {
+                        modelIdInput.setText("");
+                    }
                     updateProviderToggles(providerRow);
                     updateBaseUrlHint();
+                    renderModelIdInput(customIdSwitch != null && customIdSwitch.isChecked());
                     updateQueryState();
                     updateSaveState();
                 }
@@ -101,10 +131,10 @@ public final class ModelAddScreenView extends LinearLayout {
         content.addView(providerRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         content.addView(label(context, "名称"), labelParams(context, LineTheme.LG, LineTheme.SM));
-        nameInput = input(context, "", local ? "如 Qwen2.5 7B 本地" : preset == null ? "如 GPT-4o、Claude Sonnet" : "可留空，默认使用模型 ID", false, false);
+        nameInput = input(context, editing ? editingModel.getName() : "", this.local ? "如 Qwen2.5 7B 本地" : preset == null ? "如 GPT-4o、Claude Sonnet" : "可留空，默认使用模型 ID", false, false);
         content.addView(nameInput, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        if (local) {
+        if (this.local) {
             addLocalUi(context, content);
             baseUrlInput = null;
             apiKeyInput = null;
@@ -118,7 +148,7 @@ public final class ModelAddScreenView extends LinearLayout {
             modelIdInput = null;
         } else {
             content.addView(label(context, "Base URL"), labelParams(context, LineTheme.LG, LineTheme.SM));
-            baseUrlInput = input(context, preset == null ? "" : preset.getBaseUrl(), preset == null ? "https://api.example.com/v1" : preset.getPlaceholder(), false, false);
+            baseUrlInput = input(context, editing ? editingModel.getBaseUrl() : preset == null ? "" : preset.getBaseUrl(), preset == null ? "https://api.example.com/v1" : preset.getPlaceholder(), false, false);
             content.addView(baseUrlInput, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             baseUrlHintView = LineTheme.text(context, hintFor(preset), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             baseUrlHintView.setLineSpacing(LineTheme.dp(context, 3), 1f);
@@ -127,7 +157,7 @@ public final class ModelAddScreenView extends LinearLayout {
             content.addView(baseUrlHintView, hintParams);
 
             content.addView(label(context, "API Key"), labelParams(context, LineTheme.LG, LineTheme.SM));
-            apiKeyInput = input(context, "", "sk-...", false, true);
+            apiKeyInput = input(context, editing ? editingModel.getApiKey() : "", "sk-...", false, true);
             content.addView(apiKeyInput, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
             LinearLayout modelIdHeader = new LinearLayout(context);
@@ -151,24 +181,45 @@ public final class ModelAddScreenView extends LinearLayout {
             modelInputHost = new LinearLayout(context);
             modelInputHost.setOrientation(VERTICAL);
             content.addView(modelInputHost, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-            modelIdInput = input(context, "", "输入模型 ID", false, false);
+            modelIdInput = input(context, editing ? editingModel.getModelId() : "", "输入模型 ID", false, false);
             queryLabel = LineTheme.text(context, "请先查询并选择模型", LineTheme.FONT_MD, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             queryLabel.setSingleLine(true);
             queryLabel.setEllipsize(TextUtils.TruncateAt.END);
             queryButton = createQueryButton(context);
-            renderModelIdInput(false);
+            selectedModelId[0] = editing ? editingModel.getModelId() : "";
+            customIdSwitch.setChecked(editing);
+            renderModelIdInput(editing);
 
             customIdSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 renderModelIdInput(isChecked);
                 updateSaveState();
             });
             queryButton.setOnClickListener(v -> {
-                if (!canQuery()) {
+                if (!canQuery() || fetchingModels) {
                     return;
                 }
-                Toast.makeText(context, "模型查询稍后接入；先打开“自定义”输入模型 ID。", Toast.LENGTH_SHORT).show();
-                customIdSwitch.setChecked(true);
+                if (!fetchedModelIds.isEmpty()) {
+                    showModelPicker(fetchedModelIds);
+                    return;
+                }
+                fetchModelCatalog();
             });
+
+            content.addView(label(context, "工具调用次数限制"), labelParams(context, LineTheme.LG, LineTheme.SM));
+            toolCallLimitInput = input(
+                    context,
+                    String.valueOf(editing ? editingModel.getToolCallLimit() : ModelConfig.DEFAULT_TOOL_CALL_LIMIT),
+                    "200",
+                    false,
+                    false
+            );
+            toolCallLimitInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
+            content.addView(toolCallLimitInput, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            TextView toolLimitHint = LineTheme.text(context, "-1 表示不限制；0 表示禁止工具调用；默认 200。", LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            toolLimitHint.setLineSpacing(LineTheme.dp(context, 3), 1f);
+            LinearLayout.LayoutParams toolLimitHintParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            toolLimitHintParams.topMargin = LineTheme.dp(context, LineTheme.SM);
+            content.addView(toolLimitHint, toolLimitHintParams);
         }
 
         addLearningCard(context, content);
@@ -189,10 +240,32 @@ public final class ModelAddScreenView extends LinearLayout {
             }
         };
         nameInput.addTextChangedListener(watcher);
-        if (!local) {
+        if (!this.local) {
             baseUrlInput.addTextChangedListener(watcher);
             apiKeyInput.addTextChangedListener(watcher);
             modelIdInput.addTextChangedListener(watcher);
+            toolCallLimitInput.addTextChangedListener(watcher);
+            TextWatcher catalogWatcher = new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                }
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    fetchedModelIds.clear();
+                    if (customIdSwitch != null && !customIdSwitch.isChecked()) {
+                        selectedModelId[0] = "";
+                        renderModelIdInput(false);
+                    }
+                    updateSaveState();
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {
+                }
+            };
+            baseUrlInput.addTextChangedListener(catalogWatcher);
+            apiKeyInput.addTextChangedListener(catalogWatcher);
         }
 
         saveAction.setOnClickListener(v -> {
@@ -269,11 +342,15 @@ public final class ModelAddScreenView extends LinearLayout {
     }
 
     private void renderModelIdInput(boolean custom) {
+        KeyboardController.clearFocusAndHide(modelInputHost);
         modelInputHost.removeAllViews();
         if (custom) {
+            detachFromParent(modelIdInput);
             modelInputHost.addView(modelIdInput, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             return;
         }
+        detachFromParent(queryLabel);
+        detachFromParent(queryButton);
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -282,7 +359,9 @@ public final class ModelAddScreenView extends LinearLayout {
         selector.setGravity(Gravity.CENTER_VERTICAL);
         selector.setBackground(LineTheme.roundedStroke(getContext(), LineTheme.SURFACE_LIGHT, 12, LineTheme.BORDER_LIGHT));
         LineTheme.padding(selector, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
-        queryLabel.setText(selectedModelId[0].length() == 0 ? "请先查询并选择模型" : selectedModelId[0]);
+        boolean hasSelected = selectedModelId[0].length() > 0;
+        queryLabel.setText(hasSelected ? selectedModelId[0] : "请先查询并选择模型");
+        queryLabel.setTextColor(hasSelected ? LineTheme.TEXT : LineTheme.TEXT_TERTIARY);
         selector.addView(queryLabel, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
         IconButtonView down = new IconButtonView(getContext(), IconButtonView.CHEVRON_DOWN);
         down.setIconColor(LineTheme.TEXT_TERTIARY);
@@ -295,6 +374,15 @@ public final class ModelAddScreenView extends LinearLayout {
         queryParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
         row.addView(queryButton, queryParams);
         modelInputHost.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+    }
+
+    private void detachFromParent(View view) {
+        if (view == null || view.getParent() == null) {
+            return;
+        }
+        if (view.getParent() instanceof ViewGroup) {
+            ((ViewGroup) view.getParent()).removeView(view);
+        }
     }
 
     private LinearLayout createQueryButton(Context context) {
@@ -316,6 +404,126 @@ public final class ModelAddScreenView extends LinearLayout {
         return button;
     }
 
+    private void fetchModelCatalog() {
+        fetchingModels = true;
+        updateQueryState();
+        String baseUrl = effectiveBaseUrl();
+        String apiKey = value(apiKeyInput);
+        ModelProtocolType type = protocolType[0];
+        new Thread(() -> {
+            try {
+                List<String> ids = catalogClient.fetch(type, baseUrl, apiKey);
+                mainHandler.post(() -> {
+                    fetchingModels = false;
+                    fetchedModelIds.clear();
+                    fetchedModelIds.addAll(ids);
+                    updateQueryState();
+                    if (ids.isEmpty()) {
+                        Toast.makeText(getContext(), "未获取到模型列表，请检查 Base URL 和 API Key。", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    showModelPicker(ids);
+                });
+            } catch (ModelCompletionException e) {
+                mainHandler.post(() -> {
+                    fetchingModels = false;
+                    updateQueryState();
+                    Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        }, "linecode-model-catalog").start();
+    }
+
+    private void showModelPicker(List<String> ids) {
+        Context context = getContext();
+        KeyboardController.clearFocusAndHide(this);
+        Dialog dialog = new Dialog(context);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setCanceledOnTouchOutside(true);
+
+        LinearLayout panel = new LinearLayout(context);
+        panel.setOrientation(VERTICAL);
+        panel.setBackground(LineTheme.roundedTop(context, LineTheme.SURFACE_ELEVATED, 16));
+
+        View handle = new View(context);
+        handle.setBackground(LineTheme.rounded(context, LineTheme.TEXT_TERTIARY, 2));
+        LinearLayout.LayoutParams handleParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 4));
+        handleParams.gravity = Gravity.CENTER_HORIZONTAL;
+        handleParams.topMargin = LineTheme.dp(context, LineTheme.SM);
+        handleParams.bottomMargin = LineTheme.dp(context, LineTheme.XS);
+        panel.addView(handle, handleParams);
+
+        TextView title = LineTheme.text(context, "选择模型", LineTheme.FONT_LG, LineTheme.TEXT, Typeface.BOLD);
+        LineTheme.padding(title, LineTheme.LG, 0, LineTheme.LG, LineTheme.MD);
+        panel.addView(title, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        View divider = new View(context);
+        divider.setBackgroundColor(LineTheme.BORDER_LIGHT);
+        panel.addView(divider, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1));
+
+        ScrollView scroll = new ScrollView(context);
+        LinearLayout list = new LinearLayout(context);
+        list.setOrientation(VERTICAL);
+        scroll.addView(list, new ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        int maxHeight = LineTheme.dp(context, 420);
+        panel.addView(scroll, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, maxHeight));
+
+        for (String id : ids) {
+            addPickerRow(list, dialog, id, false);
+        }
+        addPickerRow(list, dialog, "自定义 ID...", true);
+        panel.addView(new View(context), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 34)));
+
+        dialog.setContentView(panel);
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setLayout(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            window.setGravity(Gravity.BOTTOM);
+        }
+    }
+
+    private void addPickerRow(LinearLayout list, Dialog dialog, String label, boolean custom) {
+        Context context = list.getContext();
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClickable(true);
+        LineTheme.padding(row, LineTheme.LG, 14, LineTheme.LG, 14);
+        TextView text = LineTheme.text(context, label, LineTheme.FONT_MD, custom ? LineTheme.ACCENT : LineTheme.TEXT, Typeface.NORMAL);
+        text.setSingleLine(true);
+        text.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(text, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+
+        if (!custom && label.equals(selectedModelId[0])) {
+            IconButtonView check = new IconButtonView(context, IconButtonView.CHECK);
+            check.setIconColor(LineTheme.ACCENT);
+            check.setIconSizeDp(18, 16);
+            check.setClickable(false);
+            row.addView(check, new LinearLayout.LayoutParams(LineTheme.dp(context, 18), LineTheme.dp(context, 18)));
+        }
+
+        row.setOnClickListener(v -> {
+            dialog.dismiss();
+            if (custom) {
+                selectedModelId[0] = "";
+                customIdSwitch.setChecked(true);
+                modelIdInput.setText("");
+                renderModelIdInput(true);
+            } else {
+                selectedModelId[0] = label;
+                if (nameInput.getText().toString().trim().length() == 0 && preset != null) {
+                    nameInput.setText(label);
+                }
+                customIdSwitch.setChecked(false);
+                renderModelIdInput(false);
+            }
+            updateSaveState();
+        });
+        list.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+    }
+
     private ModelConfig buildModelConfig(Context context) {
         if (local) {
             Toast.makeText(context, "请先选择 GGUF 文件。本地推理稍后接入。", Toast.LENGTH_SHORT).show();
@@ -324,6 +532,7 @@ public final class ModelAddScreenView extends LinearLayout {
         String baseUrl = effectiveBaseUrl();
         String apiKey = value(apiKeyInput);
         String modelId = customIdSwitch.isChecked() ? value(modelIdInput) : selectedModelId[0];
+        Integer toolCallLimit = parseToolCallLimit();
         String name = value(nameInput);
         if (name.length() == 0) {
             name = modelId;
@@ -336,8 +545,12 @@ public final class ModelAddScreenView extends LinearLayout {
             Toast.makeText(context, "请填写 API Key", Toast.LENGTH_SHORT).show();
             return null;
         }
+        if (toolCallLimit == null) {
+            Toast.makeText(context, "工具调用次数限制只能是 -1 或大于等于 0 的整数", Toast.LENGTH_SHORT).show();
+            return null;
+        }
         String label = providerLabel != null ? providerLabel : protocolType[0].getLabel();
-        return new ModelConfig("", name, protocolType[0], label, baseUrl, apiKey, modelId);
+        return new ModelConfig(editingModel == null ? "" : editingModel.getId(), name, protocolType[0], label, baseUrl, apiKey, modelId, toolCallLimit);
     }
 
     private void updateProviderToggles(LinearLayout providerRow) {
@@ -358,8 +571,8 @@ public final class ModelAddScreenView extends LinearLayout {
         if (!lockedPreset && baseUrlInput != null) {
             baseUrlInput.setHint(placeholderFor(protocolType[0]));
         }
-        if (providerLabelView != null && providerLabel == null) {
-            providerLabelView.setText("提供商");
+        if (providerLabelView != null) {
+            providerLabelView.setText(providerTitle());
         }
     }
 
@@ -367,14 +580,15 @@ public final class ModelAddScreenView extends LinearLayout {
         if (local || queryButton == null) {
             return;
         }
-        boolean canQuery = canQuery();
+        boolean canQuery = canQuery() && !fetchingModels;
         if (queryText != null) {
-            queryText.setTextColor(canQuery ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY);
+            queryText.setText(fetchingModels ? "查询中" : "查询");
+            queryText.setTextColor((canQuery || fetchingModels) ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY);
         }
         if (queryIcon != null) {
-            queryIcon.setIconColor(canQuery ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY);
+            queryIcon.setIconColor((canQuery || fetchingModels) ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY);
         }
-        queryButton.setBackground(LineTheme.rounded(getContext(), canQuery ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 12));
+        queryButton.setBackground(LineTheme.rounded(getContext(), (canQuery || fetchingModels) ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 12));
         queryButton.setEnabled(canQuery);
     }
 
@@ -387,7 +601,8 @@ public final class ModelAddScreenView extends LinearLayout {
             String name = value(nameInput);
             canSave = (name.length() > 0 || id.length() > 0)
                     && id.length() > 0
-                    && value(apiKeyInput).length() > 0;
+                    && value(apiKeyInput).length() > 0
+                    && parseToolCallLimit() != null;
         }
         saveEnabled = canSave;
         saveAction.setTextColor(canSave ? LineTheme.ACCENT : LineTheme.TEXT_TERTIARY);
@@ -485,6 +700,23 @@ public final class ModelAddScreenView extends LinearLayout {
         return "OpenAI 兼容协议必须填到 /v1 结尾，例如 https://api.example.com/v1；不要只填域名，也不要加 /chat/completions。";
     }
 
+    private String providerTitle() {
+        if (providerLabel != null && providerLabel.length() > 0) {
+            return "提供商：" + providerLabel;
+        }
+        if (lockedPreset) {
+            return "提供商：" + protocolType[0].getLabel();
+        }
+        return "提供商";
+    }
+
+    private String cleanProviderLabel(String label) {
+        if (label == null || label.length() == 0 || "自定义".equals(label)) {
+            return null;
+        }
+        return label;
+    }
+
     private TextView label(Context context, String text) {
         return LineTheme.textMedium(context, text, LineTheme.FONT_SM, LineTheme.TEXT_SECONDARY);
     }
@@ -526,5 +758,30 @@ public final class ModelAddScreenView extends LinearLayout {
 
     private String value(EditText input) {
         return input == null || input.getText() == null ? "" : input.getText().toString().trim();
+    }
+
+    private Integer parseToolCallLimit() {
+        if (local || toolCallLimitInput == null) {
+            return ModelConfig.DEFAULT_TOOL_CALL_LIMIT;
+        }
+        String value = value(toolCallLimitInput);
+        if (value.length() == 0) {
+            return null;
+        }
+        try {
+            int limit = Integer.parseInt(value);
+            if (limit < ModelConfig.UNLIMITED_TOOL_CALLS) {
+                return null;
+            }
+            return ModelConfig.normalizeToolCallLimit(limit);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        KeyboardController.clearFocusAndHide(this);
+        super.onDetachedFromWindow();
     }
 }

@@ -45,7 +45,7 @@ public final class SettingsScreenView extends LinearLayout {
         });
         addSection(content, "界面与输出", new RowSpec[] {
                 new RowSpec("theme", "主题与外观", "主题模式、自定义颜色和高对比外观", IconButtonView.PALETTE),
-                new RowSpec("output", "输出与浏览", "回复布局、代码换行和网页打开方式", IconButtonView.MONITOR),
+                new RowSpec("output", "输出与浏览", "代码换行、网页打开方式和 Markdown 预览", IconButtonView.MONITOR),
                 new RowSpec("experimental", "实验性渲染", "仍在验证的消息渲染能力", IconButtonView.FLASK_CONICAL),
         });
         addSection(content, "数据与系统", new RowSpec[] {
@@ -55,7 +55,7 @@ public final class SettingsScreenView extends LinearLayout {
                 new RowSpec("keepAlive", "后台保活", "Wake Lock、前台服务和电池白名单", IconButtonView.BATTERY_CHARGING),
         });
         addSection(content, "信息", new RowSpec[] {
-                new RowSpec("about", "关于 LineCode", "版本、诊断、开源许可和调试入口", IconButtonView.CPU),
+                new RowSpec("about", "关于 LineCode", "版本、诊断和开源许可", IconButtonView.CPU),
         });
     }
 

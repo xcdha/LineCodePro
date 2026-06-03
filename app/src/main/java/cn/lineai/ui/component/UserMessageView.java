@@ -10,6 +10,7 @@ import cn.lineai.ui.theme.LineTheme;
 
 public final class UserMessageView extends LinearLayout {
     private final TextView contentText;
+    private String lastContent = "";
 
     public UserMessageView(Context context) {
         super(context);
@@ -33,6 +34,10 @@ public final class UserMessageView extends LinearLayout {
     }
 
     public void bind(ChatMessage message) {
-        contentText.setText(message.getContent());
+        String content = message.getContent();
+        if (!lastContent.equals(content)) {
+            contentText.setText(content);
+            lastContent = content;
+        }
     }
 }
