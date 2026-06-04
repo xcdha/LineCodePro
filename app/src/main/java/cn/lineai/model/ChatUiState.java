@@ -15,6 +15,7 @@ public final class ChatUiState {
     private final boolean thinkingAutoExpandEnabled;
     private final boolean codeWrapEnabled;
     private final String browserMode;
+    private final String chatMode;
     private final List<ChatMessage> messages;
 
     public ChatUiState(
@@ -39,6 +40,7 @@ public final class ChatUiState {
                 false,
                 false,
                 OutputSettings.BROWSER_BUILTIN,
+                ChatMode.DEFAULT,
                 messages
         );
     }
@@ -67,6 +69,7 @@ public final class ChatUiState {
                 thinkingAutoExpandEnabled,
                 false,
                 OutputSettings.BROWSER_BUILTIN,
+                ChatMode.DEFAULT,
                 messages
         );
     }
@@ -85,6 +88,38 @@ public final class ChatUiState {
             String browserMode,
             List<ChatMessage> messages
     ) {
+        this(
+                projectLabel,
+                projectPath,
+                modelLabel,
+                contextLabel,
+                contextPercent,
+                streaming,
+                hasConfiguredModel,
+                thinkingScrollEnabled,
+                thinkingAutoExpandEnabled,
+                codeWrapEnabled,
+                browserMode,
+                ChatMode.DEFAULT,
+                messages
+        );
+    }
+
+    public ChatUiState(
+            String projectLabel,
+            String projectPath,
+            String modelLabel,
+            String contextLabel,
+            int contextPercent,
+            boolean streaming,
+            boolean hasConfiguredModel,
+            boolean thinkingScrollEnabled,
+            boolean thinkingAutoExpandEnabled,
+            boolean codeWrapEnabled,
+            String browserMode,
+            String chatMode,
+            List<ChatMessage> messages
+    ) {
         this.projectLabel = projectLabel;
         this.projectPath = projectPath == null ? "" : projectPath;
         this.modelLabel = modelLabel;
@@ -96,6 +131,7 @@ public final class ChatUiState {
         this.thinkingAutoExpandEnabled = thinkingAutoExpandEnabled;
         this.codeWrapEnabled = codeWrapEnabled;
         this.browserMode = OutputSettings.normalizeBrowserMode(browserMode);
+        this.chatMode = ChatMode.normalize(chatMode);
         this.messages = messages == null ? Collections.emptyList() : Collections.unmodifiableList(messages);
     }
 
@@ -141,6 +177,10 @@ public final class ChatUiState {
 
     public String getBrowserMode() {
         return browserMode;
+    }
+
+    public String getChatMode() {
+        return chatMode;
     }
 
     public List<ChatMessage> getMessages() {

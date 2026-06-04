@@ -73,6 +73,8 @@ public interface MainContract {
 
         void onSendMessage(String text);
 
+        void onChatModeChanged(String mode);
+
         void onStopGeneration();
 
         void onToolReview(String toolCallId, String state, String diffId);

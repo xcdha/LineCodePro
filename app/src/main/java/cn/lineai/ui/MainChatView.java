@@ -152,6 +152,11 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             }
 
             @Override
+            public void onModeChanged(String mode) {
+                MainChatView.this.presenter.onChatModeChanged(mode);
+            }
+
+            @Override
             public void onStop() {
                 MainChatView.this.presenter.onStopGeneration();
             }

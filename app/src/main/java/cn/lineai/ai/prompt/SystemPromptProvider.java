@@ -39,8 +39,19 @@ public final class SystemPromptProvider {
     }
 
     public String build(String homePath, String toneMode, String learningContext, String toolsContext) {
+        return build(homePath, toneMode, "", learningContext, toolsContext);
+    }
+
+    public String build(
+            String homePath,
+            String toneMode,
+            String chatModeContext,
+            String learningContext,
+            String toolsContext
+    ) {
         HashMap<String, String> values = new HashMap<>();
         values.put("TONE_CONTEXT", toneContext(toneMode));
+        values.put("CHAT_MODE_CONTEXT", chatModeContext == null ? "" : chatModeContext.trim());
         values.put("WORK_DIRECTORY_CONTEXT", workDirectoryContext(homePath));
         values.put("LEARNING_CONTEXT", learningContext == null ? "" : learningContext.trim());
         values.put("TOOLS_CONTEXT", toolsContext == null ? "" : toolsContext.trim());

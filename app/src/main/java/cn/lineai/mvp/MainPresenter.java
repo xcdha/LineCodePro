@@ -22,6 +22,7 @@ import cn.lineai.context.ContextCompactionService;
 import cn.lineai.context.ContextManager;
 import cn.lineai.context.ContextSnapshot;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
+import cn.lineai.data.repository.ChatModeRepository;
 import cn.lineai.data.repository.ConversationRecord;
 import cn.lineai.data.repository.ConversationRepository;
 import cn.lineai.data.repository.DiffRepository;
@@ -37,6 +38,7 @@ import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ChatMessage;
+import cn.lineai.model.ChatMode;
 import cn.lineai.model.ChatUiState;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
@@ -98,6 +100,7 @@ public final class MainPresenter implements MainContract.Presenter {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ModelRepository modelRepository;
     private final AiBehaviorSettingsRepository aiBehaviorSettingsRepository;
+    private final ChatModeRepository chatModeRepository;
     private final OutputSettingsRepository outputSettingsRepository;
     private final ThemeSettingsRepository themeSettingsRepository;
     private final ConversationRepository conversationRepository;
@@ -362,6 +365,7 @@ public final class MainPresenter implements MainContract.Presenter {
     public MainPresenter(Context context) {
         modelRepository = new ModelRepository(context);
         aiBehaviorSettingsRepository = new AiBehaviorSettingsRepository(context);
+        chatModeRepository = new ChatModeRepository(context);
         outputSettingsRepository = new OutputSettingsRepository(context);
         themeSettingsRepository = new ThemeSettingsRepository(context);
         themeSettingsRepository.applyCurrentTheme();
@@ -377,6 +381,7 @@ public final class MainPresenter implements MainContract.Presenter {
         toolExecutor = new ToolExecutor(toolRegistry, toolSettingsRepository, diffRepository);
         systemPromptProvider = new SystemPromptProvider(context);
         storagePermissionManager = new StoragePermissionManager(context);
+        chatModeRepository.initialize(toolSettingsRepository);
         permissionMode = toolSettingsRepository.getPermissionMode();
         applyProject(projectRepository.ensureSelectedProjectPath());
         expandedFilePaths.add(projectPath);
@@ -568,6 +573,16 @@ public final class MainPresenter implements MainContract.Presenter {
             return;
         }
         startInitialModelRequest(generationId, selectedModel, cancellationToken, trimmed);
+    }
+
+    @Override
+    public void onChatModeChanged(String mode) {
+        if (streaming) {
+            return;
+        }
+        chatModeRepository.applyMode(mode, toolSettingsRepository);
+        syncModePermission();
+        render();
     }
 
     @Override
@@ -939,6 +954,14 @@ public final class MainPresenter implements MainContract.Presenter {
         } else if (isPermissionModeOption(id)) {
             permissionMode = ToolSettingsRepository.normalizePermissionMode(id);
             toolSettingsRepository.setPermissionMode(permissionMode);
+            if (ToolSettingsRepository.PERMISSION_READONLY.equals(permissionMode)) {
+                chatModeRepository.setModeOnly(ChatMode.CHAT);
+            } else {
+                chatModeRepository.rememberRestorablePermission(permissionMode);
+                if (ChatMode.CHAT.equals(chatModeRepository.getMode())) {
+                    chatModeRepository.setModeOnly(ChatMode.AGENT);
+                }
+            }
         } else if ("settings".equals(id)) {
             showScreen("settings");
         } else if ("tutorial".equals(id)) {
@@ -1702,10 +1725,18 @@ public final class MainPresenter implements MainContract.Presenter {
         render();
     }
 
+    private String syncModePermission() {
+        String mode = chatModeRepository.getMode();
+        chatModeRepository.applyMode(mode, toolSettingsRepository);
+        permissionMode = toolSettingsRepository.getPermissionMode();
+        return chatModeRepository.getMode();
+    }
+
     private void render() {
         if (view == null) {
             return;
         }
+        String activeChatMode = syncModePermission();
         ModelConfig selectedModel = modelRepository.getSelectedModel();
         boolean hasConfiguredModel = selectedModel != null;
         ModelContextInfo contextInfo = selectedModel == null
@@ -1729,6 +1760,7 @@ public final class MainPresenter implements MainContract.Presenter {
                 aiSettings.isThinkingAutoExpandEnabled(),
                 outputSettings.isCodeWrapEnabled(),
                 outputSettings.getBrowserMode(),
+                activeChatMode,
                 messages
         ));
     }
@@ -1739,6 +1771,7 @@ public final class MainPresenter implements MainContract.Presenter {
 
     private ArrayList<ModelMessage> buildModelMessages(String userInput, int usedToolCallCount) {
         ArrayList<ModelMessage> modelMessages = new ArrayList<>();
+        String activeChatMode = syncModePermission();
         AiBehaviorSettings aiSettings = aiBehaviorSettingsRepository.get();
         String learningContext = aiSettings.isLearningModeEnabled()
                 ? learningContextRepository.buildLearningContext(projectPath, userInput, currentConversationId)
@@ -1749,7 +1782,13 @@ public final class MainPresenter implements MainContract.Presenter {
                 : projectPath;
         String extensionContext = extensionRepository.buildExtensionPrompt(projectPath);
         String systemContext = joinPromptContext(learningContext, extensionContext);
-        String systemPrompt = systemPromptProvider.build(promptHomePath, aiSettings.getToneMode(), systemContext, buildToolPrompt(selectedModel, usedToolCallCount));
+        String systemPrompt = systemPromptProvider.build(
+                promptHomePath,
+                aiSettings.getToneMode(),
+                ChatMode.promptContext(activeChatMode),
+                systemContext,
+                buildToolPrompt(selectedModel, usedToolCallCount)
+        );
         modelMessages.add(new SystemModelMessage(systemPrompt));
         int contextTokens = selectedModel == null
                 ? ModelContextParser.parse("").getContextTokens()
@@ -1784,6 +1823,7 @@ public final class MainPresenter implements MainContract.Presenter {
     }
 
     private String buildToolPrompt(ModelConfig selectedModel, int usedToolCallCount) {
+        syncModePermission();
         if (!hasRemainingToolCalls(selectedModel, usedToolCallCount)) {
             return "## 可用工具\n当前模型的工具调用次数限制已用尽，当前没有可用工具。";
         }
@@ -1881,6 +1921,7 @@ public final class MainPresenter implements MainContract.Presenter {
     }
 
     private ModelRequestOptions requestOptions(AiBehaviorSettings aiSettings, ModelConfig selectedModel, int usedToolCallCount) {
+        syncModePermission();
         return new ModelRequestOptions(
                 aiSettings.getReasoningEffort(),
                 aiSettings.isPreserveReasoningEnabled(),
@@ -2187,6 +2228,7 @@ public final class MainPresenter implements MainContract.Presenter {
             ModelCancellationToken cancellationToken,
             int generationId
     ) {
+        syncModePermission();
         toolRegistry.reloadExtensions();
         ToolExecutionCoordinator.ToolExecutionPlan plan = toolExecutionCoordinator.createPlan(toolCalls);
         HashMap<String, ToolResult> resultById = new HashMap<>();
@@ -2502,6 +2544,7 @@ public final class MainPresenter implements MainContract.Presenter {
     }
 
     private ArrayList<BaseTool> agentTools(String type) {
+        syncModePermission();
         ArrayList<BaseTool> tools = new ArrayList<>();
         Set<String> enabled = toolSettingsRepository.getEnabledToolNames();
         for (BaseTool tool : toolRegistry.getByNameSet(enabled)) {
@@ -2540,6 +2583,7 @@ public final class MainPresenter implements MainContract.Presenter {
     }
 
     private ToolResult executeAgentToolCall(ToolCall call, Set<String> allowedToolNames, String homePath) {
+        syncModePermission();
         if (call == null) {
             return new ToolResult("", "", "Agent 工具调用为空", true);
         }
@@ -2556,6 +2600,7 @@ public final class MainPresenter implements MainContract.Presenter {
             ModelConfig selectedModel,
             List<BaseTool> agentTools
     ) {
+        syncModePermission();
         return agentRolePrompt(type)
                 + "\n\n你的任务: " + description
                 + "\n\n" + agentWorkspacePrompt(homePath)
@@ -2722,6 +2767,7 @@ public final class MainPresenter implements MainContract.Presenter {
     }
 
     private boolean shouldPauseForConfirmation(ToolCall call) {
+        syncModePermission();
         if (call == null) {
             return false;
         }
@@ -2790,6 +2836,7 @@ public final class MainPresenter implements MainContract.Presenter {
         new Thread(() -> {
             ToolResult result;
             try {
+                syncModePermission();
                 toolRegistry.reloadExtensions();
                 result = toolExecutor
                         .executeConfirmed(pending.toolCall, toolContext(
