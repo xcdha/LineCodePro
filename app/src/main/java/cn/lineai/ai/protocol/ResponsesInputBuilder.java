@@ -1,6 +1,7 @@
 package cn.lineai.ai.protocol;
 
 import cn.lineai.ai.message.ModelMessage;
+import cn.lineai.tool.ToolCall;
 import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -15,17 +16,59 @@ final class ResponsesInputBuilder {
             if (appendRawInputItem(array, message.getRawInputJson())) {
                 continue;
             }
-            JSONObject object = new JSONObject();
-            if ("tool".equals(message.getRole())) {
-                object.put("role", "user");
-                object.put("content", toolResultText(message));
-            } else {
-                object.put("role", message.getRole());
-                object.put("content", message.getContent());
+            String role = message.getRole();
+            if ("system".equals(role)) {
+                continue;
             }
-            array.put(object);
+            if ("user".equals(role)) {
+                appendMessage(array, "user", "input_text", message.getContent());
+            } else if ("assistant".equals(role)) {
+                if (message.getContent().trim().length() > 0) {
+                    appendMessage(array, "assistant", "output_text", message.getContent());
+                }
+                for (ToolCall call : message.getToolCalls()) {
+                    array.put(new JSONObject()
+                            .put("type", "function_call")
+                            .put("name", call.getName())
+                            .put("arguments", call.getArguments().length() == 0 ? "{}" : call.getArguments())
+                            .put("call_id", call.getId()));
+                }
+            } else if ("tool".equals(role)) {
+                array.put(toolOutputItem(message));
+            }
         }
         return array;
+    }
+
+    static String instructions(List<ModelMessage> messages) {
+        StringBuilder builder = new StringBuilder();
+        if (messages == null) {
+            return "";
+        }
+        for (ModelMessage message : messages) {
+            if (message == null || !"system".equals(message.getRole())) {
+                continue;
+            }
+            String content = message.getContent().trim();
+            if (content.length() == 0) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append("\n\n");
+            }
+            builder.append(content);
+        }
+        return builder.toString();
+    }
+
+    private static void appendMessage(JSONArray target, String role, String contentType, String text) throws Exception {
+        target.put(new JSONObject()
+                .put("type", "message")
+                .put("role", role)
+                .put("content", new JSONArray()
+                        .put(new JSONObject()
+                                .put("type", contentType)
+                                .put("text", text == null ? "" : text))));
     }
 
     private static boolean appendRawInputItem(JSONArray target, String rawInputJson) throws Exception {
@@ -47,24 +90,15 @@ final class ResponsesInputBuilder {
         return true;
     }
 
-    private static String toolResultText(ModelMessage message) {
-        return "<tool_result tool_call_id=\"" + escapeAttribute(message.getToolCallId())
-                + "\" name=\"" + escapeAttribute(message.getToolName())
-                + "\" is_error=\"" + message.isToolError()
-                + "\"><![CDATA[" + escapeCdata(message.getContent()) + "]]></tool_result>";
-    }
-
-    private static String escapeAttribute(String value) {
-        String text = value == null ? "" : value;
-        return text
-                .replace("&", "&amp;")
-                .replace("\"", "&quot;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;");
-    }
-
-    private static String escapeCdata(String value) {
-        String text = value == null ? "" : value;
-        return text.replace("]]>", "]]]]><![CDATA[>");
+    private static JSONObject toolOutputItem(ModelMessage message) throws Exception {
+        String content = message.getContent();
+        if (message.isToolError()) {
+            String label = message.getToolName().length() > 0 ? message.getToolName() : message.getToolCallId();
+            content = "Tool " + label + " failed:\n" + content;
+        }
+        return new JSONObject()
+                .put("type", "function_call_output")
+                .put("call_id", message.getToolCallId())
+                .put("output", content == null ? "" : content);
     }
 }

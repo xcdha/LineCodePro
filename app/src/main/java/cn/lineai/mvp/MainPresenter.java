@@ -34,6 +34,7 @@ import cn.lineai.data.repository.MessageRecord;
 import cn.lineai.data.repository.OutputSettingsRepository;
 import cn.lineai.data.repository.ProjectRecord;
 import cn.lineai.data.repository.ProjectRepository;
+import cn.lineai.data.repository.SshFileTreeRepository;
 import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.model.AiBehaviorSettings;
@@ -57,8 +58,10 @@ import cn.lineai.model.ModelRepository;
 import cn.lineai.model.OutputSettings;
 import cn.lineai.model.SheetOption;
 import cn.lineai.model.SkillRecord;
+import cn.lineai.model.SshConfig;
 import cn.lineai.model.ThemeSettingsState;
 import cn.lineai.model.WebSearchConfig;
+import cn.lineai.ssh.SshService;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.PermissionResult;
 import cn.lineai.tool.ToolCall;
@@ -69,6 +72,7 @@ import cn.lineai.tool.ToolRegistry;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.builtin.AgentTool;
+import cn.lineai.tool.builtin.FileToolPathPolicy;
 import cn.lineai.workspace.SafPathResolver;
 import cn.lineai.workspace.StoragePermissionManager;
 import cn.lineai.workspace.WorkspacePaths;
@@ -92,6 +96,9 @@ public final class MainPresenter implements MainContract.Presenter {
     private static final long STREAM_RENDER_INTERVAL_MS = 80L;
     private static final long AGENT_PROGRESS_RENDER_INTERVAL_MS = 100L;
     private static final int AGENT_MAX_TURNS = 8;
+    private static final int SSH_PREFETCH_MAX_ROOT_CHILDREN = 80;
+    private static final int SSH_PREFETCH_MAX_DIRECTORIES = 24;
+    private static final String DIRECTORY_PICKER_MODE_SSH_REMOTE = "ssh_remote";
     private static final String AGENT_TERMINATED_MESSAGE = "Agent 已终止。";
 
     private final ArrayList<ChatMessage> messages = new ArrayList<>();
@@ -111,6 +118,8 @@ public final class MainPresenter implements MainContract.Presenter {
     private final ExtensionRepository extensionRepository;
     private final DiffRepository diffRepository;
     private final FileTreeRepository fileTreeRepository = new FileTreeRepository();
+    private final SshService sshService;
+    private final SshFileTreeRepository sshFileTreeRepository;
     private final ContextManager contextManager = new ContextManager();
     private final ContextCompactionService contextCompactionService;
     private final ModelClient modelClient = new ModelClient();
@@ -136,9 +145,30 @@ public final class MainPresenter implements MainContract.Presenter {
     private long currentConversationCreatedAt;
     private String projectLabel = "LineCode";
     private String projectPath = "";
+    private String projectSource = WorkspacePaths.SOURCE_DEFAULT;
     private String permissionMode = "ask";
     private boolean pendingExternalProjectOpen;
     private PendingToolExecution pendingToolExecution;
+    private String fileClipboardPath = "";
+    private String fileClipboardName = "";
+    private boolean fileClipboardSsh;
+    private FileTreeNode cachedSshFileTree;
+    private boolean sshFileTreeLoading;
+    private String sshFileTreeError = "";
+    private int sshFileTreeLoadGeneration;
+    private String sshFileTreeRootPath = "";
+    private final HashMap<String, ArrayList<FileTreeNode>> sshDirectoryChildrenByPath = new HashMap<>();
+    private final HashMap<String, String> sshDirectoryNameByPath = new HashMap<>();
+    private final Set<String> sshDirectoryLoadedPaths = new HashSet<>();
+    private final Set<String> sshDirectoryLoadingPaths = new HashSet<>();
+    private final Set<String> directoryPickerExpandedPaths = new HashSet<>();
+    private FileTreeNode directoryPickerTree;
+    private String directoryPickerMode = "";
+    private String directoryPickerSelectedPath = "";
+    private String directoryPickerRootPath = "";
+    private boolean directoryPickerLoading;
+    private String directoryPickerMessage = "";
+    private boolean startupProjectAvailabilityChecked;
 
     private static final class ToolExecutionBatch {
         private final ArrayList<ToolResult> completedResults;
@@ -192,18 +222,34 @@ public final class MainPresenter implements MainContract.Presenter {
         }
     }
 
+    private interface AgentProgressMirror {
+        void onAgentProgress(String payload, boolean error);
+    }
+
     private static final class PipelineAgent {
         private final String id;
         private final String type;
         private final String description;
         private final String prompt;
+        private final ArrayList<String> readScope;
+        private final ArrayList<String> writeScope;
         private final ArrayList<String> dependencies;
 
-        PipelineAgent(String id, String type, String description, String prompt, ArrayList<String> dependencies) {
+        PipelineAgent(
+                String id,
+                String type,
+                String description,
+                String prompt,
+                ArrayList<String> readScope,
+                ArrayList<String> writeScope,
+                ArrayList<String> dependencies
+        ) {
             this.id = id == null ? "" : id;
             this.type = type == null ? "" : type;
             this.description = description == null ? "" : description;
             this.prompt = prompt == null ? "" : prompt;
+            this.readScope = readScope == null ? new ArrayList<>() : readScope;
+            this.writeScope = writeScope == null ? new ArrayList<>() : writeScope;
             this.dependencies = dependencies == null ? new ArrayList<>() : dependencies;
         }
     }
@@ -224,17 +270,34 @@ public final class MainPresenter implements MainContract.Presenter {
         private boolean error;
         private boolean renderScheduled;
         private long lastRenderAt;
+        private final AgentProgressMirror mirror;
 
         AgentProgressSession(int generationId, String toolCallId, String toolName, String type, String description) {
+            this(generationId, toolCallId, toolName, type, description, null);
+        }
+
+        AgentProgressSession(
+                int generationId,
+                String toolCallId,
+                String toolName,
+                String type,
+                String description,
+                AgentProgressMirror mirror
+        ) {
             this.generationId = generationId;
             this.toolCallId = toolCallId == null ? "" : toolCallId;
             this.toolName = toolName == null ? "" : toolName;
             this.type = type == null ? "" : type;
             this.description = description == null ? "" : description;
+            this.mirror = mirror;
         }
 
         synchronized boolean canRender() {
             return toolCallId.length() > 0;
+        }
+
+        synchronized boolean canMirror() {
+            return mirror != null;
         }
 
         synchronized void beginTurn() {
@@ -302,7 +365,7 @@ public final class MainPresenter implements MainContract.Presenter {
         }
 
         synchronized boolean shouldScheduleRender() {
-            if (!canRender() || renderScheduled) {
+            if ((!canRender() && !canMirror()) || renderScheduled) {
                 return false;
             }
             renderScheduled = true;
@@ -318,6 +381,14 @@ public final class MainPresenter implements MainContract.Presenter {
             renderScheduled = false;
             lastRenderAt = SystemClock.uptimeMillis();
             return new ToolResult(toolCallId, toolName, payload(), error);
+        }
+
+        synchronized void notifyMirror() {
+            if (mirror != null) {
+                renderScheduled = false;
+                lastRenderAt = SystemClock.uptimeMillis();
+                mirror.onAgentProgress(payload(), error);
+            }
         }
 
         private String payload() {
@@ -362,6 +433,158 @@ public final class MainPresenter implements MainContract.Presenter {
         }
     }
 
+    private final class PipelineProgressSession {
+        private final ToolContext parentContext;
+        private final ArrayList<PipelineAgent> agents;
+        private final LinkedHashMap<String, PipelineAgentState> stateById = new LinkedHashMap<>();
+        private String status = "running";
+        private boolean error;
+
+        PipelineProgressSession(ToolContext parentContext, ArrayList<PipelineAgent> agents) {
+            this.parentContext = parentContext;
+            this.agents = agents == null ? new ArrayList<>() : agents;
+            for (PipelineAgent agent : this.agents) {
+                stateById.put(agent.id, new PipelineAgentState(agent));
+            }
+        }
+
+        void beginAgent(PipelineAgent agent) {
+            PipelineAgentState state = stateById.get(agent.id);
+            if (state != null) {
+                state.status = "running";
+            }
+            publish(false);
+        }
+
+        void updateAgent(PipelineAgent agent, String agentProgressPayload, boolean agentError) {
+            PipelineAgentState state = stateById.get(agent.id);
+            if (state == null) {
+                return;
+            }
+            try {
+                JSONObject object = new JSONObject(agentProgressPayload);
+                state.status = object.optString("status", state.status);
+                state.output = object.optString("output", state.output);
+                state.thinking = object.optString("thinking", state.thinking);
+                state.toolCallCount = object.optInt("tool_call_count", state.toolCallCount);
+                JSONArray toolCalls = object.optJSONArray("tool_calls");
+                if (toolCalls != null) {
+                    state.toolCalls = new JSONArray(toolCalls.toString());
+                }
+                state.error = agentError || object.optBoolean("error", false) || "error".equals(state.status);
+            } catch (Exception ignored) {
+                state.output = agentProgressPayload == null ? state.output : agentProgressPayload;
+                state.error = agentError;
+            }
+            error = error || state.error;
+            publish(error);
+        }
+
+        void finishAgent(PipelineAgent agent, AgentRunResult result) {
+            PipelineAgentState state = stateById.get(agent.id);
+            if (state != null) {
+                state.status = result.error ? "error" : "done";
+                state.output = result.output;
+                state.toolCallCount = result.toolCallCount;
+                state.error = result.error;
+            }
+            error = error || result.error;
+            publish(error);
+        }
+
+        void terminate() {
+            status = "error";
+            error = true;
+            for (PipelineAgentState state : stateById.values()) {
+                if ("running".equals(state.status) || "waiting".equals(state.status)) {
+                    state.status = "error";
+                    state.error = true;
+                    state.output = AGENT_TERMINATED_MESSAGE;
+                }
+            }
+            publish(true);
+        }
+
+        private void publish(boolean nextError) {
+            if (parentContext == null || parentContext.getToolCallId().length() == 0) {
+                return;
+            }
+            parentContext.reportToolProgress("agent_pipeline", payload(), nextError);
+        }
+
+        private String payload() {
+            try {
+                JSONObject object = new JSONObject();
+                object.put("linecode_agent_pipeline_progress", true);
+                object.put("kind", "agent_pipeline");
+                object.put("status", status);
+                object.put("total", agents.size());
+                object.put("completed", countStatus("done"));
+                object.put("running", countStatus("running"));
+                object.put("failed", countFailed());
+                JSONArray array = new JSONArray();
+                for (PipelineAgentState state : stateById.values()) {
+                    array.put(state.toJson());
+                }
+                object.put("agents", array);
+                return object.toString();
+            } catch (Exception e) {
+                return "Agent 流水线运行中。";
+            }
+        }
+
+        private int countStatus(String value) {
+            int count = 0;
+            for (PipelineAgentState state : stateById.values()) {
+                if (value.equals(state.status)) {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private int countFailed() {
+            int count = 0;
+            for (PipelineAgentState state : stateById.values()) {
+                if (state.error || "error".equals(state.status)) {
+                    count++;
+                }
+            }
+            return count;
+        }
+    }
+
+    private static final class PipelineAgentState {
+        private final String id;
+        private final String type;
+        private final String description;
+        private String status = "waiting";
+        private String output = "";
+        private String thinking = "";
+        private int toolCallCount;
+        private boolean error;
+        private JSONArray toolCalls = new JSONArray();
+
+        PipelineAgentState(PipelineAgent agent) {
+            this.id = agent == null ? "" : agent.id;
+            this.type = agent == null ? "" : agent.type;
+            this.description = agent == null ? "" : agent.description;
+        }
+
+        JSONObject toJson() throws Exception {
+            return new JSONObject()
+                    .put("id", id)
+                    .put("type", type)
+                    .put("description", description)
+                    .put("status", status)
+                    .put("output", output)
+                    .put("thinking", thinking)
+                    .put("tool_call_count", toolCallCount)
+                    .put("error", error)
+                    .put("tool_calls", toolCalls);
+        }
+    }
+
     public MainPresenter(Context context) {
         modelRepository = new ModelRepository(context);
         aiBehaviorSettingsRepository = new AiBehaviorSettingsRepository(context);
@@ -371,6 +594,8 @@ public final class MainPresenter implements MainContract.Presenter {
         themeSettingsRepository.applyCurrentTheme();
         conversationRepository = new ConversationRepository(context);
         projectRepository = new ProjectRepository(context);
+        sshService = new SshService(context);
+        sshFileTreeRepository = new SshFileTreeRepository(sshService);
         learningContextRepository = new LearningContextRepository(context);
         memoryExtractionService = new MemoryExtractionService(context, learningContextRepository);
         toolSettingsRepository = new ToolSettingsRepository(context);
@@ -383,7 +608,7 @@ public final class MainPresenter implements MainContract.Presenter {
         storagePermissionManager = new StoragePermissionManager(context);
         chatModeRepository.initialize(toolSettingsRepository);
         permissionMode = toolSettingsRepository.getPermissionMode();
-        applyProject(projectRepository.ensureSelectedProjectPath());
+        applyProject(projectRepository.ensureSelectedProjectPath(toolSettingsRepository.getExecutionMode()));
         expandedFilePaths.add(projectPath);
         loadCurrentConversation();
     }
@@ -392,6 +617,8 @@ public final class MainPresenter implements MainContract.Presenter {
     public void attachView(MainContract.View view) {
         this.view = view;
         render();
+        requestSshFileTreeLoad(false);
+        validateSelectedProjectAvailabilityOnStartup();
     }
 
     @Override
@@ -401,6 +628,7 @@ public final class MainPresenter implements MainContract.Presenter {
 
     @Override
     public void onMenuClick() {
+        requestSshFileTreeLoad(false);
         if (view != null) {
             view.showDrawer();
         }
@@ -411,25 +639,36 @@ public final class MainPresenter implements MainContract.Presenter {
         if (view == null) {
             return;
         }
+        String executionMode = toolSettingsRepository.getExecutionMode();
+        boolean sshMode = ToolSettingsRepository.EXECUTION_SSH.equals(executionMode);
+        boolean termuxSsh = sshMode && isTermuxSshHost();
         ArrayList<SheetOption> options = new ArrayList<>();
-        ProjectRecord selected = projectRepository.getSelectedProject();
-        List<ProjectRecord> projects = projectRepository.getProjects();
+        ProjectRecord selected = projectRepository.getSelectedProject(executionMode);
+        List<ProjectRecord> projects = projectRepository.getProjects(executionMode);
         for (ProjectRecord project : projects) {
             options.add(new SheetOption(
                     "project:select:" + project.getId(),
                     project.getLabel(),
-                    project.getDescription().length() > 0 ? project.getDescription() : WorkspacePaths.displayPath(project.getPath()),
+                    projectDisplayDescription(project),
                     project.getId().equals(selected.getId()),
                     projectDeleteActionId(project),
                     "删除"
             ));
         }
-        options.add(new SheetOption("project:open", "打开外部工作区", "通过 SAF 选择外部目录，并使用真实 /storage 路径", false));
-        options.add(new SheetOption("project:create", "创建工作区", "在 .linecode/project 下创建托管项目", false));
-        options.add(new SheetOption("storage:manage_all_files", "管理所有文件权限",
-                storagePermissionManager.hasExternalStorageAccess() ? "已授权，可访问外部工作区" : storagePermissionManager.permissionDeniedMessage(),
-                storagePermissionManager.hasExternalStorageAccess()));
-        view.showSheet("工作区", options);
+        if (!sshMode) {
+            options.add(new SheetOption("project:open_local_saf", "打开本地项目",
+                    "通过系统 SAF 选择目录，并保存为本地项目",
+                    false));
+        }
+        options.add(new SheetOption("project:create", "创建工作区",
+                sshMode ? "在 SSH ~/.linecode/project 下创建项目" : "在 .linecode/project 下创建托管项目",
+                false));
+        if (!sshMode || termuxSsh) {
+            options.add(new SheetOption("storage:manage_all_files", "管理所有文件权限",
+                    storagePermissionManager.hasExternalStorageAccess() ? "已授权，可访问文件存储" : storagePermissionManager.permissionDeniedMessage(),
+                    storagePermissionManager.hasExternalStorageAccess()));
+        }
+        view.showSheet(sshMode ? "工作区 SSH" : "工作区", options);
     }
 
     @Override
@@ -446,7 +685,7 @@ public final class MainPresenter implements MainContract.Presenter {
         options.add(new SheetOption(ToolSettingsRepository.PERMISSION_READONLY, "只读", "仅允许读取、搜索和列目录，禁止写入与 Shell",
                 ToolSettingsRepository.PERMISSION_READONLY.equals(permissionMode)));
         options.add(new SheetOption("storage:manage_all_files", "管理所有文件权限",
-                storagePermissionManager.hasExternalStorageAccess() ? "已授权，可访问外部工作区" : storagePermissionManager.permissionDeniedMessage(),
+                storagePermissionManager.hasExternalStorageAccess() ? "已授权，可访问文件存储" : storagePermissionManager.permissionDeniedMessage(),
                 storagePermissionManager.hasExternalStorageAccess()));
         view.showSheet("权限设置", options);
     }
@@ -497,36 +736,156 @@ public final class MainPresenter implements MainContract.Presenter {
 
     @Override
     public void onCurrentProjectRemoveRequested() {
-        ProjectRecord selected = projectRepository.getSelectedProject();
-        if (selected == null || WorkspacePaths.DEFAULT_PROJECT_ID.equals(selected.getId())) {
+        String executionMode = toolSettingsRepository.getExecutionMode();
+        ProjectRecord selected = projectRepository.getSelectedProject(executionMode);
+        if (selected == null || WorkspacePaths.DEFAULT_PROJECT_ID.equals(selected.getId()) || "ssh:default".equals(selected.getId())) {
             return;
         }
-        boolean deleted = projectRepository.deleteProject(selected.getId());
+        boolean deleted = projectRepository.deleteProject(selected.getId(), executionMode);
         if (deleted) {
-            applyProject(projectRepository.ensureSelectedProjectPath());
+            applyProject(projectRepository.ensureSelectedProjectPath(executionMode));
             render();
         }
     }
 
     @Override
-    public void onFileNodeSelected(String path) {
+    public void onFileNodeSelected(String path, boolean directory) {
         if (path == null || path.length() == 0) {
             return;
         }
-        if (fileTreeRepository.isDirectory(path)) {
+        if (directory) {
             if (expandedFilePaths.contains(path)) {
                 expandedFilePaths.remove(path);
+                if (isSshExecutionMode()) {
+                    rebuildCachedSshFileTree();
+                }
             } else {
                 expandedFilePaths.add(path);
+                if (isSshExecutionMode()) {
+                    requestSshDirectoryLoad(path, false, false);
+                    rebuildCachedSshFileTree();
+                }
             }
             render();
         }
     }
 
     @Override
-    public void onFileTreeRefresh() {
-        expandedFilePaths.add(projectPath);
+    public void onFileNodeLongPressed(String path, String name, boolean directory, boolean root) {
+        if (view == null || path == null || path.length() == 0) {
+            return;
+        }
+        ArrayList<SheetOption> options = new ArrayList<>();
+        if (directory) {
+            options.add(new SheetOption("file:create_file:" + path, "新建文件", path, false));
+            options.add(new SheetOption("file:create_folder:" + path, "新建文件夹", path, false));
+            if (canPasteInto(directory)) {
+                options.add(new SheetOption("file:paste:" + path, "粘贴", fileClipboardName, false));
+            }
+            if (!root) {
+                options.add(new SheetOption("file:copy:" + path, "复制", name, false));
+                options.add(new SheetOption("file:rename:" + path, "重命名", name, false));
+                options.add(new SheetOption("file:delete:" + path, "删除", path, false));
+            }
+        } else {
+            options.add(new SheetOption("file:copy:" + path, "复制", name, false));
+            options.add(new SheetOption("file:rename:" + path, "重命名", name, false));
+            options.add(new SheetOption("file:delete:" + path, "删除", path, false));
+        }
+        if (!options.isEmpty()) {
+            view.showFileActionDialog(
+                    root ? "工作区根目录" : (name == null || name.length() == 0 ? "文件操作" : name),
+                    path,
+                    options
+            );
+        }
+    }
+
+    @Override
+    public void onFileTreeActivated() {
+        requestSshFileTreeLoad(false);
         render();
+    }
+
+    @Override
+    public void onFileTreeRefresh() {
+        expandedFilePaths.clear();
+        if (projectPath.length() > 0) {
+            expandedFilePaths.add(projectPath);
+        }
+        requestSshFileTreeLoad(true);
+        render();
+    }
+
+    @Override
+    public void onDirectoryPickerNodeSelected(String path) {
+        if (path == null || path.length() == 0) {
+            return;
+        }
+        String selectedPath = path.trim();
+        directoryPickerRootPath = selectedPath;
+        directoryPickerSelectedPath = selectedPath;
+        directoryPickerExpandedPaths.clear();
+        directoryPickerExpandedPaths.add(selectedPath);
+        directoryPickerTree = rebuildDirectoryPickerTree(directoryPickerTree);
+        renderDirectoryPicker();
+        refreshDirectoryPicker();
+    }
+
+    @Override
+    public void onDirectoryPickerConfirmed() {
+        String selectedPath = directoryPickerSelectedPath == null ? "" : directoryPickerSelectedPath.trim();
+        if (selectedPath.length() == 0) {
+            return;
+        }
+        if (isSshDirectoryPicker()) {
+            ProjectRecord project = projectRepository.saveSshProject(selectedPath, WorkspacePaths.basename(selectedPath));
+            applyProject(project);
+            requestSshFileTreeLoad(true);
+        } else {
+            ProjectRecord project = projectRepository.saveExternalProject(selectedPath, WorkspacePaths.basename(selectedPath));
+            applyProject(project);
+        }
+        directoryPickerMode = "";
+        directoryPickerTree = null;
+        if (view != null) {
+            view.hideDirectoryPicker();
+        }
+        render();
+    }
+
+    @Override
+    public void onDirectoryPickerCancelled() {
+        directoryPickerMode = "";
+        directoryPickerLoading = false;
+    }
+
+    @Override
+    public void onDialogInputSubmitted(String actionId, String value) {
+        String id = actionId == null ? "" : actionId;
+        if (id.startsWith("project:create:")) {
+            createProjectFromInput(id.substring("project:create:".length()), value);
+            return;
+        }
+        if (id.startsWith("file:create_file:")) {
+            createFileFromInput(id.substring("file:create_file:".length()), value);
+            return;
+        }
+        if (id.startsWith("file:create_folder:")) {
+            createFolderFromInput(id.substring("file:create_folder:".length()), value);
+            return;
+        }
+        if (id.startsWith("file:rename:")) {
+            renameFileNodeFromInput(id.substring("file:rename:".length()), value);
+        }
+    }
+
+    @Override
+    public void onDialogConfirmed(String actionId) {
+        String id = actionId == null ? "" : actionId;
+        if (id.startsWith("file:delete:")) {
+            deleteFileNode(id.substring("file:delete:".length()));
+        }
     }
 
     @Override
@@ -944,11 +1303,31 @@ public final class MainPresenter implements MainContract.Presenter {
         } else if (id != null && id.startsWith("project:delete:")) {
             deleteProjectFromPicker(id.substring("project:delete:".length()));
             return;
-        } else if ("project:open".equals(id)) {
-            requestOpenExternalProject();
+        } else if ("project:open_local_saf".equals(id)) {
+            requestOpenLocalProjectSaf();
+            return;
         } else if ("project:create".equals(id)) {
-            ProjectRecord project = projectRepository.createManagedProject("Project-" + System.currentTimeMillis());
-            applyProject(project);
+            if (view != null) {
+                view.showInputDialog("创建工作区", "输入工作区名称", "", "project:create:" + toolSettingsRepository.getExecutionMode());
+            }
+            return;
+        } else if (id != null && id.startsWith("file:create_file:")) {
+            requestCreateFile(id.substring("file:create_file:".length()));
+            return;
+        } else if (id != null && id.startsWith("file:create_folder:")) {
+            requestCreateFolder(id.substring("file:create_folder:".length()));
+            return;
+        } else if (id != null && id.startsWith("file:copy:")) {
+            copyFileNode(id.substring("file:copy:".length()));
+        } else if (id != null && id.startsWith("file:paste:")) {
+            pasteFileNode(id.substring("file:paste:".length()));
+            return;
+        } else if (id != null && id.startsWith("file:rename:")) {
+            requestRenameFileNode(id.substring("file:rename:".length()));
+            return;
+        } else if (id != null && id.startsWith("file:delete:")) {
+            requestDeleteFileNode(id.substring("file:delete:".length()));
+            return;
         } else if ("storage:manage_all_files".equals(id)) {
             openStoragePermissionSettings();
         } else if (isPermissionModeOption(id)) {
@@ -1158,6 +1537,9 @@ public final class MainPresenter implements MainContract.Presenter {
     @Override
     public void onMcpExecutionModeChanged(String mode) {
         toolSettingsRepository.setExecutionMode(mode);
+        applyProject(projectRepository.ensureSelectedProjectPath(toolSettingsRepository.getExecutionMode()));
+        invalidateSshFileTree();
+        requestSshFileTreeLoad(true);
         refreshVisibleScreen("mcp");
         render();
     }
@@ -1464,6 +1846,9 @@ public final class MainPresenter implements MainContract.Presenter {
 
     @Override
     public FileTreeNode getFileTree() {
+        if (isSshExecutionMode()) {
+            return getSshFileTree();
+        }
         return fileTreeRepository.buildTree(projectPath, expandedFilePaths);
     }
 
@@ -1638,8 +2023,9 @@ public final class MainPresenter implements MainContract.Presenter {
     }
 
     private void selectProject(String id) {
-        projectRepository.setSelected(id);
-        ProjectRecord project = projectRepository.ensureSelectedProjectPath();
+        String executionMode = toolSettingsRepository.getExecutionMode();
+        projectRepository.setSelected(id, executionMode);
+        ProjectRecord project = projectRepository.ensureSelectedProjectPath(executionMode);
         if (WorkspacePaths.SOURCE_EXTERNAL.equals(project.getSource())
                 && !storagePermissionManager.hasExternalStorageAccess()) {
             pendingExternalProjectOpen = false;
@@ -1655,12 +2041,14 @@ public final class MainPresenter implements MainContract.Presenter {
             return;
         }
         applyProject(project);
+        requestSshFileTreeLoad(true);
     }
 
     private void deleteProjectFromPicker(String id) {
-        boolean deleted = projectRepository.deleteProject(id);
+        String executionMode = toolSettingsRepository.getExecutionMode();
+        boolean deleted = projectRepository.deleteProject(id, executionMode);
         if (deleted) {
-            applyProject(projectRepository.ensureSelectedProjectPath());
+            applyProject(projectRepository.ensureSelectedProjectPath(executionMode));
         }
         render();
         if (view != null) {
@@ -1669,7 +2057,7 @@ public final class MainPresenter implements MainContract.Presenter {
     }
 
     private String projectDeleteActionId(ProjectRecord project) {
-        if (project == null || WorkspacePaths.DEFAULT_PROJECT_ID.equals(project.getId())) {
+        if (project == null || WorkspacePaths.DEFAULT_PROJECT_ID.equals(project.getId()) || "ssh:default".equals(project.getId())) {
             return "";
         }
         return "project:delete:" + project.getId();
@@ -1680,15 +2068,34 @@ public final class MainPresenter implements MainContract.Presenter {
             return;
         }
         projectLabel = project.getLabel().length() == 0 ? "LineCode" : project.getLabel();
+        projectSource = project.getSource();
         projectPath = WorkspacePaths.displayPath(project.getPath());
-        if (projectPath.length() == 0) {
+        if (!WorkspacePaths.SOURCE_SSH.equals(projectSource) && projectPath.length() == 0) {
             projectPath = projectRepository.getDefaultHomePath();
         }
         expandedFilePaths.clear();
-        expandedFilePaths.add(projectPath);
+        if (projectPath.length() > 0) {
+            expandedFilePaths.add(projectPath);
+        }
+        invalidateSshFileTree();
     }
 
     private void requestOpenExternalProject() {
+        if (view == null) {
+            return;
+        }
+        if (isSshExecutionMode()) {
+            startSshDirectoryPicker();
+            return;
+        }
+        requestOpenLocalProjectForCurrentMode();
+    }
+
+    private void requestOpenLocalProjectForCurrentMode() {
+        requestOpenLocalProjectSaf();
+    }
+
+    private void requestOpenLocalProjectSaf() {
         pendingExternalProjectOpen = true;
         if (view == null) {
             return;
@@ -1720,6 +2127,628 @@ public final class MainPresenter implements MainContract.Presenter {
         }
     }
 
+    private void requestCreateFile(String parentPath) {
+        if (view != null) {
+            view.showInputDialog("新建文件", parentPath, "", "file:create_file:" + parentPath);
+        }
+    }
+
+    private void requestCreateFolder(String parentPath) {
+        if (view != null) {
+            view.showInputDialog("新建文件夹", parentPath, "", "file:create_folder:" + parentPath);
+        }
+    }
+
+    private void requestRenameFileNode(String path) {
+        if (view != null) {
+            view.showInputDialog("重命名", path, basename(path), "file:rename:" + path);
+        }
+    }
+
+    private void requestDeleteFileNode(String path) {
+        if (view != null) {
+            view.showConfirmationDialog("确认删除",
+                    "确定要删除 \"" + basename(path) + "\" 吗？此操作不可撤销。\n\n" + path,
+                    "删除",
+                    true,
+                    "file:delete:" + path);
+        }
+    }
+
+    private void createFileFromInput(String parentPath, String name) {
+        runFileOperation(parentPath, () -> {
+            if (isSshExecutionMode()) {
+                sshFileTreeRepository.createFile(parentPath, name);
+            } else {
+                fileTreeRepository.createFile(parentPath, name);
+            }
+        });
+    }
+
+    private void createFolderFromInput(String parentPath, String name) {
+        runFileOperation(parentPath, () -> {
+            if (isSshExecutionMode()) {
+                sshFileTreeRepository.createDirectory(parentPath, name);
+            } else {
+                fileTreeRepository.createDirectory(parentPath, name);
+            }
+        });
+    }
+
+    private void renameFileNodeFromInput(String path, String newName) {
+        runFileOperation(parentPath(path), () -> {
+            if (isSshExecutionMode()) {
+                sshFileTreeRepository.rename(path, newName);
+            } else {
+                fileTreeRepository.rename(path, newName);
+            }
+        });
+    }
+
+    private void deleteFileNode(String path) {
+        runFileOperation(parentPath(path), () -> {
+            if (isSshExecutionMode()) {
+                sshFileTreeRepository.delete(path);
+            } else {
+                fileTreeRepository.delete(path);
+            }
+        });
+    }
+
+    private void copyFileNode(String path) {
+        fileClipboardPath = path == null ? "" : path;
+        fileClipboardName = basename(path);
+        fileClipboardSsh = isSshExecutionMode();
+    }
+
+    private void pasteFileNode(String targetDirectoryPath) {
+        if (fileClipboardPath.length() == 0 || fileClipboardSsh != isSshExecutionMode()) {
+            return;
+        }
+        runFileOperation(targetDirectoryPath, () -> {
+            if (isSshExecutionMode()) {
+                sshFileTreeRepository.copyInto(fileClipboardPath, targetDirectoryPath);
+            } else {
+                fileTreeRepository.copyInto(fileClipboardPath, targetDirectoryPath);
+            }
+        });
+    }
+
+    private boolean canPasteInto(boolean directory) {
+        return directory && fileClipboardPath.length() > 0 && fileClipboardSsh == isSshExecutionMode();
+    }
+
+    private void createProjectFromInput(String executionMode, String name) {
+        String cleanName = name == null ? "" : name.trim();
+        if (cleanName.length() == 0) {
+            showNotice("工作区名称不能为空。");
+            return;
+        }
+        if (ToolSettingsRepository.EXECUTION_SSH.equals(ToolSettingsRepository.normalizeExecutionMode(executionMode))) {
+            new Thread(() -> {
+                try {
+                    String path = sshFileTreeRepository.createManagedProject(cleanName);
+                    ProjectRecord project = projectRepository.saveSshProject(path, cleanName);
+                    mainHandler.post(() -> {
+                        applyProject(project);
+                        requestSshFileTreeLoad(true);
+                        render();
+                    });
+                } catch (Exception e) {
+                    mainHandler.post(() -> showNotice("创建 SSH 工作区失败: " + e.getMessage()));
+                }
+            }, "linecode-ssh-project-create").start();
+            return;
+        }
+        try {
+            ProjectRecord project = projectRepository.createManagedProject(cleanName);
+            applyProject(project);
+            render();
+        } catch (RuntimeException e) {
+            showNotice("创建工作区失败: " + e.getMessage());
+        }
+    }
+
+    private void runFileOperation(String expandedPath, FileOperation operation) {
+        new Thread(() -> {
+            try {
+                operation.run();
+                mainHandler.post(() -> {
+                    if (expandedPath != null && expandedPath.length() > 0) {
+                        expandedFilePaths.add(expandedPath);
+                    }
+                    if (isSshExecutionMode()) {
+                        refreshSshDirectoryAfterFileOperation(expandedPath);
+                    }
+                    render();
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> showNotice("文件操作失败: " + e.getMessage()));
+            }
+        }, "linecode-file-operation").start();
+    }
+
+    private void refreshSshDirectoryAfterFileOperation(String expandedPath) {
+        String path = expandedPath == null ? "" : expandedPath.trim();
+        if (path.length() == 0) {
+            requestSshFileTreeLoad(true);
+            return;
+        }
+        invalidateSshDirectory(path);
+        requestSshDirectoryLoad(path, path.equals(projectPath) || path.equals(sshFileTreeRootPath), false);
+    }
+
+    private void startLocalDirectoryPicker(String mode) {
+        directoryPickerMode = ToolSettingsRepository.normalizeExecutionMode(mode);
+        directoryPickerRootPath = defaultExternalStorageRoot();
+        directoryPickerSelectedPath = directoryPickerRootPath;
+        directoryPickerExpandedPaths.clear();
+        directoryPickerExpandedPaths.add(directoryPickerRootPath);
+        refreshDirectoryPicker();
+    }
+
+    private void startSshDirectoryPicker() {
+        directoryPickerMode = DIRECTORY_PICKER_MODE_SSH_REMOTE;
+        directoryPickerRootPath = projectPath.length() == 0 ? "." : projectPath;
+        directoryPickerSelectedPath = directoryPickerRootPath;
+        directoryPickerExpandedPaths.clear();
+        directoryPickerExpandedPaths.add(directoryPickerRootPath);
+        refreshDirectoryPicker();
+    }
+
+    private void refreshDirectoryPicker() {
+        if (view == null || directoryPickerMode.length() == 0) {
+            return;
+        }
+        if (isRemoteSshDirectoryPicker()) {
+            refreshSshDirectoryPicker();
+            return;
+        }
+        try {
+            directoryPickerLoading = false;
+            directoryPickerMessage = "";
+            directoryPickerTree = fileTreeRepository.buildReadableTree(directoryPickerRootPath, directoryPickerExpandedPaths);
+        } catch (RuntimeException e) {
+            directoryPickerTree = null;
+            directoryPickerMessage = e.getMessage();
+        }
+        renderDirectoryPicker();
+    }
+
+    private void refreshSshDirectoryPicker() {
+        directoryPickerLoading = true;
+        directoryPickerMessage = "正在读取 SSH 目录...";
+        renderDirectoryPicker();
+        String root = directoryPickerRootPath;
+        HashSet<String> expanded = new HashSet<>(directoryPickerExpandedPaths);
+        new Thread(() -> {
+            try {
+                FileTreeNode tree = sshFileTreeRepository.buildTree(root, expanded);
+                mainHandler.post(() -> {
+                    directoryPickerTree = tree;
+                    String previousRoot = directoryPickerRootPath;
+                    String previousSelected = directoryPickerSelectedPath;
+                    directoryPickerRootPath = tree.getPath();
+                    if (directoryPickerSelectedPath.length() == 0
+                            || isSamePickerPath(previousSelected, root)
+                            || isSshHomeAlias(previousSelected)) {
+                        directoryPickerSelectedPath = tree.getPath();
+                    }
+                    if (isSamePickerPath(previousRoot, root) || isSshHomeAlias(previousRoot)) {
+                        directoryPickerExpandedPaths.add(tree.getPath());
+                    }
+                    directoryPickerExpandedPaths.add(tree.getPath());
+                    directoryPickerTree = rebuildDirectoryPickerTree(directoryPickerTree);
+                    directoryPickerLoading = false;
+                    directoryPickerMessage = "";
+                    renderDirectoryPicker();
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    directoryPickerLoading = false;
+                    directoryPickerMessage = e.getMessage();
+                    renderDirectoryPicker();
+                });
+            }
+        }, "linecode-ssh-directory-picker").start();
+    }
+
+    private FileTreeNode rebuildDirectoryPickerTree(FileTreeNode node) {
+        if (node == null) {
+            return null;
+        }
+        ArrayList<FileTreeNode> children = new ArrayList<>();
+        List<FileTreeNode> rawChildren = node.getChildren();
+        for (int i = 0; i < rawChildren.size(); i++) {
+            children.add(rebuildDirectoryPickerTree(rawChildren.get(i)));
+        }
+        boolean expanded = node.isDirectory()
+                && (node.isExpanded() || directoryPickerExpandedPaths.contains(node.getPath()));
+        return new FileTreeNode(node.getName(), node.getPath(), node.isDirectory(), expanded, children);
+    }
+
+    private String normalizePickerPath(String path) {
+        String value = path == null ? "" : path.trim();
+        while (value.length() > 1 && value.endsWith("/")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        return value;
+    }
+
+    private boolean isSamePickerPath(String left, String right) {
+        return normalizePickerPath(left).equals(normalizePickerPath(right));
+    }
+
+    private boolean isSshHomeAlias(String path) {
+        String value = path == null ? "" : path.trim();
+        return value.length() == 0 || ".".equals(value) || "~".equals(value);
+    }
+
+    private void renderDirectoryPicker() {
+        if (view == null) {
+            return;
+        }
+        boolean sshMode = isSshDirectoryPicker();
+        String title = sshMode ? "选择 SSH 工作区" : "选择本地工作区";
+        String subtitle = directoryPickerSelectedPath.length() == 0 ? directoryPickerRootPath : directoryPickerSelectedPath;
+        view.showDirectoryPicker(title, subtitle, directoryPickerTree, directoryPickerSelectedPath, directoryPickerLoading, directoryPickerMessage);
+    }
+
+    private boolean isRemoteSshDirectoryPicker() {
+        return DIRECTORY_PICKER_MODE_SSH_REMOTE.equals(directoryPickerMode)
+                || (ToolSettingsRepository.EXECUTION_SSH.equals(directoryPickerMode) && !isTermuxSshHost());
+    }
+
+    private boolean isSshDirectoryPicker() {
+        return DIRECTORY_PICKER_MODE_SSH_REMOTE.equals(directoryPickerMode)
+                || ToolSettingsRepository.EXECUTION_SSH.equals(directoryPickerMode);
+    }
+
+    private FileTreeNode getSshFileTree() {
+        if (cachedSshFileTree != null) {
+            return cachedSshFileTree;
+        }
+        String label = sshFileTreeLoading
+                ? "正在读取 SSH 目录..."
+                : (sshFileTreeError.length() == 0 ? "SSH" : sshFileTreeError);
+        String placeholderPath = projectPath.length() == 0 ? "." : projectPath;
+        return new FileTreeNode(label, placeholderPath, true, true, Collections.emptyList());
+    }
+
+    private void requestSshFileTreeLoad(boolean force) {
+        if (!isSshExecutionMode()) {
+            return;
+        }
+        String root = projectPath == null ? "" : projectPath.trim();
+        if (root.length() == 0 && sshFileTreeRootPath.length() > 0) {
+            root = sshFileTreeRootPath;
+        }
+        if (root.length() == 0) {
+            root = ".";
+        }
+        if (force) {
+            invalidateSshFileTree();
+        }
+        requestSshDirectoryLoad(root, true, false);
+    }
+
+    private void requestSshDirectoryLoad(String path, boolean root, boolean force) {
+        if (!isSshExecutionMode()) {
+            return;
+        }
+        String cleanPath = path == null ? "" : path.trim();
+        if (cleanPath.length() == 0) {
+            cleanPath = ".";
+        }
+        if (force) {
+            invalidateSshDirectory(cleanPath);
+        }
+        if (!force && sshDirectoryLoadedPaths.contains(cleanPath)) {
+            rebuildCachedSshFileTree();
+            return;
+        }
+        if (sshDirectoryLoadingPaths.contains(cleanPath)) {
+            return;
+        }
+        sshDirectoryLoadingPaths.add(cleanPath);
+        sshFileTreeLoading = true;
+        if (root && sshFileTreeRootPath.length() == 0) {
+            sshFileTreeRootPath = cleanPath;
+        }
+        rebuildCachedSshFileTree();
+        startSshDirectoryLoad(cleanPath, root, sshFileTreeLoadGeneration);
+    }
+
+    private void startSshDirectoryLoad(String path, boolean root, int generation) {
+        new Thread(() -> {
+            try {
+                FileTreeNode listing = sshFileTreeRepository.listDirectory(path);
+                mainHandler.post(() -> {
+                    if (generation != sshFileTreeLoadGeneration) {
+                        return;
+                    }
+                    sshDirectoryLoadingPaths.remove(path);
+                    updateSshDirectoryListing(listing);
+                    sshFileTreeError = "";
+                    updateSshLoadingState();
+                    if (root) {
+                        sshFileTreeRootPath = listing.getPath();
+                    }
+                    if (projectPath.length() == 0) {
+                        projectPath = listing.getPath();
+                        expandedFilePaths.add(projectPath);
+                    }
+                    rebuildCachedSshFileTree();
+                    render();
+                    if (root) {
+                        startSshIndexPrefetch(listing.getChildren(), generation);
+                    }
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    if (generation != sshFileTreeLoadGeneration) {
+                        return;
+                    }
+                    sshDirectoryLoadingPaths.remove(path);
+                    sshFileTreeError = e.getMessage();
+                    updateSshLoadingState();
+                    rebuildCachedSshFileTree();
+                    render();
+                });
+            }
+        }, "linecode-ssh-directory-index").start();
+    }
+
+    private void startSshIndexPrefetch(List<FileTreeNode> rootChildren, int generation) {
+        if (rootChildren == null || rootChildren.size() > SSH_PREFETCH_MAX_ROOT_CHILDREN) {
+            return;
+        }
+        ArrayList<String> paths = new ArrayList<>();
+        for (FileTreeNode child : rootChildren) {
+            if (child == null || !child.isDirectory()) {
+                continue;
+            }
+            String path = child.getPath();
+            if (path.length() == 0 || sshDirectoryLoadedPaths.contains(path) || sshDirectoryLoadingPaths.contains(path)) {
+                continue;
+            }
+            paths.add(path);
+            sshDirectoryLoadingPaths.add(path);
+            if (paths.size() >= SSH_PREFETCH_MAX_DIRECTORIES) {
+                break;
+            }
+        }
+        if (paths.isEmpty()) {
+            updateSshLoadingState();
+            return;
+        }
+        updateSshLoadingState();
+        new Thread(() -> {
+            for (String path : paths) {
+                try {
+                    FileTreeNode listing = sshFileTreeRepository.listDirectory(path);
+                    mainHandler.post(() -> applySshPrefetchListing(path, listing, generation, false, ""));
+                } catch (Exception e) {
+                    String message = e.getMessage();
+                    mainHandler.post(() -> applySshPrefetchListing(path, null, generation, true, message));
+                }
+            }
+        }, "linecode-ssh-index-prefetch").start();
+    }
+
+    private void applySshPrefetchListing(String path, FileTreeNode listing, int generation, boolean error, String message) {
+        if (generation != sshFileTreeLoadGeneration) {
+            return;
+        }
+        sshDirectoryLoadingPaths.remove(path);
+        if (!error && listing != null) {
+            updateSshDirectoryListing(listing);
+        } else if (message != null && message.length() > 0 && expandedFilePaths.contains(path)) {
+            sshFileTreeError = message;
+        }
+        updateSshLoadingState();
+        rebuildCachedSshFileTree();
+        if (expandedFilePaths.contains(path)) {
+            render();
+        }
+    }
+
+    private void updateSshDirectoryListing(FileTreeNode listing) {
+        if (listing == null || listing.getPath().length() == 0) {
+            return;
+        }
+        ArrayList<FileTreeNode> children = new ArrayList<>(listing.getChildren());
+        sshDirectoryChildrenByPath.put(listing.getPath(), children);
+        sshDirectoryLoadedPaths.add(listing.getPath());
+        sshDirectoryNameByPath.put(listing.getPath(), listing.getName());
+        for (FileTreeNode child : children) {
+            if (child != null && child.isDirectory()) {
+                sshDirectoryNameByPath.put(child.getPath(), child.getName());
+            }
+        }
+    }
+
+    private void rebuildCachedSshFileTree() {
+        String rootPath = sshFileTreeRootPath.length() == 0 ? projectPath : sshFileTreeRootPath;
+        if (rootPath == null || rootPath.trim().length() == 0) {
+            cachedSshFileTree = null;
+            return;
+        }
+        String rootName = sshDirectoryNameByPath.containsKey(rootPath)
+                ? sshDirectoryNameByPath.get(rootPath)
+                : basename(rootPath);
+        if (rootName == null || rootName.length() == 0) {
+            rootName = projectLabel;
+        }
+        cachedSshFileTree = buildVisibleSshDirectory(rootPath, rootName, true);
+    }
+
+    private FileTreeNode buildVisibleSshDirectory(String path, String name, boolean forceExpanded) {
+        boolean expanded = forceExpanded || expandedFilePaths.contains(path);
+        ArrayList<FileTreeNode> children = new ArrayList<>();
+        if (expanded) {
+            List<FileTreeNode> indexedChildren = sshDirectoryChildrenByPath.get(path);
+            if (indexedChildren != null) {
+                for (FileTreeNode child : indexedChildren) {
+                    if (child == null) {
+                        continue;
+                    }
+                    if (child.isDirectory()) {
+                        String childName = child.getName().length() == 0 ? basename(child.getPath()) : child.getName();
+                        children.add(buildVisibleSshDirectory(child.getPath(), childName, false));
+                    } else {
+                        children.add(child);
+                    }
+                }
+            }
+            if (sshDirectoryLoadingPaths.contains(path) && indexedChildren == null) {
+                children.add(new FileTreeNode("正在读取...", path + "#loading", false, false, Collections.emptyList()));
+            }
+            if (sshFileTreeError.length() > 0 && path.equals(sshFileTreeRootPath) && indexedChildren == null) {
+                children.add(new FileTreeNode(sshFileTreeError, path + "#error", false, false, Collections.emptyList()));
+            }
+        }
+        return new FileTreeNode(name, path, true, expanded, children);
+    }
+
+    private void updateSshLoadingState() {
+        sshFileTreeLoading = !sshDirectoryLoadingPaths.isEmpty();
+    }
+
+    private void invalidateSshFileTree() {
+        sshFileTreeLoadGeneration++;
+        cachedSshFileTree = null;
+        sshFileTreeRootPath = "";
+        sshFileTreeError = "";
+        sshFileTreeLoading = false;
+        sshDirectoryChildrenByPath.clear();
+        sshDirectoryNameByPath.clear();
+        sshDirectoryLoadedPaths.clear();
+        sshDirectoryLoadingPaths.clear();
+    }
+
+    private void invalidateSshDirectory(String path) {
+        String cleanPath = path == null ? "" : path.trim();
+        if (cleanPath.length() == 0) {
+            return;
+        }
+        sshFileTreeLoadGeneration++;
+        cachedSshFileTree = null;
+        sshFileTreeError = "";
+        sshDirectoryChildrenByPath.remove(cleanPath);
+        sshDirectoryLoadedPaths.remove(cleanPath);
+        sshDirectoryLoadingPaths.remove(cleanPath);
+        updateSshLoadingState();
+    }
+
+    private boolean isSshExecutionMode() {
+        return ToolSettingsRepository.EXECUTION_SSH.equals(toolSettingsRepository.getExecutionMode());
+    }
+
+    private boolean isTermuxSshHost() {
+        SshConfig config = sshService.getConfig();
+        String host = config == null ? "" : config.getHost();
+        return "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host);
+    }
+
+    private String projectDisplayDescription(ProjectRecord project) {
+        if (project == null) {
+            return "";
+        }
+        String path = WorkspacePaths.displayPath(project.getPath());
+        if (WorkspacePaths.SOURCE_SSH.equals(project.getSource()) && path.length() == 0) {
+            return "SSH 登录目录";
+        }
+        if (path.length() > 0) {
+            return path;
+        }
+        return project.getDescription() == null ? "" : project.getDescription();
+    }
+
+    private void validateSelectedProjectAvailabilityOnStartup() {
+        if (startupProjectAvailabilityChecked) {
+            return;
+        }
+        startupProjectAvailabilityChecked = true;
+        String executionMode = toolSettingsRepository.getExecutionMode();
+        ProjectRecord selected = projectRepository.getSelectedProject(executionMode);
+        if (selected == null) {
+            return;
+        }
+        if (WorkspacePaths.SOURCE_EXTERNAL.equals(selected.getSource())) {
+            String path = WorkspacePaths.displayPath(selected.getPath());
+            if (path.length() > 0 && !new File(path).isDirectory()) {
+                switchToDefaultProjectWithDialog(
+                        executionMode,
+                        "工作区不可访问",
+                        "已保存的工作区不存在或无法访问：\n" + path + "\n\n已自动切换到默认 home。"
+                );
+            }
+            return;
+        }
+        if (!WorkspacePaths.SOURCE_SSH.equals(selected.getSource())) {
+            return;
+        }
+        String path = WorkspacePaths.displayPath(selected.getPath());
+        if (path.length() == 0) {
+            return;
+        }
+        new Thread(() -> {
+            try {
+                boolean exists = sshFileTreeRepository.directoryExists(path);
+                if (!exists) {
+                    mainHandler.post(() -> switchToDefaultProjectWithDialog(
+                            ToolSettingsRepository.EXECUTION_SSH,
+                            "SSH 工作区不可访问",
+                            "已保存的 SSH 工作区不存在：\n" + path + "\n\n已自动切换到 ~。"
+                    ));
+                }
+            } catch (Exception e) {
+                mainHandler.post(() -> switchToDefaultProjectWithDialog(
+                        ToolSettingsRepository.EXECUTION_SSH,
+                        "SSH 工作区不可访问",
+                        "无法访问已保存的 SSH 工作区：\n" + path + "\n\n" + e.getMessage() + "\n\n已自动切换到 ~。"
+                ));
+            }
+        }, "linecode-project-startup-check").start();
+    }
+
+    private void switchToDefaultProjectWithDialog(String executionMode, String title, String message) {
+        ProjectRecord fallback = projectRepository.selectDefaultProject(executionMode);
+        applyProject(fallback);
+        requestSshFileTreeLoad(true);
+        render();
+        if (view != null) {
+            view.showConfirmationDialog(title, message, "知道了", false, "project:missing_notice");
+        }
+    }
+
+    private String defaultExternalStorageRoot() {
+        File primary = new File("/storage/emulated/0");
+        if (primary.isDirectory()) {
+            return primary.getAbsolutePath();
+        }
+        File storage = new File("/storage");
+        return storage.isDirectory() ? storage.getAbsolutePath() : "/";
+    }
+
+    private String basename(String path) {
+        return WorkspacePaths.basename(path == null ? "" : path);
+    }
+
+    private String parentPath(String path) {
+        String value = path == null ? "" : path.trim();
+        int index = value.lastIndexOf('/');
+        if (index <= 0) {
+            return projectPath;
+        }
+        return value.substring(0, index);
+    }
+
+    private interface FileOperation {
+        void run() throws Exception;
+    }
+
     private void showNotice(String text) {
         messages.add(new ChatMessage(nextId(), ChatMessage.Role.ASSISTANT, text, false));
         render();
@@ -1748,9 +2777,12 @@ public final class MainPresenter implements MainContract.Presenter {
         String modelLabel = selectedModel == null
                 ? "未选择模型"
                 : contextInfo.getApiModelId();
+        String uiProjectPath = WorkspacePaths.SOURCE_SSH.equals(projectSource) && projectPath.length() == 0
+                ? "SSH 登录目录"
+                : projectPath;
         view.render(new ChatUiState(
                 projectLabel,
-                projectPath,
+                uiProjectPath,
                 modelLabel,
                 contextSnapshot.getPercent() + "% / " + contextInfo.getContextLabel(),
                 contextSnapshot.getPercent(),
@@ -1777,9 +2809,7 @@ public final class MainPresenter implements MainContract.Presenter {
                 ? learningContextRepository.buildLearningContext(projectPath, userInput, currentConversationId)
                 : "";
         ModelConfig selectedModel = modelRepository.getSelectedModel();
-        String promptHomePath = ToolSettingsRepository.EXECUTION_SSH.equals(toolSettingsRepository.getExecutionMode())
-                ? ""
-                : projectPath;
+        String promptHomePath = promptHomePath();
         String extensionContext = extensionRepository.buildExtensionPrompt(projectPath);
         String systemContext = joinPromptContext(learningContext, extensionContext);
         String systemPrompt = systemPromptProvider.build(
@@ -1850,6 +2880,13 @@ public final class MainPresenter implements MainContract.Presenter {
         return left + "\n\n" + right;
     }
 
+    private String promptHomePath() {
+        if (WorkspacePaths.SOURCE_SSH.equals(projectSource) && projectPath.length() == 0) {
+            return "~";
+        }
+        return projectPath;
+    }
+
     private boolean supportsNativeTools(ModelConfig selectedModel) {
         if (selectedModel == null) {
             return false;
@@ -1891,11 +2928,15 @@ public final class MainPresenter implements MainContract.Presenter {
             return;
         }
         if (session == null || !session.canRender()) {
+            if (session != null) {
+                session.notifyMirror();
+            }
             return;
         }
         if (session.generationId != generationSequence - 1 || !streaming) {
             return;
         }
+        session.notifyMirror();
         addOrReplaceToolResult(session.snapshotResult());
         render();
     }
@@ -2340,6 +3381,8 @@ public final class MainPresenter implements MainContract.Presenter {
         String type = AgentTool.normalizeType(input.optString("type"));
         String description = input.optString("description").trim();
         String prompt = input.optString("prompt").trim();
+        ArrayList<String> readScope = scopeList(input.optJSONArray("read_scope"));
+        ArrayList<String> writeScope = scopeList(input.optJSONArray("write_scope"));
         String homePath = parentContext == null ? projectPath : parentContext.getHomePath();
         AgentProgressSession progress = new AgentProgressSession(
                 generationId,
@@ -2352,6 +3395,8 @@ public final class MainPresenter implements MainContract.Presenter {
                 type,
                 description,
                 prompt,
+                readScope,
+                writeScope,
                 homePath,
                 selectedModel,
                 cancellationToken,
@@ -2394,23 +3439,38 @@ public final class MainPresenter implements MainContract.Presenter {
         LinkedHashMap<String, AgentRunResult> results = new LinkedHashMap<>();
         StringBuilder summary = new StringBuilder();
         summary.append("Agent 流水线完成: ").append(agents.size()).append(" 个任务");
+        PipelineProgressSession pipelineProgress = new PipelineProgressSession(parentContext, agents);
+        pipelineProgress.publish(false);
         boolean hasError = false;
         int totalToolCalls = 0;
         for (ArrayList<PipelineAgent> level : levels) {
             if (cancellationToken != null && cancellationToken.isCancelled()) {
+                pipelineProgress.terminate();
                 return new ToolResult("", "agent_pipeline", "Agent 流水线已终止。", true);
             }
             for (PipelineAgent agent : level) {
                 String prompt = agent.prompt + dependencyOutputContext(agent, results);
+                pipelineProgress.beginAgent(agent);
+                AgentProgressSession agentProgress = new AgentProgressSession(
+                        generationId,
+                        "",
+                        "agent",
+                        agent.type,
+                        agent.description,
+                        (payload, progressError) -> pipelineProgress.updateAgent(agent, payload, progressError)
+                );
                 AgentRunResult result = runAgentLoop(
                         agent.type,
                         agent.description,
                         prompt,
+                        agent.readScope,
+                        agent.writeScope,
                         parentContext == null ? projectPath : parentContext.getHomePath(),
                         selectedModel,
                         cancellationToken,
-                        null
+                        agentProgress
                 );
+                pipelineProgress.finishAgent(agent, result);
                 results.put(agent.id, result);
                 totalToolCalls += result.toolCallCount;
                 hasError = hasError || result.error;
@@ -2429,6 +3489,8 @@ public final class MainPresenter implements MainContract.Presenter {
             String type,
             String description,
             String prompt,
+            List<String> readScope,
+            List<String> writeScope,
             String homePath,
             ModelConfig selectedModel,
             ModelCancellationToken cancellationToken,
@@ -2437,7 +3499,7 @@ public final class MainPresenter implements MainContract.Presenter {
         ArrayList<BaseTool> agentTools = agentTools(type);
         Set<String> allowedToolNames = toolNames(agentTools);
         ArrayList<ModelMessage> agentMessages = new ArrayList<>();
-        agentMessages.add(new SystemModelMessage(agentSystemPrompt(type, description, homePath, selectedModel, agentTools)));
+        agentMessages.add(new SystemModelMessage(agentSystemPrompt(type, description, readScope, writeScope, homePath, selectedModel, agentTools)));
         agentMessages.add(new UserModelMessage(prompt));
         int toolCallCount = 0;
         String lastOutput = "";
@@ -2509,7 +3571,7 @@ public final class MainPresenter implements MainContract.Presenter {
                         }
                         return new AgentRunResult(AGENT_TERMINATED_MESSAGE, toolCallCount, true);
                     }
-                    ToolResult toolResult = executeAgentToolCall(call, allowedToolNames, homePath);
+                    ToolResult toolResult = executeAgentToolCall(call, allowedToolNames, type, writeScope, homePath);
                     toolCallCount++;
                     if (progress != null) {
                         progress.putToolResult(call, toolResult);
@@ -2582,7 +3644,13 @@ public final class MainPresenter implements MainContract.Presenter {
         return names;
     }
 
-    private ToolResult executeAgentToolCall(ToolCall call, Set<String> allowedToolNames, String homePath) {
+    private ToolResult executeAgentToolCall(
+            ToolCall call,
+            Set<String> allowedToolNames,
+            String type,
+            List<String> writeScope,
+            String homePath
+    ) {
         syncModePermission();
         if (call == null) {
             return new ToolResult("", "", "Agent 工具调用为空", true);
@@ -2590,12 +3658,19 @@ public final class MainPresenter implements MainContract.Presenter {
         if (!allowedToolNames.contains(call.getName())) {
             return new ToolResult(call.getId(), call.getName(), "Agent 不允许调用此工具: " + call.getName(), true);
         }
-        return toolExecutor.execute(call, new ToolContext(homePath, extensionRepository.skillWriteRoots(homePath), null, "", null));
+        ToolContext context = new ToolContext(homePath, extensionRepository.skillWriteRoots(homePath), null, "", null);
+        ToolResult scopeError = validateAgentWriteScope(call, type, writeScope, context);
+        if (scopeError != null) {
+            return scopeError;
+        }
+        return toolExecutor.execute(call, context);
     }
 
     private String agentSystemPrompt(
             String type,
             String description,
+            List<String> readScope,
+            List<String> writeScope,
             String homePath,
             ModelConfig selectedModel,
             List<BaseTool> agentTools
@@ -2604,6 +3679,7 @@ public final class MainPresenter implements MainContract.Presenter {
         return agentRolePrompt(type)
                 + "\n\n你的任务: " + description
                 + "\n\n" + agentWorkspacePrompt(homePath)
+                + "\n\n" + agentScopePrompt(type, readScope, writeScope)
                 + "\n\n" + extensionRepository.buildExtensionPrompt(homePath)
                 + "\n\n" + toolSettingsRepository.buildToolPrompt(agentTools, supportsNativeTools(selectedModel));
     }
@@ -2612,22 +3688,111 @@ public final class MainPresenter implements MainContract.Presenter {
         if (AgentTool.TYPE_EXPLORE.equals(type)) {
             return "你是一个代码探索 Agent。你的任务是快速定位和分析代码，回答用户的问题。\n"
                     + "规则：\n"
-                    + "- 只读取代码，不做任何修改。\n"
+                    + "- 只读取代码，不做任何修改，不调用任何写入类工具。\n"
                     + "- 优先使用只读工具搜索和读取关键文件。\n"
                     + "- 给出简洁准确的中文回答，并标注文件路径和必要的行号。";
         }
         return "你是一个编程 Agent。你的任务是完成边界清晰的编程子任务。\n"
                 + "规则：\n"
                 + "- 只负责用户明确分派给你的任务区域，不要修改无关文件。\n"
+                + "- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件，只能汇报需要主模型重新分配。\n"
+                + "- 如果发现必须修改 write_scope 外的文件，停止写入并在输出中说明需要扩大或重新分配范围。\n"
                 + "- 修改前先读取目标文件，完成后做最小可行验证。\n"
                 + "- 如果工具失败，先重新读取和分析，不要盲目重复。\n"
                 + "- 用中文总结完成内容、验证结果和剩余风险。";
     }
 
     private String agentWorkspacePrompt(String homePath) {
-        String path = homePath == null || homePath.trim().length() == 0 ? projectPath : homePath.trim();
+        String path = homePath == null || homePath.trim().length() == 0 ? promptHomePath() : homePath.trim();
         return "当前工作区: " + path + "\n"
                 + "所有文件路径默认相对此工作区。不要访问未授权路径，不要读取 API key、token、密码等敏感数据。";
+    }
+
+    private String agentScopePrompt(String type, List<String> readScope, List<String> writeScope) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("## Agent 范围\n");
+        builder.append("read_scope: ").append(scopeSummary(readScope)).append('\n');
+        builder.append("write_scope: ").append(scopeSummary(writeScope)).append('\n');
+        if (AgentTool.TYPE_EXPLORE.equals(type)) {
+            builder.append("这是 explore Agent，write_scope 必须视为无效，禁止任何写入。");
+        } else if (writeScope == null || writeScope.isEmpty()) {
+            builder.append("没有授权写入范围。禁止写入文件；如果任务需要修改文件，直接说明需要主模型重新分配 write_scope。");
+        } else {
+            builder.append("只能写入 write_scope 覆盖的路径。不要修改其它文件，不要把多个 Agent 的职责混到同一个文件里。");
+        }
+        return builder.toString();
+    }
+
+    private ToolResult validateAgentWriteScope(
+            ToolCall call,
+            String type,
+            List<String> writeScope,
+            ToolContext context
+    ) {
+        if (call == null || !isFileWriteTool(call.getName())) {
+            return null;
+        }
+        if (AgentTool.TYPE_EXPLORE.equals(type)) {
+            return new ToolResult(call.getId(), call.getName(), "explore Agent 不允许写入文件。", true);
+        }
+        if (writeScope == null || writeScope.isEmpty()) {
+            return new ToolResult(call.getId(), call.getName(),
+                    "Agent 未声明 write_scope，禁止写入文件。请让主模型重新分配明确的写入范围。", true);
+        }
+        try {
+            JSONObject arguments = call.getArguments().trim().length() == 0
+                    ? new JSONObject()
+                    : new JSONObject(call.getArguments());
+            String filePath = arguments.optString("file_path").trim();
+            if (filePath.length() == 0) {
+                return null;
+            }
+            File target = FileToolPathPolicy.resolve(context, filePath);
+            for (String scope : writeScope) {
+                if (scope == null || scope.trim().length() == 0) {
+                    continue;
+                }
+                File allowed = FileToolPathPolicy.resolve(context, scope);
+                if (isInsidePath(allowed, target)) {
+                    return null;
+                }
+            }
+            return new ToolResult(call.getId(), call.getName(),
+                    "Agent 写入路径超出 write_scope: " + filePath
+                            + "\n允许写入范围: " + scopeSummary(writeScope)
+                            + "\n请停止写入并让主模型重新分配。", true);
+        } catch (Exception e) {
+            return new ToolResult(call.getId(), call.getName(), "Agent 写入范围检查失败: " + e.getMessage(), true);
+        }
+    }
+
+    private boolean isFileWriteTool(String name) {
+        return "file_write".equals(name) || "file_edit".equals(name);
+    }
+
+    private boolean isInsidePath(File root, File target) throws java.io.IOException {
+        File canonicalRoot = root.getCanonicalFile();
+        File canonicalTarget = target.getCanonicalFile();
+        String rootPath = canonicalRoot.getPath();
+        String targetPath = canonicalTarget.getPath();
+        return targetPath.equals(rootPath) || targetPath.startsWith(rootPath + File.separator);
+    }
+
+    private String scopeSummary(List<String> scopes) {
+        if (scopes == null || scopes.isEmpty()) {
+            return "未声明";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (String scope : scopes) {
+            if (scope == null || scope.trim().length() == 0) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(", ");
+            }
+            builder.append(scope.trim());
+        }
+        return builder.length() == 0 ? "未声明" : builder.toString();
     }
 
     private ArrayList<PipelineAgent> parsePipelineAgents(JSONArray array) {
@@ -2651,6 +3816,8 @@ public final class MainPresenter implements MainContract.Presenter {
                     AgentTool.normalizeType(object.optString("type")),
                     object.optString("description").trim(),
                     object.optString("prompt").trim(),
+                    scopeList(object.optJSONArray("read_scope")),
+                    scopeList(object.optJSONArray("write_scope")),
                     dependencyList(object.optJSONArray("depends_on"))
             ));
         }
@@ -2669,6 +3836,20 @@ public final class MainPresenter implements MainContract.Presenter {
             }
         }
         return "";
+    }
+
+    private ArrayList<String> scopeList(JSONArray array) {
+        ArrayList<String> values = new ArrayList<>();
+        if (array == null) {
+            return values;
+        }
+        for (int i = 0; i < array.length(); i++) {
+            String value = array.optString(i).trim();
+            if (value.length() > 0) {
+                values.add(value);
+            }
+        }
+        return values;
     }
 
     private ArrayList<String> dependencyList(JSONArray array) {

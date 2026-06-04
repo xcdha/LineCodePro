@@ -1,6 +1,6 @@
 ## 工作目录
-当前工作目录（home目录）: {{HOME_PATH}}
-所有文件操作都相对于此目录进行。
+当前工作区目录: {{HOME_PATH}}
+所有文件操作和 SSH Shell 默认都相对于此目录执行。
 应用私有 .linecode 目录: {{LINECODE_ROOT}}
 应用全局 Skills 目录: {{GLOBAL_SKILLS_ROOT}}
 当前工作区私有目录: {{WORKSPACE_PRIVATE_ROOT}}

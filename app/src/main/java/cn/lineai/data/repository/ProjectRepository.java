@@ -11,25 +11,44 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class ProjectRepository {
+    private static final String SSH_DEFAULT_PROJECT_ID = "ssh:default";
+    private static final String KEY_SELECTED_LOCAL_PROJECT = "@linecode_selected_project_local";
+    private static final String KEY_SELECTED_SSH_PROJECT = "@linecode_selected_project_ssh";
+
     private final Context context;
     private final LineCodeDatabase database;
+    private final SettingsRepository settingsRepository;
     private final WorkspacePaths workspacePaths;
 
     public ProjectRepository(Context context) {
         this.context = context.getApplicationContext();
         database = LineCodeDatabase.getInstance(context);
+        settingsRepository = new SettingsRepository(this.context);
         workspacePaths = new WorkspacePaths(this.context);
         workspacePaths.ensurePrivateRoots();
         ensureDefaultProject();
     }
 
     public synchronized List<ProjectRecord> getProjects() {
+        return getProjects(ToolSettingsRepository.EXECUTION_LOCAL);
+    }
+
+    public synchronized List<ProjectRecord> getProjects(String executionMode) {
+        if (ToolSettingsRepository.EXECUTION_SSH.equals(ToolSettingsRepository.normalizeExecutionMode(executionMode))) {
+            ensureDefaultSshProject();
+            return queryProjects("source = ?", new String[] {WorkspacePaths.SOURCE_SSH});
+        }
+        ensureDefaultProject();
+        return queryProjects("source != ?", new String[] {WorkspacePaths.SOURCE_SSH});
+    }
+
+    private List<ProjectRecord> queryProjects(String selection, String[] args) {
         ArrayList<ProjectRecord> projects = new ArrayList<>();
         Cursor cursor = database.getReadableDatabase().query(
                 "projects",
                 null,
-                null,
-                null,
+                selection,
+                args,
                 null,
                 null,
                 "selected DESC, updated_at DESC"
@@ -42,13 +61,51 @@ public final class ProjectRepository {
             cursor.close();
         }
         if (projects.isEmpty()) {
-            ensureDefaultProject();
-            return getProjects();
+            return projects;
         }
         return projects;
     }
 
     public synchronized ProjectRecord getSelectedProject() {
+        return getSelectedProject(ToolSettingsRepository.EXECUTION_LOCAL);
+    }
+
+    public synchronized ProjectRecord getSelectedProject(String executionMode) {
+        String mode = ToolSettingsRepository.normalizeExecutionMode(executionMode);
+        if (ToolSettingsRepository.EXECUTION_SSH.equals(mode)) {
+            ensureDefaultSshProject();
+        } else {
+            ensureDefaultProject();
+        }
+        String selectedId = settingsRepository.getString(selectedKey(mode), "");
+        ProjectRecord storedSelection = selectedId.length() == 0 ? null : findProject(selectedId);
+        if (isProjectInMode(storedSelection, mode)) {
+            return storedSelection;
+        }
+        Cursor cursor = database.getReadableDatabase().query(
+                "projects",
+                null,
+                modeSelection(mode) + " AND selected = 1",
+                modeArgs(mode),
+                null,
+                null,
+                "updated_at DESC",
+                "1"
+        );
+        try {
+            if (cursor.moveToFirst()) {
+                ProjectRecord project = readProject(cursor);
+                settingsRepository.setString(selectedKey(mode), project.getId());
+                return project;
+            }
+        } finally {
+            cursor.close();
+        }
+        List<ProjectRecord> projects = getProjects(mode);
+        return projects.isEmpty() ? defaultProjectForMode(mode) : projects.get(0);
+    }
+
+    public synchronized ProjectRecord getSelectedProjectLegacy() {
         Cursor cursor = database.getReadableDatabase().query(
                 "projects",
                 null,
@@ -76,15 +133,20 @@ public final class ProjectRepository {
         SQLiteDatabase db = database.getWritableDatabase();
         db.insertWithOnConflict("projects", null, values, SQLiteDatabase.CONFLICT_REPLACE);
         if (project.isSelected()) {
-            setSelected(project.getId());
+            setSelected(project.getId(), executionModeFor(project));
         }
     }
 
     public synchronized void setSelected(String id) {
+        setSelected(id, ToolSettingsRepository.EXECUTION_LOCAL);
+    }
+
+    public synchronized void setSelected(String id, String executionMode) {
         SQLiteDatabase db = database.getWritableDatabase();
         db.beginTransaction();
         try {
             selectProjectInTransaction(db, id);
+            settingsRepository.setString(selectedKey(executionMode), id == null ? "" : id);
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
@@ -92,13 +154,22 @@ public final class ProjectRepository {
     }
 
     public synchronized boolean deleteProject(String id) {
+        return deleteProject(id, ToolSettingsRepository.EXECUTION_LOCAL);
+    }
+
+    public synchronized boolean deleteProject(String id, String executionMode) {
         String safeId = id == null ? "" : id.trim();
-        if (safeId.length() == 0 || WorkspacePaths.DEFAULT_PROJECT_ID.equals(safeId)) {
+        if (safeId.length() == 0 || WorkspacePaths.DEFAULT_PROJECT_ID.equals(safeId) || SSH_DEFAULT_PROJECT_ID.equals(safeId)) {
             return false;
         }
-        ensureDefaultProject();
+        String mode = ToolSettingsRepository.normalizeExecutionMode(executionMode);
+        if (ToolSettingsRepository.EXECUTION_SSH.equals(mode)) {
+            ensureDefaultSshProject();
+        } else {
+            ensureDefaultProject();
+        }
         ProjectRecord project = findProject(safeId);
-        if (project == null) {
+        if (!isProjectInMode(project, mode)) {
             return false;
         }
         SQLiteDatabase db = database.getWritableDatabase();
@@ -106,13 +177,30 @@ public final class ProjectRepository {
         try {
             int deleted = db.delete("projects", "id = ?", new String[] {safeId});
             if (deleted > 0 && project.isSelected()) {
-                selectProjectInTransaction(db, WorkspacePaths.DEFAULT_PROJECT_ID);
+                selectProjectInTransaction(db, defaultProjectForMode(mode).getId());
+            }
+            if (safeId.equals(settingsRepository.getString(selectedKey(mode), ""))) {
+                settingsRepository.setString(selectedKey(mode), defaultProjectForMode(mode).getId());
             }
             db.setTransactionSuccessful();
             return deleted > 0;
         } finally {
             db.endTransaction();
         }
+    }
+
+    public synchronized ProjectRecord selectDefaultProject(String executionMode) {
+        String mode = ToolSettingsRepository.normalizeExecutionMode(executionMode);
+        String defaultId;
+        if (ToolSettingsRepository.EXECUTION_SSH.equals(mode)) {
+            ensureDefaultSshProject();
+            defaultId = SSH_DEFAULT_PROJECT_ID;
+        } else {
+            ensureDefaultProject();
+            defaultId = WorkspacePaths.DEFAULT_PROJECT_ID;
+        }
+        setSelected(defaultId, mode);
+        return getSelectedProject(mode);
     }
 
     public synchronized ProjectRecord createManagedProject(String name) {
@@ -134,7 +222,7 @@ public final class ProjectRepository {
                 now
         );
         save(project);
-        return getSelectedProject();
+        return getSelectedProject(ToolSettingsRepository.EXECUTION_LOCAL);
     }
 
     public synchronized ProjectRecord saveExternalProject(String path, String label) {
@@ -160,11 +248,40 @@ public final class ProjectRepository {
                 now
         );
         save(project);
-        return getSelectedProject();
+        return getSelectedProject(ToolSettingsRepository.EXECUTION_LOCAL);
+    }
+
+    public synchronized ProjectRecord saveSshProject(String path, String label) {
+        String resolved = path == null ? "" : path.trim();
+        String name = label == null || label.trim().length() == 0
+                ? WorkspacePaths.basename(resolved)
+                : label.trim();
+        if (name.length() == 0) {
+            name = "SSH 工作区";
+        }
+        long now = System.currentTimeMillis();
+        ProjectRecord project = new ProjectRecord(
+                "ssh:" + resolved,
+                name,
+                resolved,
+                WorkspacePaths.SOURCE_SSH,
+                resolved.length() == 0 ? "SSH 登录目录" : resolved,
+                true,
+                now,
+                now
+        );
+        save(project);
+        return getSelectedProject(ToolSettingsRepository.EXECUTION_SSH);
     }
 
     public synchronized ProjectRecord ensureSelectedProjectPath() {
         ProjectRecord selected = getSelectedProject();
+        ensureProjectPath(selected);
+        return selected;
+    }
+
+    public synchronized ProjectRecord ensureSelectedProjectPath(String executionMode) {
+        ProjectRecord selected = getSelectedProject(executionMode);
         ensureProjectPath(selected);
         return selected;
     }
@@ -228,6 +345,22 @@ public final class ProjectRepository {
         save(defaultProject());
     }
 
+    private void ensureDefaultSshProject() {
+        SQLiteDatabase db = database.getWritableDatabase();
+        Cursor cursor = db.query("projects", null, "id = ?", new String[] {SSH_DEFAULT_PROJECT_ID}, null, null, null, "1");
+        try {
+            if (cursor.moveToFirst()) {
+                return;
+            }
+        } finally {
+            cursor.close();
+        }
+        save(defaultSshProject(false));
+        if (settingsRepository.getString(KEY_SELECTED_SSH_PROJECT, "").length() == 0) {
+            settingsRepository.setString(KEY_SELECTED_SSH_PROJECT, SSH_DEFAULT_PROJECT_ID);
+        }
+    }
+
     private ProjectRecord defaultProject() {
         long now = System.currentTimeMillis();
         File home = workspacePaths.getHomeRoot();
@@ -243,8 +376,31 @@ public final class ProjectRepository {
         );
     }
 
+    private ProjectRecord defaultSshProject(boolean selected) {
+        long now = System.currentTimeMillis();
+        return new ProjectRecord(
+                SSH_DEFAULT_PROJECT_ID,
+                "SSH",
+                "",
+                WorkspacePaths.SOURCE_SSH,
+                "SSH 登录目录",
+                selected,
+                now,
+                now
+        );
+    }
+
+    private ProjectRecord defaultProjectForMode(String executionMode) {
+        return ToolSettingsRepository.EXECUTION_SSH.equals(ToolSettingsRepository.normalizeExecutionMode(executionMode))
+                ? defaultSshProject(false)
+                : defaultProject();
+    }
+
     private void ensureProjectPath(ProjectRecord project) {
         if (project == null) {
+            return;
+        }
+        if (WorkspacePaths.SOURCE_SSH.equals(project.getSource())) {
             return;
         }
         if (WorkspacePaths.SOURCE_EXTERNAL.equals(project.getSource())) {
@@ -282,6 +438,38 @@ public final class ProjectRepository {
         if (updated == 0) {
             db.update("projects", select, "id = ?", new String[] {WorkspacePaths.DEFAULT_PROJECT_ID});
         }
+    }
+
+    private String selectedKey(String executionMode) {
+        return ToolSettingsRepository.EXECUTION_SSH.equals(ToolSettingsRepository.normalizeExecutionMode(executionMode))
+                ? KEY_SELECTED_SSH_PROJECT
+                : KEY_SELECTED_LOCAL_PROJECT;
+    }
+
+    private String modeSelection(String executionMode) {
+        return ToolSettingsRepository.EXECUTION_SSH.equals(ToolSettingsRepository.normalizeExecutionMode(executionMode))
+                ? "source = ?"
+                : "source != ?";
+    }
+
+    private String[] modeArgs(String executionMode) {
+        return new String[] {WorkspacePaths.SOURCE_SSH};
+    }
+
+    private String executionModeFor(ProjectRecord project) {
+        return project != null && WorkspacePaths.SOURCE_SSH.equals(project.getSource())
+                ? ToolSettingsRepository.EXECUTION_SSH
+                : ToolSettingsRepository.EXECUTION_LOCAL;
+    }
+
+    private boolean isProjectInMode(ProjectRecord project, String executionMode) {
+        if (project == null) {
+            return false;
+        }
+        boolean sshProject = WorkspacePaths.SOURCE_SSH.equals(project.getSource());
+        return ToolSettingsRepository.EXECUTION_SSH.equals(ToolSettingsRepository.normalizeExecutionMode(executionMode))
+                ? sshProject
+                : !sshProject;
     }
 
     private ContentValues valuesFor(ProjectRecord project) {

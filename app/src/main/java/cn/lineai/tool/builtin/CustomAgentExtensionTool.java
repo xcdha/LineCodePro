@@ -46,7 +46,15 @@ public final class CustomAgentExtensionTool extends BaseTool {
                 .put("type", "object")
                 .put("properties", new JSONObject()
                         .put("task", new JSONObject().put("type", "string").put("description", "交给此自定义 Agent 完成的具体任务"))
-                        .put("context", new JSONObject().put("type", "string").put("description", "可选补充上下文、文件路径、限制或验收方式")))
+                        .put("context", new JSONObject().put("type", "string").put("description", "可选补充上下文、文件路径、限制或验收方式"))
+                        .put("read_scope", new JSONObject()
+                                .put("type", "array")
+                                .put("items", new JSONObject().put("type", "string"))
+                                .put("description", "允许读取的文件或目录路径列表"))
+                        .put("write_scope", new JSONObject()
+                                .put("type", "array")
+                                .put("items", new JSONObject().put("type", "string"))
+                                .put("description", "允许写入的唯一文件或目录路径列表。没有写入范围时自定义 Agent 不能写文件")))
                 .put("required", new JSONArray().put("task"));
     }
 
@@ -65,6 +73,14 @@ public final class CustomAgentExtensionTool extends BaseTool {
                     .put("type", AgentTool.TYPE_SUB_CODING)
                     .put("description", agent.getName())
                     .put("prompt", prompt);
+            JSONArray readScope = input.optJSONArray("read_scope");
+            if (readScope != null) {
+                delegated.put("read_scope", readScope);
+            }
+            JSONArray writeScope = input.optJSONArray("write_scope");
+            if (writeScope != null) {
+                delegated.put("write_scope", writeScope);
+            }
             return context.getAgentRunner().runAgent(delegated, context);
         } catch (Exception e) {
             return error("自定义 Agent 执行失败: " + e.getMessage());

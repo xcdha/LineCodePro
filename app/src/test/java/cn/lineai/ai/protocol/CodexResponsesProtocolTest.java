@@ -1,0 +1,242 @@
+package cn.lineai.ai.protocol;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import cn.lineai.ai.ModelCompletionResponse;
+import cn.lineai.ai.ModelRequestOptions;
+import cn.lineai.ai.ModelStreamCallback;
+import cn.lineai.ai.message.AssistantModelMessage;
+import cn.lineai.ai.message.ModelMessage;
+import cn.lineai.ai.message.SystemModelMessage;
+import cn.lineai.ai.message.ToolModelMessage;
+import cn.lineai.ai.message.UserModelMessage;
+import cn.lineai.model.AiBehaviorSettings;
+import cn.lineai.model.ModelConfig;
+import cn.lineai.model.ModelProtocolType;
+import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.ToolCall;
+import cn.lineai.tool.ToolCategory;
+import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolResult;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.junit.Test;
+
+public final class CodexResponsesProtocolTest {
+    @Test
+    public void responsesInputBuilderFormatsFunctionCallHistory() throws Exception {
+        ArrayList<ModelMessage> messages = new ArrayList<>();
+        messages.add(new SystemModelMessage("system prompt"));
+        messages.add(new UserModelMessage("read a file"));
+        messages.add(new AssistantModelMessage(
+                "",
+                "",
+                Collections.singletonList(new ToolCall("call_1", "file_read", "{\"file_path\":\"README.md\"}"))
+        ));
+        messages.add(new ToolModelMessage("README content", "call_1", "file_read"));
+
+        JSONArray input = ResponsesInputBuilder.inputJson(messages);
+
+        assertEquals("system prompt", ResponsesInputBuilder.instructions(messages));
+        assertEquals(3, input.length());
+        assertEquals("message", input.getJSONObject(0).getString("type"));
+        assertEquals("user", input.getJSONObject(0).getString("role"));
+        assertEquals("input_text", input.getJSONObject(0).getJSONArray("content").getJSONObject(0).getString("type"));
+        assertEquals("function_call", input.getJSONObject(1).getString("type"));
+        assertEquals("file_read", input.getJSONObject(1).getString("name"));
+        assertEquals("call_1", input.getJSONObject(1).getString("call_id"));
+        assertEquals("function_call_output", input.getJSONObject(2).getString("type"));
+        assertEquals("call_1", input.getJSONObject(2).getString("call_id"));
+        assertEquals("README content", input.getJSONObject(2).getString("output"));
+    }
+
+    @Test
+    public void codexStreamParsesFunctionCallAndUsesResponsesEndpoint() throws Exception {
+        LocalSseServer server = new LocalSseServer(sse("response.output_item.done", new JSONObject()
+                .put("type", "response.output_item.done")
+                .put("item", new JSONObject()
+                        .put("type", "function_call")
+                        .put("call_id", "call_1")
+                        .put("name", "file_read")
+                        .put("arguments", "{\"file_path\":\"README.md\"}"))
+                .toString()));
+        server.start();
+        try {
+            ModelConfig config = new ModelConfig(
+                    "m1",
+                    "Codex",
+                    ModelProtocolType.CODEX_RESPONSES,
+                    "Codex",
+                    "http://127.0.0.1:" + server.port() + "/v1/chat/completions",
+                    "sk-test",
+                    "gpt-5-codex"
+            );
+            ArrayList<ModelMessage> messages = new ArrayList<>();
+            messages.add(new SystemModelMessage("system prompt"));
+            messages.add(new UserModelMessage("read README"));
+
+            ModelCompletionResponse response = new CodexResponsesProtocol().stream(
+                    config,
+                    messages,
+                    new NoopCallback(),
+                    null,
+                    new ModelRequestOptions(
+                            AiBehaviorSettings.REASONING_OFF,
+                            false,
+                            Collections.singletonList(new DummyTool())
+                    )
+            );
+
+            assertEquals("/v1/responses", server.requestPath());
+            JSONObject body = new JSONObject(server.requestBody());
+            assertEquals("system prompt", body.getString("instructions"));
+            assertTrue(body.getBoolean("parallel_tool_calls"));
+            assertEquals("auto", body.getString("tool_choice"));
+            assertEquals("file_read", body.getJSONArray("tools").getJSONObject(0).getString("name"));
+            assertEquals(1, response.getToolCalls().size());
+            assertEquals("call_1", response.getToolCalls().get(0).getId());
+            assertEquals("file_read", response.getToolCalls().get(0).getName());
+            assertEquals("{\"file_path\":\"README.md\"}", response.getToolCalls().get(0).getArguments());
+        } finally {
+            server.close();
+        }
+    }
+
+    private String sse(String event, String data) {
+        return "event: " + event + "\n"
+                + "data: " + data + "\n\n";
+    }
+
+    private static final class LocalSseServer implements AutoCloseable {
+        private final ServerSocket serverSocket;
+        private final String responseBody;
+        private Thread thread;
+        private String requestPath = "";
+        private String requestBody = "";
+
+        LocalSseServer(String responseBody) throws Exception {
+            serverSocket = new ServerSocket(0);
+            this.responseBody = responseBody == null ? "" : responseBody;
+        }
+
+        void start() {
+            thread = new Thread(() -> {
+                try {
+                    handle(serverSocket.accept());
+                } catch (Exception ignored) {
+                }
+            }, "codex-test-sse-server");
+            thread.start();
+        }
+
+        int port() {
+            return serverSocket.getLocalPort();
+        }
+
+        String requestPath() {
+            return requestPath;
+        }
+
+        String requestBody() {
+            return requestBody;
+        }
+
+        private void handle(Socket socket) throws Exception {
+            try {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+                String requestLine = reader.readLine();
+                if (requestLine != null) {
+                    String[] parts = requestLine.split(" ");
+                    if (parts.length > 1) {
+                        requestPath = parts[1];
+                    }
+                }
+                int contentLength = 0;
+                String line;
+                while ((line = reader.readLine()) != null && line.length() > 0) {
+                    String lower = line.toLowerCase(java.util.Locale.US);
+                    if (lower.startsWith("content-length:")) {
+                        contentLength = Integer.parseInt(line.substring("content-length:".length()).trim());
+                    }
+                }
+                char[] body = new char[contentLength];
+                int offset = 0;
+                while (offset < contentLength) {
+                    int read = reader.read(body, offset, contentLength - offset);
+                    if (read < 0) {
+                        break;
+                    }
+                    offset += read;
+                }
+                requestBody = new String(body, 0, offset);
+                byte[] response = responseBody.getBytes(StandardCharsets.UTF_8);
+                OutputStream output = socket.getOutputStream();
+                output.write(("HTTP/1.1 200 OK\r\n"
+                        + "Content-Type: text/event-stream\r\n"
+                        + "Content-Length: " + response.length + "\r\n"
+                        + "Connection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                output.write(response);
+                output.flush();
+            } finally {
+                socket.close();
+            }
+        }
+
+        @Override
+        public void close() throws Exception {
+            serverSocket.close();
+            if (thread != null) {
+                thread.join(1000);
+            }
+        }
+    }
+
+    private static final class NoopCallback implements ModelStreamCallback {
+        @Override
+        public void onTextDelta(String delta) {
+        }
+
+        @Override
+        public void onReasoningDelta(String delta) {
+        }
+    }
+
+    private static final class DummyTool extends BaseTool {
+        @Override
+        public String getName() {
+            return "file_read";
+        }
+
+        @Override
+        public String getDescription() {
+            return "Read a file.";
+        }
+
+        @Override
+        public ToolCategory getCategory() {
+            return ToolCategory.READ;
+        }
+
+        @Override
+        public JSONObject getParameters() throws org.json.JSONException {
+            return new JSONObject()
+                    .put("type", "object")
+                    .put("properties", new JSONObject()
+                            .put("file_path", new JSONObject().put("type", "string")));
+        }
+
+        @Override
+        public ToolResult execute(JSONObject input, ToolContext context) {
+            return new ToolResult("", getName(), "", false);
+        }
+    }
+}

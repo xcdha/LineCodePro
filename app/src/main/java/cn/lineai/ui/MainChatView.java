@@ -1,17 +1,28 @@
 package cn.lineai.ui;
 
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
+import android.text.InputType;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.model.ChatUiState;
+import cn.lineai.model.FileTreeNode;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProviderPreset;
 import cn.lineai.model.ModelProviderPresets;
@@ -23,6 +34,7 @@ import cn.lineai.ui.component.ComposerView;
 import cn.lineai.ui.component.AboutScreenView;
 import cn.lineai.ui.component.AgentExtensionEditScreenView;
 import cn.lineai.ui.component.DataSettingsScreenView;
+import cn.lineai.ui.component.DirectoryPickerSheetView;
 import cn.lineai.ui.component.DrawerView;
 import cn.lineai.ui.component.ExperimentalSettingsScreenView;
 import cn.lineai.ui.component.ExtensionDetailScreenView;
@@ -78,6 +90,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     private final ComposerView composerView;
     private final DrawerView drawerView;
     private final BottomSheetView bottomSheetView;
+    private final DirectoryPickerSheetView directoryPickerSheetView;
     private final FrameLayout screenHost;
     private ChatUiState lastState;
     private String shellCommandText = "";
@@ -193,8 +206,18 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             }
 
             @Override
-            public void onFileNodeSelected(String path) {
-                MainChatView.this.presenter.onFileNodeSelected(path);
+            public void onFileNodeSelected(String path, boolean directory) {
+                MainChatView.this.presenter.onFileNodeSelected(path, directory);
+            }
+
+            @Override
+            public void onFileNodeLongPressed(String path, String name, boolean directory, boolean root) {
+                MainChatView.this.presenter.onFileNodeLongPressed(path, name, directory, root);
+            }
+
+            @Override
+            public void onFileTreeActivated() {
+                MainChatView.this.presenter.onFileTreeActivated();
             }
 
             @Override
@@ -216,6 +239,25 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             }
         });
         addView(bottomSheetView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        directoryPickerSheetView = new DirectoryPickerSheetView(context);
+        directoryPickerSheetView.setListener(new DirectoryPickerSheetView.Listener() {
+            @Override
+            public void onDirectoryPickerClosed() {
+                MainChatView.this.presenter.onDirectoryPickerCancelled();
+            }
+
+            @Override
+            public void onDirectoryPicked(String path) {
+                MainChatView.this.presenter.onDirectoryPickerNodeSelected(path);
+            }
+
+            @Override
+            public void onDirectoryPickerConfirmed() {
+                MainChatView.this.presenter.onDirectoryPickerConfirmed();
+            }
+        });
+        addView(directoryPickerSheetView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         screenHost = new FrameLayout(context);
         screenHost.setBackgroundColor(LineTheme.BG);
@@ -242,6 +284,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     public void showDrawer() {
         KeyboardController.clearFocusAndHide(this);
         bottomSheetView.close();
+        directoryPickerSheetView.close();
         renderDrawer(lastState);
         drawerView.open();
     }
@@ -250,7 +293,117 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     public void showSheet(String title, List<SheetOption> options) {
         KeyboardController.clearFocusAndHide(this);
         drawerView.close();
+        directoryPickerSheetView.close();
         bottomSheetView.show(title, options);
+    }
+
+    @Override
+    public void showFileActionDialog(String title, String subtitle, List<SheetOption> options) {
+        KeyboardController.clearFocusAndHide(this);
+        bottomSheetView.close();
+        directoryPickerSheetView.close();
+
+        Dialog dialog = new Dialog(getContext());
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setCanceledOnTouchOutside(true);
+
+        LinearLayout panel = new LinearLayout(getContext());
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackground(LineTheme.rounded(getContext(), LineTheme.SURFACE_ELEVATED, 16));
+        LineTheme.padding(panel, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+
+        TextView titleView = LineTheme.textMedium(getContext(),
+                title == null || title.length() == 0 ? "文件操作" : title,
+                LineTheme.FONT_LG,
+                LineTheme.TEXT);
+        panel.addView(titleView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        if (subtitle != null && subtitle.length() > 0) {
+            TextView subtitleView = LineTheme.text(getContext(), subtitle, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            subtitleView.setSingleLine(false);
+            LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            subtitleParams.topMargin = LineTheme.dp(getContext(), LineTheme.XS);
+            panel.addView(subtitleView, subtitleParams);
+        }
+
+        View divider = new View(getContext());
+        divider.setBackgroundColor(LineTheme.BORDER_LIGHT);
+        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1);
+        dividerParams.topMargin = LineTheme.dp(getContext(), LineTheme.MD);
+        dividerParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.XS);
+        panel.addView(divider, dividerParams);
+
+        if (options != null) {
+            for (SheetOption option : options) {
+                panel.addView(fileActionRow(dialog, option), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            }
+        }
+
+        dialog.setContentView(panel);
+        dialog.setOnShowListener(d -> {
+            Window shown = dialog.getWindow();
+            if (shown != null) {
+                shown.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                shown.setLayout(insetDialogWidth(), LayoutParams.WRAP_CONTENT);
+            }
+        });
+        dialog.show();
+    }
+
+    @Override
+    public void showInputDialog(String title, String message, String initialValue, String actionId) {
+        KeyboardController.clearFocusAndHide(this);
+        drawerView.close();
+        bottomSheetView.close();
+        directoryPickerSheetView.close();
+        final EditText input = new EditText(getContext());
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        input.setText(initialValue == null ? "" : initialValue);
+        input.setSelectAllOnFocus(true);
+        int horizontalPadding = LineTheme.dp(getContext(), LineTheme.LG);
+        input.setPadding(horizontalPadding, LineTheme.dp(getContext(), LineTheme.SM), horizontalPadding, LineTheme.dp(getContext(), LineTheme.SM));
+        AlertDialog dialog = new AlertDialog.Builder(getContext())
+                .setTitle(title == null ? "" : title)
+                .setMessage(message == null ? "" : message)
+                .setView(input)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确定", (d, which) -> presenter.onDialogInputSubmitted(actionId, input.getText().toString()))
+                .create();
+        dialog.setOnShowListener(d -> {
+            input.requestFocus();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+            }
+        });
+        dialog.show();
+    }
+
+    @Override
+    public void showConfirmationDialog(String title, String message, String confirmLabel, boolean danger, String actionId) {
+        KeyboardController.clearFocusAndHide(this);
+        drawerView.close();
+        bottomSheetView.close();
+        directoryPickerSheetView.close();
+        AlertDialog dialog = new AlertDialog.Builder(getContext())
+                .setTitle(title == null ? "" : title)
+                .setMessage(message == null ? "" : message)
+                .setNegativeButton("取消", null)
+                .setPositiveButton(confirmLabel == null || confirmLabel.length() == 0 ? "确定" : confirmLabel,
+                        (d, which) -> presenter.onDialogConfirmed(actionId))
+                .create();
+        if (danger) {
+            dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(LineTheme.DANGER));
+        }
+        dialog.show();
+    }
+
+    @Override
+    public void showDirectoryPicker(String title, String subtitle, FileTreeNode tree, String selectedPath, boolean loading, String message) {
+        KeyboardController.clearFocusAndHide(this);
+        drawerView.close();
+        bottomSheetView.close();
+        directoryPickerSheetView.show(title, subtitle, tree, selectedPath, loading, message);
     }
 
     @Override
@@ -258,6 +411,12 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         KeyboardController.clearFocusAndHide(this);
         drawerView.close();
         bottomSheetView.close();
+        directoryPickerSheetView.close();
+    }
+
+    @Override
+    public void hideDirectoryPicker() {
+        directoryPickerSheetView.close();
     }
 
     @Override
@@ -267,6 +426,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         KeyboardController.clearFocusAndHide(this);
         drawerView.close();
         bottomSheetView.close();
+        directoryPickerSheetView.close();
         screenHost.removeAllViews();
         screenHost.addView(buildScreen(screenId), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         screenHost.setVisibility(VISIBLE);
@@ -349,13 +509,58 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 projectLabel.length() == 0 ? "LineCode" : projectLabel,
                 projectPath.length() == 0 ? "" : projectPath,
                 presenter.canRemoveCurrentProject(),
-                presenter.getFileTree()
+                drawerView.isFilesTabActive() ? presenter.getFileTree() : null
         );
+    }
+
+    private View fileActionRow(Dialog dialog, SheetOption option) {
+        Context context = getContext();
+        String id = option == null ? "" : option.getId();
+        boolean danger = id.startsWith("file:delete:");
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClickable(true);
+        row.setOnClickListener(v -> {
+            dialog.dismiss();
+            presenter.onSheetOptionSelected(id);
+        });
+        LineTheme.padding(row, 0, 14, 0, 14);
+
+        LinearLayout labels = new LinearLayout(context);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        row.addView(labels, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView label = LineTheme.text(context,
+                option == null ? "" : option.getLabel(),
+                LineTheme.FONT_MD,
+                danger ? LineTheme.DANGER : LineTheme.TEXT,
+                Typeface.NORMAL);
+        labels.addView(label, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        String description = option == null ? "" : option.getDescription();
+        if (description != null && description.length() > 0) {
+            TextView desc = LineTheme.text(context, description, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            desc.setSingleLine(false);
+            LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            descParams.topMargin = LineTheme.dp(context, 2);
+            labels.addView(desc, descParams);
+        }
+        return row;
+    }
+
+    private int insetDialogWidth() {
+        int width = getResources().getDisplayMetrics().widthPixels - LineTheme.dp(getContext(), 32);
+        return Math.max(LineTheme.dp(getContext(), 280), width);
     }
 
     public boolean handleBackPressed() {
         if (screenHost.getVisibility() == VISIBLE) {
             presenter.onScreenBackFrom(currentScreenId);
+            return true;
+        }
+        if (directoryPickerSheetView.getVisibility() == VISIBLE) {
+            directoryPickerSheetView.close();
             return true;
         }
         if (bottomSheetView.getVisibility() == VISIBLE) {

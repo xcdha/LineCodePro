@@ -9,8 +9,14 @@ import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelContextParser;
+import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.ToolCall;
+import cn.lineai.tool.ToolRegistry;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -21,16 +27,17 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config.getModelId()));
             body.put("input", ResponsesInputBuilder.inputJson(messages));
+            putInstructions(body, messages);
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
-            String raw = postJson(endpoint(config.getBaseUrl(), "/responses"), body, headers);
+            String raw = postJson(responsesEndpoint(config.getBaseUrl()), body, headers);
             JSONObject response = new JSONObject(raw);
-            String directText = response.optString("output_text");
-            if (directText.length() > 0) {
-                return new ModelCompletionResponse(directText);
-            }
-            return new ModelCompletionResponse(extractOutputText(response.optJSONArray("output")));
+            StringBuilder text = new StringBuilder(response.optString("output_text"));
+            StringBuilder reasoning = new StringBuilder();
+            LinkedHashMap<String, ToolCallBuilder> toolCallBuilders = new LinkedHashMap<>();
+            mergeOutputArray(response.optJSONArray("output"), text, reasoning, toolCallBuilders, new HashMap<>(), null);
+            return new ModelCompletionResponse(text.toString(), reasoning.toString(), buildToolCalls(toolCallBuilders));
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
@@ -52,6 +59,15 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             body.put("model", ModelContextParser.apiModelId(config.getModelId()));
             body.put("input", ResponsesInputBuilder.inputJson(messages));
             body.put("stream", true);
+            body.put("parallel_tool_calls", true);
+            body.put("store", true);
+            body.put("include", new JSONArray());
+            putInstructions(body, messages);
+            JSONArray tools = toolsJson(requestOptions.getTools());
+            if (tools.length() > 0) {
+                body.put("tools", tools);
+                body.put("tool_choice", "auto");
+            }
             if (!AiBehaviorSettings.REASONING_OFF.equals(requestOptions.getReasoningEffort())) {
                 body.put("reasoning", new JSONObject()
                         .put("effort", AiBehaviorSettings.REASONING_MAX.equals(requestOptions.getReasoningEffort()) ? "high" : requestOptions.getReasoningEffort())
@@ -63,8 +79,10 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
 
             StringBuilder text = new StringBuilder();
             StringBuilder reasoning = new StringBuilder();
+            LinkedHashMap<String, ToolCallBuilder> toolCallBuilders = new LinkedHashMap<>();
+            HashMap<String, StringBuilder> customToolInputs = new HashMap<>();
 
-            postJsonSse(endpoint(config.getBaseUrl(), "/responses"), body, headers, cancellationToken, (eventType, data) -> {
+            postJsonSse(responsesEndpoint(config.getBaseUrl()), body, headers, cancellationToken, (eventType, data) -> {
                 if ("[DONE]".equals(data.trim())) {
                     return;
                 }
@@ -73,6 +91,17 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
                     throw new ModelCompletionException("Codex 流式错误: " + event.opt("error"));
                 }
                 String type = eventType == null || eventType.length() == 0 ? event.optString("type") : eventType;
+
+                if ("response.custom_tool_call_input.delta".equals(type) && event.has("delta")) {
+                    appendCustomToolInput(customToolInputs, event.optString("item_id"), event.optString("delta"));
+                    appendCustomToolInput(customToolInputs, event.optString("call_id"), event.optString("delta"));
+                    return;
+                }
+
+                if ("response.function_call_arguments.delta".equals(type) && event.has("delta")) {
+                    appendFunctionArgumentsDelta(toolCallBuilders, event, event.optString("delta"));
+                    return;
+                }
 
                 if ("response.output_text.delta".equals(type) && event.has("delta")) {
                     String delta = event.optString("delta");
@@ -104,14 +133,21 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
                 if (("response.completed".equals(type) || "response.output_item.done".equals(type)) && event.has("response")) {
                     JSONObject response = event.optJSONObject("response");
                     if (response != null) {
-                        mergeOutputArray(response.optJSONArray("output"), text, reasoning, callback);
+                        mergeOutputArray(response.optJSONArray("output"), text, reasoning, toolCallBuilders, customToolInputs, callback);
                     }
                 } else if (("response.output_item.added".equals(type) || "response.output_item.done".equals(type)) && event.has("item")) {
-                    mergeOutputItem(event.optJSONObject("item"), text, reasoning, callback);
+                    mergeOutputItem(event.optJSONObject("item"), text, reasoning, toolCallBuilders, customToolInputs, callback);
+                } else if ("response.failed".equals(type)) {
+                    throw new ModelCompletionException("Codex response.failed: " + event.toString());
+                } else if ("response.incomplete".equals(type)) {
+                    JSONObject response = event.optJSONObject("response");
+                    JSONObject details = response == null ? null : response.optJSONObject("incomplete_details");
+                    String reason = details == null ? "unknown" : details.optString("reason", "unknown");
+                    throw new ModelCompletionException("Codex response.incomplete: " + reason);
                 }
             });
 
-            return new ModelCompletionResponse(text.toString(), reasoning.toString());
+            return new ModelCompletionResponse(text.toString(), reasoning.toString(), buildToolCalls(toolCallBuilders));
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
@@ -119,44 +155,62 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
         }
     }
 
-    private String extractOutputText(JSONArray output) {
-        if (output == null) {
-            return "";
+    private String responsesEndpoint(String baseUrl) {
+        String base = baseUrl == null ? "" : baseUrl.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
         }
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < output.length(); i++) {
-            JSONObject item = output.optJSONObject(i);
-            if (item == null) {
+        if (base.endsWith("/chat/completions")) {
+            return base.substring(0, base.length() - "/chat/completions".length()) + "/responses";
+        }
+        return endpoint(base, "/responses");
+    }
+
+    private void putInstructions(JSONObject body, List<ModelMessage> messages) throws Exception {
+        String instructions = ResponsesInputBuilder.instructions(messages);
+        if (instructions.length() > 0) {
+            body.put("instructions", instructions);
+        }
+    }
+
+    private JSONArray toolsJson(List<BaseTool> tools) throws Exception {
+        JSONArray array = new JSONArray();
+        JSONArray openAiTools = ToolRegistry.toJsonArray(tools);
+        for (int i = 0; i < openAiTools.length(); i++) {
+            JSONObject tool = openAiTools.optJSONObject(i);
+            if (tool == null) {
                 continue;
             }
-            JSONArray content = item.optJSONArray("content");
-            if (content == null) {
-                continue;
-            }
-            for (int j = 0; j < content.length(); j++) {
-                JSONObject block = content.optJSONObject(j);
-                if (block != null) {
-                    String text = block.optString("text");
-                    if (text.length() > 0) {
-                        builder.append(text);
-                    }
-                }
+            JSONObject function = tool.optJSONObject("function");
+            if ("function".equals(tool.optString("type")) && function != null) {
+                array.put(new JSONObject()
+                        .put("type", "function")
+                        .put("name", function.optString("name"))
+                        .put("description", function.optString("description"))
+                        .put("strict", false)
+                        .put("parameters", function.optJSONObject("parameters") == null
+                                ? new JSONObject().put("type", "object").put("properties", new JSONObject())
+                                : function.optJSONObject("parameters")));
+            } else {
+                array.put(tool);
             }
         }
-        return builder.toString();
+        return array;
     }
 
     private void mergeOutputArray(
             JSONArray output,
             StringBuilder text,
             StringBuilder reasoning,
+            LinkedHashMap<String, ToolCallBuilder> toolCallBuilders,
+            Map<String, StringBuilder> customToolInputs,
             ModelStreamCallback callback
     ) {
         if (output == null) {
             return;
         }
         for (int i = 0; i < output.length(); i++) {
-            mergeOutputItem(output.optJSONObject(i), text, reasoning, callback);
+            mergeOutputItem(output.optJSONObject(i), text, reasoning, toolCallBuilders, customToolInputs, callback);
         }
     }
 
@@ -164,12 +218,31 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             JSONObject item,
             StringBuilder text,
             StringBuilder reasoning,
+            LinkedHashMap<String, ToolCallBuilder> toolCallBuilders,
+            Map<String, StringBuilder> customToolInputs,
             ModelStreamCallback callback
     ) {
         if (item == null) {
             return;
         }
-        if ("reasoning".equals(item.optString("type"))) {
+        String itemType = item.optString("type");
+        if ("function_call".equals(itemType)) {
+            upsertToolCall(toolCallBuilders,
+                    item.optString("call_id", item.optString("id")),
+                    item.optString("name"),
+                    argumentsString(item.opt("arguments")),
+                    true);
+            return;
+        }
+        if ("custom_tool_call".equals(itemType)) {
+            String callId = item.optString("call_id", item.optString("id"));
+            String input = item.has("input")
+                    ? argumentsString(item.opt("input"))
+                    : customInput(customToolInputs, callId, item.optString("id"));
+            upsertToolCall(toolCallBuilders, callId, item.optString("name"), input, true);
+            return;
+        }
+        if ("reasoning".equals(itemType)) {
             String next = extractReasoningText(item);
             appendFinalIfMissing(reasoning, next, true, callback);
             return;
@@ -209,23 +282,140 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
         return builder.toString();
     }
 
+    private void appendCustomToolInput(Map<String, StringBuilder> customToolInputs, String id, String delta) {
+        if (id == null || id.length() == 0 || delta == null || delta.length() == 0) {
+            return;
+        }
+        StringBuilder builder = customToolInputs.get(id);
+        if (builder == null) {
+            builder = new StringBuilder();
+            customToolInputs.put(id, builder);
+        }
+        builder.append(delta);
+    }
+
+    private void appendFunctionArgumentsDelta(
+            LinkedHashMap<String, ToolCallBuilder> toolCallBuilders,
+            JSONObject event,
+            String delta
+    ) {
+        if (delta == null || delta.length() == 0) {
+            return;
+        }
+        String callId = event.optString("call_id");
+        if (callId.length() == 0) {
+            callId = event.optString("item_id", event.optString("output_index"));
+        }
+        if (callId.length() == 0) {
+            callId = "call_" + toolCallBuilders.size();
+        }
+        ToolCallBuilder builder = toolCallBuilders.get(callId);
+        if (builder == null) {
+            builder = new ToolCallBuilder(callId);
+            toolCallBuilders.put(callId, builder);
+        }
+        builder.arguments.append(delta);
+    }
+
+    private void upsertToolCall(
+            LinkedHashMap<String, ToolCallBuilder> toolCallBuilders,
+            String callId,
+            String name,
+            String arguments,
+            boolean replaceArguments
+    ) {
+        if (callId == null || callId.length() == 0) {
+            callId = "call_" + toolCallBuilders.size() + "_" + System.currentTimeMillis();
+        }
+        ToolCallBuilder builder = toolCallBuilders.get(callId);
+        if (builder == null) {
+            builder = new ToolCallBuilder(callId);
+            toolCallBuilders.put(callId, builder);
+        }
+        if (name != null && name.length() > 0) {
+            builder.name = name;
+        }
+        if (arguments != null) {
+            if (replaceArguments) {
+                builder.arguments.setLength(0);
+            }
+            builder.arguments.append(arguments);
+        }
+    }
+
+    private String argumentsString(Object value) {
+        if (value == null || JSONObject.NULL.equals(value)) {
+            return "{}";
+        }
+        if (value instanceof String) {
+            String text = (String) value;
+            return text.length() == 0 ? "{}" : text;
+        }
+        return String.valueOf(value);
+    }
+
+    private String customInput(Map<String, StringBuilder> customToolInputs, String callId, String itemId) {
+        StringBuilder byCallId = customToolInputs.get(callId);
+        if (byCallId != null) {
+            return byCallId.toString();
+        }
+        StringBuilder byItemId = customToolInputs.get(itemId);
+        return byItemId == null ? "" : byItemId.toString();
+    }
+
+    private List<ToolCall> buildToolCalls(LinkedHashMap<String, ToolCallBuilder> toolCallBuilders) {
+        ArrayList<ToolCall> calls = new ArrayList<>();
+        for (ToolCallBuilder builder : toolCallBuilders.values()) {
+            if (builder == null || builder.name.length() == 0) {
+                continue;
+            }
+            calls.add(new ToolCall(
+                    builder.callId,
+                    builder.name,
+                    builder.arguments.length() == 0 ? "{}" : builder.arguments.toString()
+            ));
+        }
+        return calls;
+    }
+
     private void appendFinalIfMissing(
             StringBuilder target,
             String next,
             boolean thinking,
             ModelStreamCallback callback
     ) {
-        if (next == null || next.length() == 0 || target.indexOf(next) >= 0) {
+        if (next == null || next.length() == 0) {
             return;
         }
-        target.append(next);
+        String delta = next;
+        String current = target.toString();
+        if (current.contains(next)) {
+            return;
+        }
+        if (current.length() > 0 && next.startsWith(current)) {
+            delta = next.substring(current.length());
+        }
+        if (delta.length() == 0) {
+            return;
+        }
+        target.append(delta);
         if (callback == null) {
             return;
         }
         if (thinking) {
-            callback.onReasoningDelta(next);
+            callback.onReasoningDelta(delta);
         } else {
-            callback.onTextDelta(next);
+            callback.onTextDelta(delta);
+        }
+    }
+
+    private static final class ToolCallBuilder {
+        private final String callId;
+        private String name = "";
+        private final StringBuilder arguments = new StringBuilder();
+
+        ToolCallBuilder(String callId) {
+            this.callId = callId == null ? "" : callId;
         }
     }
 }

@@ -36,7 +36,11 @@ public final class DrawerView extends FrameLayout {
 
         void onCurrentProjectRemoveRequested();
 
-        void onFileNodeSelected(String path);
+        void onFileNodeSelected(String path, boolean directory);
+
+        void onFileNodeLongPressed(String path, String name, boolean directory, boolean root);
+
+        void onFileTreeActivated();
 
         void onFileTreeRefresh();
     }
@@ -58,6 +62,13 @@ public final class DrawerView extends FrameLayout {
     private FileTreeNode fileTree;
     private Listener listener;
     private int activeTab = TAB_CONVERSATIONS;
+    private int renderedBodyTab = -1;
+    private List<ConversationRecord> renderedConversations;
+    private String renderedConversationId = "";
+    private String renderedProjectLabel = "";
+    private String renderedProjectPath = "";
+    private boolean renderedProjectRemovable;
+    private FileTreeNode renderedFileTree;
 
     public DrawerView(Context context) {
         super(context);
@@ -120,6 +131,14 @@ public final class DrawerView extends FrameLayout {
             boolean projectRemovable,
             FileTreeNode fileTree
     ) {
+        boolean sameBody = isSameBody(
+                conversations,
+                currentConversationId,
+                projectLabel,
+                projectPath,
+                projectRemovable,
+                fileTree
+        );
         this.conversations = conversations;
         this.currentConversationId = currentConversationId == null ? "" : currentConversationId;
         this.projectLabel = projectLabel == null ? "LineCode" : projectLabel;
@@ -127,7 +146,9 @@ public final class DrawerView extends FrameLayout {
         this.projectRemovable = projectRemovable;
         this.fileTree = fileTree;
         renderChrome();
-        renderBody();
+        if (!sameBody) {
+            renderBody();
+        }
     }
 
     public void open() {
@@ -155,6 +176,10 @@ public final class DrawerView extends FrameLayout {
         }).start();
     }
 
+    public boolean isFilesTabActive() {
+        return activeTab == TAB_FILES;
+    }
+
     private void setActiveTab(int tab) {
         if (activeTab == tab) {
             return;
@@ -162,6 +187,9 @@ public final class DrawerView extends FrameLayout {
         activeTab = tab;
         renderChrome();
         renderBody();
+        if (activeTab == TAB_FILES && listener != null) {
+            listener.onFileTreeActivated();
+        }
     }
 
     private void renderChrome() {
@@ -170,19 +198,14 @@ public final class DrawerView extends FrameLayout {
         headerActions.removeAllViews();
 
         if (activeTab == TAB_FILES) {
-            IconButtonView refresh = headerIcon(context, IconButtonView.FOLDER_OPEN, LineTheme.ACCENT, 16);
+            IconButtonView refresh = headerIcon(context, IconButtonView.REFRESH_CW, LineTheme.ACCENT, 16);
             refresh.setOnClickListener(v -> {
                 if (listener != null) {
                     listener.onFileTreeRefresh();
                 }
             });
             headerActions.addView(refresh);
-            headerActions.addView(headerIcon(context, IconButtonView.FOLDER_PLUS, LineTheme.ACCENT, 16));
-            headerActions.addView(headerIcon(context, IconButtonView.ARCHIVE, LineTheme.ACCENT, 16));
         }
-        IconButtonView close = headerIcon(context, IconButtonView.CLOSE, LineTheme.TEXT, 20);
-        close.setOnClickListener(v -> close());
-        headerActions.addView(close);
 
         tabs.removeAllViews();
         tabs.addView(tabButton(context, IconButtonView.MESSAGE_SQUARE, "对话", activeTab == TAB_CONVERSATIONS, () -> setActiveTab(TAB_CONVERSATIONS)),
@@ -198,6 +221,40 @@ public final class DrawerView extends FrameLayout {
         } else {
             renderFiles();
         }
+        renderedBodyTab = activeTab;
+        renderedConversations = conversations;
+        renderedConversationId = currentConversationId;
+        renderedProjectLabel = projectLabel;
+        renderedProjectPath = projectPath;
+        renderedProjectRemovable = projectRemovable;
+        renderedFileTree = fileTree;
+    }
+
+    private boolean isSameBody(
+            List<ConversationRecord> nextConversations,
+            String nextConversationId,
+            String nextProjectLabel,
+            String nextProjectPath,
+            boolean nextProjectRemovable,
+            FileTreeNode nextFileTree
+    ) {
+        if (renderedBodyTab != activeTab) {
+            return false;
+        }
+        if (activeTab == TAB_FILES) {
+            return renderedFileTree == nextFileTree
+                    && renderedProjectRemovable == nextProjectRemovable
+                    && same(renderedProjectLabel, nextProjectLabel == null ? "LineCode" : nextProjectLabel)
+                    && same(renderedProjectPath, nextProjectPath == null ? "" : nextProjectPath);
+        }
+        return renderedConversations == nextConversations
+                && same(renderedConversationId, nextConversationId == null ? "" : nextConversationId);
+    }
+
+    private boolean same(String left, String right) {
+        String safeLeft = left == null ? "" : left;
+        String safeRight = right == null ? "" : right;
+        return safeLeft.equals(safeRight);
     }
 
     private void renderConversations() {
@@ -289,7 +346,7 @@ public final class DrawerView extends FrameLayout {
         body.addView(scrollView, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f));
 
         if (fileTree == null) {
-            TextView empty = LineTheme.text(context, "目录不可访问", LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            TextView empty = LineTheme.text(context, "正在准备目录...", LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
             empty.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams emptyParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
             emptyParams.topMargin = LineTheme.dp(context, 80);
@@ -438,7 +495,7 @@ public final class DrawerView extends FrameLayout {
             iconColor = colorForFile(node.getName(), iconType);
             iconSize = 14;
         }
-        addFileRow(tree, node.getPath(), iconType, node.getName(), depth, root, iconColor, iconSize);
+        addFileRow(tree, node.getPath(), iconType, node.getName(), depth, root, node.isDirectory(), iconColor, iconSize);
         if (node.isDirectory() && node.isExpanded()) {
             List<FileTreeNode> children = node.getChildren();
             for (int i = 0; i < children.size(); i++) {
@@ -447,7 +504,17 @@ public final class DrawerView extends FrameLayout {
         }
     }
 
-    private void addFileRow(LinearLayout tree, String path, int iconType, String name, int depth, boolean root, int iconColor, int iconSize) {
+    private void addFileRow(
+            LinearLayout tree,
+            String path,
+            int iconType,
+            String name,
+            int depth,
+            boolean root,
+            boolean directory,
+            int iconColor,
+            int iconSize
+    ) {
         Context context = tree.getContext();
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -455,8 +522,14 @@ public final class DrawerView extends FrameLayout {
         row.setClickable(true);
         row.setOnClickListener(v -> {
             if (listener != null) {
-                listener.onFileNodeSelected(path);
+                listener.onFileNodeSelected(path, directory);
             }
+        });
+        row.setOnLongClickListener(v -> {
+            if (listener != null) {
+                listener.onFileNodeLongPressed(path, name, directory, root);
+            }
+            return true;
         });
         int left = LineTheme.SM + depth * 16;
         LineTheme.padding(row, left, 4, LineTheme.SM, 4);
@@ -473,6 +546,11 @@ public final class DrawerView extends FrameLayout {
 
         if (root) {
             IconButtonView plus = sizedIcon(context, IconButtonView.PLUS, LineTheme.TEXT_TERTIARY, 22, 14);
+            plus.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onFileNodeLongPressed(path, name, true, true);
+                }
+            });
             row.addView(plus, new LinearLayout.LayoutParams(LineTheme.dp(context, 22), LineTheme.dp(context, 22)));
         }
     }

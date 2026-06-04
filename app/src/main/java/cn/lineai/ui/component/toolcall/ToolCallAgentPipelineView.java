@@ -37,12 +37,17 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         JSONArray agents = input.optJSONArray("agents");
         int total = agents == null ? 0 : agents.length();
-        boolean complete = result != null;
-        boolean error = result != null && result.isError();
-        HashMap<String, AgentSummary> summaryById = parseResult(result);
-        int failed = error ? Math.max(1, failedCount(summaryById)) : failedCount(summaryById);
-        int completed = complete ? Math.max(0, summaryById.isEmpty() && total > 0 && !error ? total : doneCount(summaryById)) : 0;
-        int running = complete ? 0 : total > 0 ? 1 : 0;
+        JSONObject progress = progressPayload(result);
+        boolean runningProgress = progress != null && "running".equals(progress.optString("status", "running"));
+        boolean complete = result != null && !runningProgress && !"running".equals(result.getReviewState());
+        boolean error = result != null && (result.isError() || (progress != null && "error".equals(progress.optString("status"))));
+        HashMap<String, AgentSummary> summaryById = progress != null ? parseProgress(progress) : parseResult(result);
+        int failed = error ? Math.max(progress == null ? 1 : 0, failedCount(summaryById)) : failedCount(summaryById);
+        int completed = summaryById.isEmpty() && complete && total > 0 && !error ? total : doneCount(summaryById);
+        int running = complete ? 0 : runningCount(summaryById);
+        if (!complete && running == 0 && progress == null && total > 0) {
+            running = 1;
+        }
 
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
@@ -159,10 +164,13 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
         String id = agent.optString("id").trim();
         String name = agent.optString("description", id).trim();
         String type = normalizeType(agent.optString("type"));
-        boolean error = (summary != null && summary.error) || (complete && pipelineError && summary == null);
-        String status = complete ? error ? "失败" : "完成" : "等待中";
+        String rowStatus = summary == null ? "" : summary.status;
+        boolean running = "running".equals(rowStatus);
+        boolean done = "done".equals(rowStatus) || (complete && summary != null && !summary.error) || (complete && summary == null && !pipelineError);
+        boolean error = (summary != null && summary.error) || "error".equals(rowStatus) || (complete && pipelineError && summary == null);
+        String status = error ? "失败" : running ? "运行中" : done ? "完成" : "等待中";
         int typeColor = "explore".equals(type) ? LineTheme.ACCENT : LineTheme.DANGER;
-        int statusColor = error ? LineTheme.DANGER : complete ? LineTheme.SUCCESS : LineTheme.TEXT_TERTIARY;
+        int statusColor = error ? LineTheme.DANGER : running ? LineTheme.ACCENT : done ? LineTheme.SUCCESS : LineTheme.TEXT_TERTIARY;
 
         LinearLayout row = new LinearLayout(getContext());
         row.setOrientation(VERTICAL);
@@ -210,7 +218,8 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
         metaParams.topMargin = LineTheme.dp(getContext(), 3);
         textBlock.addView(meta, metaParams);
 
-        IconButtonView statusIcon = new IconButtonView(getContext(), error ? IconButtonView.CIRCLE_X : complete ? IconButtonView.CIRCLE_CHECK : IconButtonView.CLOCK_3);
+        IconButtonView statusIcon = new IconButtonView(getContext(),
+                error ? IconButtonView.CIRCLE_X : running ? IconButtonView.LOADER : done ? IconButtonView.CIRCLE_CHECK : IconButtonView.CLOCK_3);
         statusIcon.setIconColor(statusColor);
         statusIcon.setIconSizeDp(16, 12);
         statusIcon.setClickable(false);
@@ -222,8 +231,9 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
         header.addView(statusText, statusParams);
         row.addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        if (summary != null && summary.output.length() > 0) {
-            TextView output = LineTheme.text(getContext(), summary.output, LineTheme.FONT_XS,
+        if (summary != null && (summary.output.length() > 0 || summary.thinking.length() > 0)) {
+            String preview = summary.output.length() > 0 ? summary.output : summary.thinking;
+            TextView output = LineTheme.text(getContext(), preview, LineTheme.FONT_XS,
                     error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
             output.setMaxLines(4);
             LayoutParams outputParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -242,6 +252,48 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
         view.setBackground(LineTheme.roundedStroke(getContext(), LineTheme.SURFACE_LIGHT, 999, LineTheme.CODE_BORDER));
         LineTheme.padding(view, LineTheme.XS, 1, LineTheme.XS, 1);
         return view;
+    }
+
+    private JSONObject progressPayload(ToolResult result) {
+        if (result == null || result.getContent().trim().length() == 0) {
+            return null;
+        }
+        try {
+            JSONObject object = new JSONObject(result.getContent());
+            return object.optBoolean("linecode_agent_pipeline_progress") ? object : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private HashMap<String, AgentSummary> parseProgress(JSONObject progress) {
+        HashMap<String, AgentSummary> values = new HashMap<>();
+        if (progress == null) {
+            return values;
+        }
+        JSONArray array = progress.optJSONArray("agents");
+        if (array == null) {
+            return values;
+        }
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject object = array.optJSONObject(i);
+            if (object == null) {
+                continue;
+            }
+            String id = object.optString("id").trim();
+            if (id.length() == 0) {
+                continue;
+            }
+            String status = object.optString("status", "waiting");
+            boolean error = object.optBoolean("error") || "error".equals(status);
+            values.put(id, new AgentSummary(
+                    object.optString("output"),
+                    object.optString("thinking"),
+                    status,
+                    error
+            ));
+        }
+        return values;
     }
 
     private HashMap<String, AgentSummary> parseResult(ToolResult result) {
@@ -271,7 +323,7 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
             if (outputStart >= 0 && outputStart < text.length()) {
                 output = text.substring(outputStart).trim();
             }
-            values.put(id, new AgentSummary(output, error));
+            values.put(id, new AgentSummary(output, "", error ? "error" : "done", error));
         }
         return values;
     }
@@ -291,7 +343,7 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
     private int doneCount(HashMap<String, AgentSummary> summaryById) {
         int count = 0;
         for (AgentSummary summary : summaryById.values()) {
-            if (!summary.error) {
+            if ("done".equals(summary.status) && !summary.error) {
                 count++;
             }
         }
@@ -302,6 +354,16 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
         int count = 0;
         for (AgentSummary summary : summaryById.values()) {
             if (summary.error) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int runningCount(HashMap<String, AgentSummary> summaryById) {
+        int count = 0;
+        for (AgentSummary summary : summaryById.values()) {
+            if ("running".equals(summary.status)) {
                 count++;
             }
         }
@@ -322,10 +384,14 @@ public final class ToolCallAgentPipelineView extends LinearLayout {
 
     private static final class AgentSummary {
         private final String output;
+        private final String thinking;
+        private final String status;
         private final boolean error;
 
-        AgentSummary(String output, boolean error) {
+        AgentSummary(String output, String thinking, String status, boolean error) {
             this.output = output == null ? "" : output;
+            this.thinking = thinking == null ? "" : thinking;
+            this.status = status == null || status.length() == 0 ? "waiting" : status;
             this.error = error;
         }
     }

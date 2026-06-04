@@ -12,6 +12,7 @@ import android.os.Build;
 import android.provider.Settings;
 import cn.lineai.data.repository.SshConfigRepository;
 import cn.lineai.model.SshConfig;
+import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
@@ -28,6 +29,10 @@ import java.util.regex.Pattern;
 public final class SshService {
     public interface OutputListener {
         void onOutput(String output);
+    }
+
+    public interface SftpOperation<T> {
+        T run(ChannelSftp sftp) throws Exception;
     }
 
     public static final String TERMUX_RUN_COMMAND_PERMISSION = "com.termux.permission.RUN_COMMAND";
@@ -176,6 +181,38 @@ public final class SshService {
         return executeInternal(safeCommand, boundedTimeout, safeConfig, listener);
     }
 
+    public <T> T withSftp(SftpOperation<T> operation, int timeoutMs) throws Exception {
+        if (operation == null) {
+            throw new IllegalArgumentException("SFTP 操作不能为空");
+        }
+        SshConfig config = repository.get();
+        if (!config.isConfigured()) {
+            throw new IllegalStateException("SSH 未配置完整，请填写 host、port、username，并填写 password 或 private key。");
+        }
+        int boundedTimeout = Math.max(1000, Math.min(timeoutMs <= 0 ? 30000 : timeoutMs, 300000));
+        Session session = null;
+        ChannelSftp channel = null;
+        try {
+            session = createSession(config, boundedTimeout);
+            channel = (ChannelSftp) session.openChannel("sftp");
+            channel.connect(boundedTimeout);
+            return operation.run(channel);
+        } finally {
+            if (channel != null) {
+                try {
+                    channel.disconnect();
+                } catch (Exception ignored) {
+                }
+            }
+            if (session != null) {
+                try {
+                    session.disconnect();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
     public void openTermux() {
         ensureTermuxInstalled();
         Intent launchIntent = context.getPackageManager().getLaunchIntentForPackage(TERMUX_PACKAGE);
@@ -282,30 +319,7 @@ public final class SshService {
         ChannelExec channel = null;
         Session session = null;
         try {
-            JSch jsch = new JSch();
-            if (config.getPrivateKey().trim().length() > 0) {
-                byte[] passphrase = config.getPassphrase().length() > 0
-                        ? config.getPassphrase().getBytes(StandardCharsets.UTF_8)
-                        : null;
-                jsch.addIdentity(
-                        "linecode-key",
-                        config.getPrivateKey().getBytes(StandardCharsets.UTF_8),
-                        null,
-                        passphrase
-                );
-            }
-            session = jsch.getSession(config.getUsername(), config.getHost(), config.getPort());
-            if (config.getPassword().length() > 0) {
-                session.setPassword(config.getPassword());
-            }
-            Properties properties = new Properties();
-            properties.put("StrictHostKeyChecking", "no");
-            properties.put("IdentitiesOnly", "yes");
-            properties.put("PreferredAuthentications", config.getPrivateKey().trim().length() > 0
-                    ? "publickey,password,keyboard-interactive"
-                    : "password,keyboard-interactive,publickey");
-            session.setConfig(properties);
-            session.connect(timeoutMs);
+            session = createSession(config, timeoutMs);
 
             channel = (ChannelExec) session.openChannel("exec");
             channel.setCommand(command);
@@ -351,6 +365,34 @@ public final class SshService {
                 }
             }
         }
+    }
+
+    private Session createSession(SshConfig config, int timeoutMs) throws Exception {
+        JSch jsch = new JSch();
+        if (config.getPrivateKey().trim().length() > 0) {
+            byte[] passphrase = config.getPassphrase().length() > 0
+                    ? config.getPassphrase().getBytes(StandardCharsets.UTF_8)
+                    : null;
+            jsch.addIdentity(
+                    "linecode-key",
+                    config.getPrivateKey().getBytes(StandardCharsets.UTF_8),
+                    null,
+                    passphrase
+            );
+        }
+        Session session = jsch.getSession(config.getUsername(), config.getHost(), config.getPort());
+        if (config.getPassword().length() > 0) {
+            session.setPassword(config.getPassword());
+        }
+        Properties properties = new Properties();
+        properties.put("StrictHostKeyChecking", "no");
+        properties.put("IdentitiesOnly", "yes");
+        properties.put("PreferredAuthentications", config.getPrivateKey().trim().length() > 0
+                ? "publickey,password,keyboard-interactive"
+                : "password,keyboard-interactive,publickey");
+        session.setConfig(properties);
+        session.connect(timeoutMs);
+        return session;
     }
 
     private TermuxSetupResult parseTermuxSetupOutput(String output) {

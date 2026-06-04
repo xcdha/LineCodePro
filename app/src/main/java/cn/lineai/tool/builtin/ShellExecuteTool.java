@@ -64,8 +64,11 @@ public final class ShellExecuteTool extends BaseTool {
             return error("命令不能为空");
         }
         int timeoutMs = Math.max(1000, Math.min(input.optInt("timeoutMs", 30000), 300000));
-        String command = inputCwd.trim().length() > 0
-                ? "cd " + shellQuote(inputCwd.trim()) + " && " + inputCommand
+        String cwd = inputCwd.trim().length() > 0
+                ? inputCwd.trim()
+                : context == null ? "" : context.getHomePath().trim();
+        String command = cwd.length() > 0
+                ? "cd " + shellQuote(cwd) + " && " + inputCommand
                 : inputCommand;
         StringBuilder streamedOutput = new StringBuilder();
         if (context != null) {

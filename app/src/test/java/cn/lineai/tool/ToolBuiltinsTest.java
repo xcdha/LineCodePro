@@ -116,6 +116,18 @@ public final class ToolBuiltinsTest {
     }
 
     @Test
+    public void agentExploreRejectsWriteScope() throws Exception {
+        ToolResult result = new AgentTool().execute(new JSONObject()
+                .put("type", "explore")
+                .put("description", "检查代码")
+                .put("prompt", "只读检查入口")
+                .put("write_scope", new org.json.JSONArray().put("app/src/main/java")), context());
+
+        Assert.assertTrue(result.isError());
+        Assert.assertTrue(result.getContent().contains("explore Agent 不能声明 write_scope"));
+    }
+
+    @Test
     public void agentPipelineRejectsSelfDependency() throws Exception {
         ToolResult result = new AgentPipelineTool().execute(new JSONObject()
                 .put("agents", new org.json.JSONArray()
@@ -128,6 +140,64 @@ public final class ToolBuiltinsTest {
 
         Assert.assertTrue(result.isError());
         Assert.assertTrue(result.getContent().contains("Agent 不能依赖自身: scan"));
+    }
+
+    @Test
+    public void agentPipelineRequiresSubCodingWriteScope() throws Exception {
+        ToolResult result = new AgentPipelineTool().execute(new JSONObject()
+                .put("agents", new org.json.JSONArray()
+                        .put(new JSONObject()
+                                .put("id", "ui")
+                                .put("type", "sub-coding")
+                                .put("description", "修改 UI")
+                                .put("prompt", "实现按钮样式"))), context());
+
+        Assert.assertTrue(result.isError());
+        Assert.assertTrue(result.getContent().contains("sub-coding Agent 必须声明 write_scope"));
+    }
+
+    @Test
+    public void agentPipelineRejectsDuplicateWriteScope() throws Exception {
+        org.json.JSONArray agents = new org.json.JSONArray()
+                .put(new JSONObject()
+                        .put("id", "button")
+                        .put("type", "sub-coding")
+                        .put("description", "修改按钮")
+                        .put("prompt", "实现按钮样式")
+                        .put("write_scope", new org.json.JSONArray().put("app/src/main/java/cn/lineai/ui/ButtonView.java")))
+                .put(new JSONObject()
+                        .put("id", "theme")
+                        .put("type", "sub-coding")
+                        .put("description", "修改主题")
+                        .put("prompt", "实现主题样式")
+                        .put("write_scope", new org.json.JSONArray().put("app/src/main/java/cn/lineai/ui/ButtonView.java")));
+
+        ToolResult result = new AgentPipelineTool().execute(new JSONObject().put("agents", agents), context());
+
+        Assert.assertTrue(result.isError());
+        Assert.assertTrue(result.getContent().contains("多个 Agent 不能写同一文件或重叠目录"));
+    }
+
+    @Test
+    public void agentPipelineRejectsNestedWriteScope() throws Exception {
+        org.json.JSONArray agents = new org.json.JSONArray()
+                .put(new JSONObject()
+                        .put("id", "ui")
+                        .put("type", "sub-coding")
+                        .put("description", "修改 UI")
+                        .put("prompt", "实现 UI")
+                        .put("write_scope", new org.json.JSONArray().put("app/src/main/java/cn/lineai/ui")))
+                .put(new JSONObject()
+                        .put("id", "button")
+                        .put("type", "sub-coding")
+                        .put("description", "修改按钮")
+                        .put("prompt", "实现按钮")
+                        .put("write_scope", new org.json.JSONArray().put("app/src/main/java/cn/lineai/ui/ButtonView.java")));
+
+        ToolResult result = new AgentPipelineTool().execute(new JSONObject().put("agents", agents), context());
+
+        Assert.assertTrue(result.isError());
+        Assert.assertTrue(result.getContent().contains("多个 Agent 不能写同一文件或重叠目录"));
     }
 
     private ToolContext context() {

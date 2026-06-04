@@ -18,7 +18,7 @@ public final class AgentTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "分派一个子 Agent 处理任务。explore 用于只读代码探索，sub-coding 用于边界清晰的编程子任务。";
+        return "分派一个子 Agent 处理任务。explore 只能只读探索；sub-coding 必须有明确且唯一的写入范围，不能和其他 Agent 操纵同一文件。";
     }
 
     @Override
@@ -40,7 +40,15 @@ public final class AgentTool extends BaseTool {
                                 .put("description", "3-8 个词的任务标题"))
                         .put("prompt", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "分派给 Agent 的详细任务、范围、限制和验收方式")))
+                                .put("description", "分派给 Agent 的详细任务、范围、限制和验收方式。必须写明不能修改未授权文件；如需修改范围外文件必须停止并汇报"))
+                        .put("read_scope", new JSONObject()
+                                .put("type", "array")
+                                .put("items", new JSONObject().put("type", "string"))
+                                .put("description", "允许读取的文件或目录路径列表。为空时仍应只读取完成任务所需的最小范围"))
+                        .put("write_scope", new JSONObject()
+                                .put("type", "array")
+                                .put("items", new JSONObject().put("type", "string"))
+                                .put("description", "sub-coding 允许写入的唯一文件或目录路径列表；explore 必须留空。不要把同一文件分配给多个 Agent")))
                 .put("required", new JSONArray().put("type").put("description").put("prompt"));
     }
 
@@ -51,6 +59,9 @@ public final class AgentTool extends BaseTool {
         String prompt = input.optString("prompt").trim();
         if (!TYPE_EXPLORE.equals(type) && !TYPE_SUB_CODING.equals(type)) {
             return error("Agent 类型只能是 explore 或 sub-coding。");
+        }
+        if (TYPE_EXPLORE.equals(type) && hasScope(input.optJSONArray("write_scope"))) {
+            return error("explore Agent 不能声明 write_scope，也不能写入文件。");
         }
         if (description.length() == 0) {
             return error("Agent description 不能为空。");
@@ -82,5 +93,17 @@ public final class AgentTool extends BaseTool {
 
     private ToolResult error(String content) {
         return new ToolResult("", getName(), content, true);
+    }
+
+    private boolean hasScope(JSONArray array) {
+        if (array == null) {
+            return false;
+        }
+        for (int i = 0; i < array.length(); i++) {
+            if (array.optString(i).trim().length() > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 }

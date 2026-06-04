@@ -316,7 +316,7 @@ public final class ToolSettingsRepository {
                 }
             }
             if ("shell".equals(config.getId())) {
-                builder.append("shell_execute 默认在 SSH 会话的登录目录执行，需要目录信息时先执行 pwd 或设置 cwd。\n");
+                builder.append("shell_execute 默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。\n");
             } else if ("web_search".equals(config.getId())) {
                 builder.append("web_search 和 web_fetch 由应用侧网络配置执行，不依赖 SSH 主机环境。\n");
             }

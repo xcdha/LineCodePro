@@ -8,6 +8,7 @@ public final class WorkspacePaths {
     public static final String SOURCE_DEFAULT = "default";
     public static final String SOURCE_MANAGED = "managed";
     public static final String SOURCE_EXTERNAL = "external";
+    public static final String SOURCE_SSH = "ssh";
 
     private final File linecodeRoot;
     private final File homeRoot;

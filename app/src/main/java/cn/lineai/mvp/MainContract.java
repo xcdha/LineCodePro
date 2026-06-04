@@ -29,7 +29,17 @@ public interface MainContract {
 
         void showSheet(String title, List<SheetOption> options);
 
+        void showFileActionDialog(String title, String subtitle, List<SheetOption> options);
+
+        void showInputDialog(String title, String message, String initialValue, String actionId);
+
+        void showConfirmationDialog(String title, String message, String confirmLabel, boolean danger, String actionId);
+
+        void showDirectoryPicker(String title, String subtitle, FileTreeNode tree, String selectedPath, boolean loading, String message);
+
         void hideOverlays();
+
+        void hideDirectoryPicker();
 
         void showScreen(String screenId);
 
@@ -65,9 +75,23 @@ public interface MainContract {
 
         void onCurrentProjectRemoveRequested();
 
-        void onFileNodeSelected(String path);
+        void onFileNodeSelected(String path, boolean directory);
+
+        void onFileNodeLongPressed(String path, String name, boolean directory, boolean root);
+
+        void onFileTreeActivated();
 
         void onFileTreeRefresh();
+
+        void onDirectoryPickerNodeSelected(String path);
+
+        void onDirectoryPickerConfirmed();
+
+        void onDirectoryPickerCancelled();
+
+        void onDialogInputSubmitted(String actionId, String value);
+
+        void onDialogConfirmed(String actionId);
 
         void onMoreClick();
 
