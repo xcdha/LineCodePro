@@ -1062,6 +1062,7 @@ public final class MainCoordinator implements MainUiController {
         attachmentPickerActive = false;
         attachmentPickerLoading = false;
         attachmentPickerMessage = "";
+        attachmentPickerLoadGeneration++;
     }
 
     private ArrayList<InputAttachment> sanitizeAttachments(List<InputAttachment> rawAttachments) {
