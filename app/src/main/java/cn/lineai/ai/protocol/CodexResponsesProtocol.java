@@ -115,6 +115,11 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
                     return;
                 }
 
+                if ("response.output_text.done".equals(type)) {
+                    appendFinalIfMissing(text, event.optString("text", event.optString("delta")), false, callback);
+                    return;
+                }
+
                 if (("response.reasoning_summary_text.delta".equals(type) || "response.reasoning_text.delta".equals(type))
                         && event.has("delta")) {
                     String delta = event.optString("delta");

@@ -8,6 +8,8 @@ import cn.lineai.ui.theme.LineTheme;
 public final class MessageActionBarView extends LinearLayout {
     public static final int ALIGN_LEFT = 0;
     public static final int ALIGN_RIGHT = 1;
+    private final IconButtonView copyButton;
+    private final IconButtonView recallButton;
 
     public MessageActionBarView(Context context, int align, boolean recallEnabled) {
         super(context);
@@ -15,13 +17,38 @@ public final class MessageActionBarView extends LinearLayout {
         setGravity(align == ALIGN_RIGHT ? Gravity.END : Gravity.START);
         setMinimumHeight(LineTheme.dp(context, 22));
 
-        IconButtonView copy = icon(context, IconButtonView.COPY);
-        addView(copy, iconParams(context));
+        copyButton = icon(context, IconButtonView.COPY);
+        copyButton.setContentDescription("复制消息");
+        addView(copyButton, iconParams(context));
 
+        IconButtonView recall = null;
         if (recallEnabled) {
-            IconButtonView recall = icon(context, IconButtonView.ROTATE_CCW);
+            recall = icon(context, IconButtonView.ROTATE_CCW);
+            recall.setContentDescription("撤回消息");
             addView(recall, iconParams(context));
         }
+        recallButton = recall;
+    }
+
+    public void setListener(Listener listener) {
+        copyButton.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onCopy();
+            }
+        });
+        if (recallButton != null) {
+            recallButton.setOnClickListener(v -> {
+                if (listener != null) {
+                    listener.onRecall();
+                }
+            });
+        }
+    }
+
+    public interface Listener {
+        void onCopy();
+
+        void onRecall();
     }
 
     private IconButtonView icon(Context context, int type) {

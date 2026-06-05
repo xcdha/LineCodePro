@@ -2,12 +2,17 @@ package cn.lineai.mvp;
 
 import cn.lineai.model.ChatUiState;
 import cn.lineai.model.FileTreeNode;
+import cn.lineai.model.InputAttachment;
 import cn.lineai.model.SheetOption;
 import java.util.List;
 
 public interface MainContract {
     interface View {
         void render(ChatUiState state);
+
+        void setComposerDraft(String text);
+
+        void setComposerDraft(String text, List<InputAttachment> attachments);
 
         void showDrawer();
 
@@ -21,9 +26,13 @@ public interface MainContract {
 
         void showDirectoryPicker(String title, String subtitle, FileTreeNode tree, String selectedPath, boolean loading, String message);
 
+        void showAttachmentPicker(String title, FileTreeNode tree, boolean loading, String message, String source);
+
         void hideOverlays();
 
         void hideDirectoryPicker();
+
+        void hideAttachmentPicker();
 
         void showScreen(String screenId);
 

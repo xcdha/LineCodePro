@@ -37,6 +37,7 @@ public final class ChatUiStateAssembler {
             String projectLabel,
             String projectSource,
             String projectPath,
+            String conversationId,
             String activeChatMode,
             boolean streaming,
             List<ChatMessage> messages
@@ -69,6 +70,7 @@ public final class ChatUiStateAssembler {
                 outputSettings.isCodeWrapEnabled(),
                 outputSettings.getBrowserMode(),
                 activeChatMode,
+                conversationId,
                 messages
         );
     }

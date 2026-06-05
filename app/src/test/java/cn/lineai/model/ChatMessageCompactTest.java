@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Collections;
 import org.junit.Test;
 
 public final class ChatMessageCompactTest {
@@ -29,5 +30,19 @@ public final class ChatMessageCompactTest {
         assertEquals("{\"type\":\"compaction\",\"id\":\"cmp_1\"}", copied.getResponseInputItemJson());
         assertTrue(copied.isExcludeFromContext());
         assertFalse(copied.isCompactBlock());
+    }
+
+    @Test
+    public void attachmentsSurviveMessageCopies() {
+        InputAttachment attachment = new InputAttachment("Main.java", "/repo/Main.java", InputAttachment.SOURCE_LOCAL);
+        ChatMessage message = new ChatMessage("m1", ChatMessage.Role.USER, "hello", false,
+                Collections.singletonList(attachment));
+
+        ChatMessage copied = message.withContent("next", "", false)
+                .withExcludeFromContext(true);
+
+        assertEquals(1, copied.getAttachments().size());
+        assertEquals("/repo/Main.java", copied.getAttachments().get(0).getPath());
+        assertTrue(copied.isExcludeFromContext());
     }
 }

@@ -41,6 +41,7 @@ import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
 import cn.lineai.model.ExtensionOverviewState;
 import cn.lineai.model.FileTreeNode;
+import cn.lineai.model.InputAttachment;
 import cn.lineai.model.MemoryOverviewState;
 import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpSettingsState;
@@ -185,6 +186,14 @@ public final class MainCoordinator implements MainUiController {
     private String directoryPickerRootPath = "";
     private boolean directoryPickerLoading;
     private String directoryPickerMessage = "";
+    private final Set<String> attachmentPickerExpandedPaths = new HashSet<>();
+    private FileTreeNode attachmentPickerTree;
+    private String attachmentPickerRootPath = "";
+    private String attachmentPickerSource = "";
+    private boolean attachmentPickerLoading;
+    private String attachmentPickerMessage = "";
+    private boolean attachmentPickerActive;
+    private int attachmentPickerLoadGeneration;
     private boolean startupProjectAvailabilityChecked;
 
     private static final class ToolExecutionBatch {
@@ -737,6 +746,10 @@ public final class MainCoordinator implements MainUiController {
         chatSessionStore.setStreaming(false);
         chatSessionStore.startNewConversation(System.currentTimeMillis());
         persistCurrentConversation();
+        if (view != null) {
+            view.hideOverlays();
+            view.showChatScreen();
+        }
         render();
     }
 
@@ -745,6 +758,9 @@ public final class MainCoordinator implements MainUiController {
         if (id == null || id.length() == 0 || id.equals(chatSessionStore.getCurrentConversationId())) {
             if (view != null) {
                 view.hideOverlays();
+                if (id != null && id.equals(chatSessionStore.getCurrentConversationId())) {
+                    view.showChatScreen();
+                }
             }
             return;
         }
@@ -753,6 +769,7 @@ public final class MainCoordinator implements MainUiController {
         loadConversation(id);
         if (view != null) {
             view.hideOverlays();
+            view.showChatScreen();
         }
         render();
     }
@@ -940,12 +957,19 @@ public final class MainCoordinator implements MainUiController {
 
     @Override
     public void onSendMessage(String text) {
+        onSendMessage(text, Collections.emptyList());
+    }
+
+    @Override
+    public void onSendMessage(String text, List<InputAttachment> attachments) {
         String trimmed = text == null ? "" : text.trim();
-        if (trimmed.isEmpty() || chatSessionStore.isStreaming()) {
+        ArrayList<InputAttachment> safeAttachments = sanitizeAttachments(attachments);
+        if ((trimmed.isEmpty() && safeAttachments.isEmpty()) || chatSessionStore.isStreaming()) {
             return;
         }
         ensureCurrentConversation();
-        messages.add(new ChatMessage(nextId(), ChatMessage.Role.USER, trimmed, false));
+        String userContent = composeUserContent(trimmed, safeAttachments);
+        messages.add(new ChatMessage(nextId(), ChatMessage.Role.USER, userContent, false, safeAttachments));
         persistCurrentConversation();
         ModelConfig selectedModel = modelRepository.getSelectedModel();
         if (selectedModel == null) {
@@ -965,10 +989,118 @@ public final class MainCoordinator implements MainUiController {
 
         String activeUserMessageId = messages.get(messages.size() - 1).getId();
         if (shouldAutoCompactBeforeRequest(selectedModel, activeUserMessageId)) {
-            startContextCompaction(generationId, selectedModel, cancellationToken, true, activeUserMessageId, trimmed);
+            startContextCompaction(generationId, selectedModel, cancellationToken, true, activeUserMessageId, userContent);
             return;
         }
-        startInitialModelRequest(generationId, selectedModel, cancellationToken, trimmed);
+        startInitialModelRequest(generationId, selectedModel, cancellationToken, userContent);
+    }
+
+    @Override
+    public void onRecallMessage(String messageId) {
+        if (chatSessionStore.isStreaming()) {
+            return;
+        }
+        String targetId = messageId == null ? "" : messageId;
+        if (targetId.length() == 0) {
+            return;
+        }
+        int targetIndex = -1;
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage message = messages.get(i);
+            if (targetId.equals(message.getId()) && message.getRole() == ChatMessage.Role.USER) {
+                targetIndex = i;
+                break;
+            }
+        }
+        if (targetIndex < 0) {
+            return;
+        }
+        ChatMessage recalled = messages.get(targetIndex);
+        String recalledText = recallText(recalled.getContent(), recalled.getAttachments());
+        ArrayList<InputAttachment> recalledAttachments = new ArrayList<>(recalled.getAttachments());
+        while (messages.size() > targetIndex) {
+            messages.remove(messages.size() - 1);
+        }
+        persistCurrentConversation();
+        render();
+        if (view != null) {
+            view.setComposerDraft(recalledText, recalledAttachments);
+        }
+    }
+
+    @Override
+    public void onAttachmentPickerRequested() {
+        if (chatSessionStore.isStreaming()) {
+            return;
+        }
+        attachmentPickerActive = true;
+        attachmentPickerSource = isSshExecutionMode() ? InputAttachment.SOURCE_SSH : InputAttachment.SOURCE_LOCAL;
+        attachmentPickerRootPath = attachmentRootPath(attachmentPickerSource);
+        attachmentPickerExpandedPaths.clear();
+        if (attachmentPickerRootPath.length() > 0) {
+            attachmentPickerExpandedPaths.add(attachmentPickerRootPath);
+        }
+        refreshAttachmentPicker(true);
+    }
+
+    @Override
+    public void onAttachmentPickerNodeSelected(String path, boolean directory) {
+        if (!attachmentPickerActive || !directory || path == null || path.length() == 0) {
+            return;
+        }
+        String cleanPath = path.trim();
+        if (attachmentPickerExpandedPaths.contains(cleanPath)) {
+            attachmentPickerExpandedPaths.remove(cleanPath);
+        } else {
+            attachmentPickerExpandedPaths.add(cleanPath);
+        }
+        refreshAttachmentPicker(false);
+    }
+
+    @Override
+    public void onAttachmentPickerCancelled() {
+        attachmentPickerActive = false;
+        attachmentPickerLoading = false;
+        attachmentPickerMessage = "";
+    }
+
+    private ArrayList<InputAttachment> sanitizeAttachments(List<InputAttachment> rawAttachments) {
+        ArrayList<InputAttachment> result = new ArrayList<>();
+        if (rawAttachments == null) {
+            return result;
+        }
+        for (InputAttachment attachment : rawAttachments) {
+            if (attachment == null || attachment.getPath().length() == 0) {
+                continue;
+            }
+            boolean exists = false;
+            for (InputAttachment current : result) {
+                if (current.matches(attachment.getPath(), attachment.getSource())) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                result.add(new InputAttachment(attachment.getName(), attachment.getPath(), attachment.getSource()));
+            }
+        }
+        return result;
+    }
+
+    private String composeUserContent(String text, List<InputAttachment> attachments) {
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.length() > 0) {
+            return trimmed;
+        }
+        return attachments == null || attachments.isEmpty() ? "" : "已附加文件";
+    }
+
+    private String recallText(String content, List<InputAttachment> attachments) {
+        String value = content == null ? "" : content.trim();
+        if ("已附加文件".equals(value) && attachments != null && !attachments.isEmpty()) {
+            return "";
+        }
+        return content == null ? "" : content;
     }
 
     @Override
@@ -2326,6 +2458,87 @@ public final class MainCoordinator implements MainUiController {
                 || ToolSettingsRepository.EXECUTION_SSH.equals(directoryPickerMode);
     }
 
+    private void refreshAttachmentPicker(boolean resetTree) {
+        if (!attachmentPickerActive || view == null) {
+            return;
+        }
+        if (resetTree) {
+            attachmentPickerTree = null;
+        }
+        if (InputAttachment.SOURCE_SSH.equals(attachmentPickerSource)) {
+            refreshSshAttachmentPicker();
+            return;
+        }
+        try {
+            attachmentPickerLoading = false;
+            attachmentPickerMessage = "";
+            attachmentPickerTree = fileTreeRepository.buildReadableTree(attachmentPickerRootPath, attachmentPickerExpandedPaths);
+        } catch (RuntimeException e) {
+            attachmentPickerTree = null;
+            attachmentPickerMessage = e.getMessage();
+        }
+        renderAttachmentPicker();
+    }
+
+    private void refreshSshAttachmentPicker() {
+        attachmentPickerLoading = true;
+        attachmentPickerMessage = "正在通过 SFTP 读取 SSH 文件...";
+        renderAttachmentPicker();
+        int generation = ++attachmentPickerLoadGeneration;
+        String root = attachmentPickerRootPath;
+        HashSet<String> expanded = new HashSet<>(attachmentPickerExpandedPaths);
+        backgroundTasks.execute("linecode-ssh-attachment-picker", () -> {
+            try {
+                FileTreeNode tree = sshFileTreeRepository.buildTree(root, expanded);
+                mainThread.post(() -> {
+                    if (!attachmentPickerActive || generation != attachmentPickerLoadGeneration) {
+                        return;
+                    }
+                    attachmentPickerTree = tree;
+                    attachmentPickerRootPath = tree.getPath();
+                    attachmentPickerExpandedPaths.add(tree.getPath());
+                    attachmentPickerLoading = false;
+                    attachmentPickerMessage = "";
+                    renderAttachmentPicker();
+                });
+            } catch (Exception e) {
+                mainThread.post(() -> {
+                    if (!attachmentPickerActive || generation != attachmentPickerLoadGeneration) {
+                        return;
+                    }
+                    attachmentPickerTree = null;
+                    attachmentPickerLoading = false;
+                    attachmentPickerMessage = e.getMessage();
+                    renderAttachmentPicker();
+                });
+            }
+        });
+    }
+
+    private void renderAttachmentPicker() {
+        if (!attachmentPickerActive || view == null) {
+            return;
+        }
+        boolean ssh = InputAttachment.SOURCE_SSH.equals(attachmentPickerSource);
+        view.showAttachmentPicker(
+                ssh ? "选择 SSH 文件" : "选择本地文件",
+                attachmentPickerTree,
+                attachmentPickerLoading,
+                attachmentPickerMessage,
+                attachmentPickerSource
+        );
+    }
+
+    private String attachmentRootPath(String source) {
+        if (InputAttachment.SOURCE_SSH.equals(source)) {
+            return projectPath.length() == 0 ? "." : projectPath;
+        }
+        if (projectPath.length() > 0) {
+            return projectPath;
+        }
+        return projectRepository.getDefaultHomePath();
+    }
+
     private FileTreeNode getSshFileTree() {
         if (cachedSshFileTree != null) {
             return cachedSshFileTree;
@@ -2692,6 +2905,7 @@ public final class MainCoordinator implements MainUiController {
                 projectLabel,
                 projectSource,
                 projectPath,
+                chatSessionStore.getCurrentConversationId(),
                 activeChatMode,
                 chatSessionStore.isStreaming(),
                 messages
@@ -2712,7 +2926,8 @@ public final class MainCoordinator implements MainUiController {
         ModelConfig selectedModel = modelRepository.getSelectedModel();
         String promptHomePath = promptHomePath();
         String extensionContext = extensionRepository.buildExtensionPrompt(projectPath);
-        String systemContext = joinPromptContext(learningContext, extensionContext);
+        String attachmentContext = buildAttachmentPrompt(messages);
+        String systemContext = joinPromptContext(joinPromptContext(learningContext, attachmentContext), extensionContext);
         String systemPrompt = systemPromptProvider.build(
                 promptHomePath,
                 aiSettings.getToneMode(),
@@ -2769,6 +2984,43 @@ public final class MainCoordinator implements MainUiController {
         return prompt + "\n\n工具调用次数限制：最多 " + limit + " 次；已使用 " + used + " 次；剩余 " + remaining + " 次。";
     }
 
+    private String buildAttachmentPrompt(List<ChatMessage> history) {
+        if (history == null || history.isEmpty()) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        int sectionCount = 0;
+        for (ChatMessage message : history) {
+            if (message == null || message.getRole() != ChatMessage.Role.USER || !message.hasAttachments()) {
+                continue;
+            }
+            String label = recallText(message.getContent(), message.getAttachments()).trim();
+            if (label.length() == 0) {
+                label = "用户消息 " + (sectionCount + 1);
+            }
+            if (builder.length() > 0) {
+                builder.append("\n\n");
+            }
+            builder.append("### ").append(label).append('\n');
+            for (InputAttachment attachment : message.getAttachments()) {
+                builder.append("- ")
+                        .append(attachment.getName())
+                        .append(" (")
+                        .append(attachment.getSource())
+                        .append("): ")
+                        .append(attachment.getPath())
+                        .append('\n');
+            }
+            sectionCount++;
+        }
+        if (sectionCount == 0) {
+            return "";
+        }
+        return "## 附加文件位置\n"
+                + "这些路径来自用户在输入框左侧选择的文件；除非用户明确要求，不要在回复中原样复述。\n"
+                + builder.toString().trim();
+    }
+
     private String joinPromptContext(String first, String second) {
         String left = first == null ? "" : first.trim();
         String right = second == null ? "" : second.trim();
@@ -2793,7 +3045,9 @@ public final class MainCoordinator implements MainUiController {
             return false;
         }
         ModelProtocolType type = selectedModel.getProtocolType();
-        return type == ModelProtocolType.OPENAI_COMPATIBLE || type == ModelProtocolType.ANTHROPIC_MESSAGES;
+        return type == ModelProtocolType.OPENAI_COMPATIBLE
+                || type == ModelProtocolType.ANTHROPIC_MESSAGES
+                || type == ModelProtocolType.CODEX_RESPONSES;
     }
 
     private void appendAssistantDelta(int generationId, String assistantId, String textDelta, String reasoningDelta) {
@@ -4269,6 +4523,16 @@ public final class MainCoordinator implements MainUiController {
             }
             if (message.getResponseInputItemJson().length() > 0) {
                 object.put("response_input_item_json", message.getResponseInputItemJson());
+            }
+            if (message.hasAttachments()) {
+                JSONArray array = new JSONArray();
+                for (InputAttachment attachment : message.getAttachments()) {
+                    array.put(new JSONObject()
+                            .put("name", attachment.getName())
+                            .put("path", attachment.getPath())
+                            .put("source", attachment.getSource()));
+                }
+                object.put("attachments", array);
             }
             return object.length() == 0 ? "" : object.toString();
         } catch (Exception ignored) {

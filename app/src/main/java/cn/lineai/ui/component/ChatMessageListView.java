@@ -15,6 +15,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.ChatUiState;
+import cn.lineai.model.InputAttachment;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.ui.component.toolcall.ToolReviewListener;
@@ -36,6 +37,7 @@ public final class ChatMessageListView extends FrameLayout {
     private boolean followTailEnabled;
     private ToolReviewListener toolReviewListener;
     private MarkdownLinkHandler markdownLinkHandler;
+    private MessageActionListener messageActionListener;
 
     public ChatMessageListView(Context context) {
         super(context);
@@ -97,7 +99,10 @@ public final class ChatMessageListView extends FrameLayout {
 
     public void render(ChatUiState state) {
         refreshScrollToBottomButtonStyle();
-        adapter.render(state);
+        boolean conversationChanged = adapter.render(state);
+        if (conversationChanged) {
+            followTailEnabled = true;
+        }
         if (followTailEnabled && adapter.getCount() > 0) {
             listView.post(() -> scrollToBottomInternal(false));
         } else {
@@ -113,6 +118,11 @@ public final class ChatMessageListView extends FrameLayout {
     public void setMarkdownLinkHandler(MarkdownLinkHandler handler) {
         markdownLinkHandler = handler;
         adapter.setMarkdownLinkHandler(handler);
+    }
+
+    public void setMessageActionListener(MessageActionListener listener) {
+        messageActionListener = listener;
+        adapter.setMessageActionListener(listener);
     }
 
     private void scrollToBottom() {
@@ -217,15 +227,17 @@ public final class ChatMessageListView extends FrameLayout {
         private boolean thinkingAutoExpand;
         private boolean thinkingScroll;
         private boolean codeWrapEnabled;
+        private String conversationId = "";
         private String projectPath = "";
         private ToolReviewListener toolReviewListener;
         private MarkdownLinkHandler markdownLinkHandler;
+        private MessageActionListener messageActionListener;
 
         MessageAdapter(Context context) {
             this.context = context;
         }
 
-        void render(ChatUiState state) {
+        boolean render(ChatUiState state) {
             ArrayList<ChatMessage> nextMessages = new ArrayList<>();
             if (state != null) {
                 List<ChatMessage> messages = state.getMessages();
@@ -256,26 +268,34 @@ public final class ChatMessageListView extends FrameLayout {
             boolean nextThinkingAutoExpand = state != null && state.isThinkingAutoExpandEnabled();
             boolean nextThinkingScroll = state == null || state.isThinkingScrollEnabled();
             boolean nextCodeWrapEnabled = state != null && state.isCodeWrapEnabled();
+            String nextConversationId = state == null ? "" : state.getConversationId();
             String nextProjectPath = state == null ? "" : state.getProjectPath();
+            boolean conversationChanged = !stringEquals(conversationId, nextConversationId);
 
             if (showConfigureState == nextShowConfigureState
                     && thinkingAutoExpand == nextThinkingAutoExpand
                     && thinkingScroll == nextThinkingScroll
                     && codeWrapEnabled == nextCodeWrapEnabled
+                    && stringEquals(conversationId, nextConversationId)
                     && stringEquals(projectPath, nextProjectPath)
                     && sameMessages(nextMessages)) {
-                return;
+                return false;
             }
 
+            if (conversationChanged) {
+                rowCache.clear();
+            }
             visibleMessages.clear();
             visibleMessages.addAll(nextMessages);
             showConfigureState = nextShowConfigureState;
             thinkingAutoExpand = nextThinkingAutoExpand;
             thinkingScroll = nextThinkingScroll;
             codeWrapEnabled = nextCodeWrapEnabled;
+            conversationId = nextConversationId;
             projectPath = nextProjectPath;
             pruneCache();
             notifyDataSetChanged();
+            return conversationChanged;
         }
 
         @Override
@@ -331,6 +351,7 @@ public final class ChatMessageListView extends FrameLayout {
 
             if (message.getRole() == ChatMessage.Role.USER) {
                 UserMessageView view = cached instanceof UserMessageView ? (UserMessageView) cached : new UserMessageView(context);
+                view.setMessageActionListener(messageActionListener);
                 view.bind(message);
                 rowCache.put(cacheKey, view);
                 trimCache();
@@ -339,6 +360,7 @@ public final class ChatMessageListView extends FrameLayout {
             AssistantMessageView view = cached instanceof AssistantMessageView ? (AssistantMessageView) cached : new AssistantMessageView(context);
             view.setToolReviewListener(toolReviewListener);
             view.setMarkdownLinkHandler(markdownLinkHandler);
+            view.setMessageActionListener(messageActionListener);
             view.setProjectPath(projectPath);
             view.bind(message, thinkingAutoExpand, thinkingScroll, codeWrapEnabled);
             rowCache.put(cacheKey, view);
@@ -364,6 +386,17 @@ public final class ChatMessageListView extends FrameLayout {
             }
         }
 
+        void setMessageActionListener(MessageActionListener listener) {
+            messageActionListener = listener;
+            for (View view : rowCache.values()) {
+                if (view instanceof UserMessageView) {
+                    ((UserMessageView) view).setMessageActionListener(listener);
+                } else if (view instanceof AssistantMessageView) {
+                    ((AssistantMessageView) view).setMessageActionListener(listener);
+                }
+            }
+        }
+
         private boolean canReturnCachedView(View cached, View convertView, android.view.ViewGroup parent) {
             if (cached.getParent() == null || cached == convertView) {
                 return true;
@@ -373,19 +406,21 @@ public final class ChatMessageListView extends FrameLayout {
 
         private void bindCachedView(View cached, ChatMessage message) {
             if (cached instanceof UserMessageView) {
+                ((UserMessageView) cached).setMessageActionListener(messageActionListener);
                 ((UserMessageView) cached).bind(message);
                 return;
             }
             if (cached instanceof AssistantMessageView) {
                 ((AssistantMessageView) cached).setToolReviewListener(toolReviewListener);
                 ((AssistantMessageView) cached).setMarkdownLinkHandler(markdownLinkHandler);
+                ((AssistantMessageView) cached).setMessageActionListener(messageActionListener);
                 ((AssistantMessageView) cached).setProjectPath(projectPath);
                 ((AssistantMessageView) cached).bind(message, thinkingAutoExpand, thinkingScroll, codeWrapEnabled);
             }
         }
 
         private String cacheKey(ChatMessage message) {
-            return message.getRole().name() + ":" + (message.getId() == null ? "" : message.getId());
+            return conversationId + ":" + message.getRole().name() + ":" + (message.getId() == null ? "" : message.getId());
         }
 
         private void pruneCache() {
@@ -438,6 +473,7 @@ public final class ChatMessageListView extends FrameLayout {
                     && a.isStreaming() == b.isStreaming()
                     && a.isHidden() == b.isHidden()
                     && stringEquals(a.getCompactStatus(), b.getCompactStatus())
+                    && sameAttachments(a, b)
                     && sameToolCalls(a, b)
                     && sameToolResults(a, b));
         }
@@ -487,6 +523,22 @@ public final class ChatMessageListView extends FrameLayout {
                         || !stringEquals(left.getReviewState(), right.getReviewState())
                         || !stringEquals(left.getReviewMessage(), right.getReviewMessage())
                         || left.isError() != right.isError()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private boolean sameAttachments(ChatMessage a, ChatMessage b) {
+            if (a.getAttachments().size() != b.getAttachments().size()) {
+                return false;
+            }
+            for (int i = 0; i < a.getAttachments().size(); i++) {
+                InputAttachment left = a.getAttachments().get(i);
+                InputAttachment right = b.getAttachments().get(i);
+                if (!stringEquals(left.getName(), right.getName())
+                        || !stringEquals(left.getPath(), right.getPath())
+                        || !stringEquals(left.getSource(), right.getSource())) {
                     return false;
                 }
             }

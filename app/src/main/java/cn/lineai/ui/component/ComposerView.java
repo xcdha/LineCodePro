@@ -7,21 +7,29 @@ import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
 import cn.lineai.model.ChatMode;
 import cn.lineai.model.ChatUiState;
+import cn.lineai.model.InputAttachment;
 import cn.lineai.ui.theme.LineTheme;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public final class ComposerView extends LinearLayout {
     public interface Listener {
-        void onSend(String text);
+        void onSend(String text, List<InputAttachment> attachments);
+
+        void onAttachClick();
 
         void onModeChanged(String mode);
 
@@ -34,8 +42,12 @@ public final class ComposerView extends LinearLayout {
     private final LinearLayout modeSelectorButton;
     private final TextView modeSelectorText;
     private final IconButtonView modeSelectorChevron;
+    private final HorizontalScrollView attachmentScroll;
+    private final LinearLayout attachmentList;
+    private final IconButtonView attachButton;
     private final EditText input;
     private final IconButtonView sendButton;
+    private final ArrayList<InputAttachment> attachments = new ArrayList<>();
     private PopupWindow modePopup;
     private boolean streaming;
     private String chatMode = ChatMode.DEFAULT;
@@ -47,6 +59,16 @@ public final class ComposerView extends LinearLayout {
         setBackgroundColor(LineTheme.BG);
         setWillNotDraw(false);
         LineTheme.padding(this, LineTheme.LG, LineTheme.SM, LineTheme.LG, LineTheme.LG);
+
+        attachmentScroll = new HorizontalScrollView(context);
+        attachmentScroll.setHorizontalScrollBarEnabled(false);
+        attachmentScroll.setVisibility(GONE);
+        attachmentList = new LinearLayout(context);
+        attachmentList.setOrientation(HORIZONTAL);
+        attachmentScroll.addView(attachmentList, new HorizontalScrollView.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams attachmentParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        attachmentParams.bottomMargin = LineTheme.dp(context, LineTheme.SM);
+        addView(attachmentScroll, attachmentParams);
 
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(VERTICAL);
@@ -79,10 +101,15 @@ public final class ComposerView extends LinearLayout {
         LineTheme.padding(inputRow, LineTheme.SM, LineTheme.SM, LineTheme.SM, 0);
         panel.addView(inputRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        IconButtonView attach = new IconButtonView(context, IconButtonView.PLUS);
-        attach.setIconColor(LineTheme.TEXT_SECONDARY);
-        attach.setIconSizeDp(40, 22);
-        attach.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 20));
+        attachButton = new IconButtonView(context, IconButtonView.PLUS);
+        attachButton.setIconColor(LineTheme.TEXT_SECONDARY);
+        attachButton.setIconSizeDp(40, 22);
+        attachButton.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 20));
+        attachButton.setOnClickListener(v -> {
+            if (!streaming && listener != null) {
+                listener.onAttachClick();
+            }
+        });
 
         input = new EditText(context);
         input.setTextColor(LineTheme.TEXT);
@@ -114,13 +141,14 @@ public final class ComposerView extends LinearLayout {
                 return;
             }
             String value = input.getText().toString();
-            if (value.trim().isEmpty()) {
+            if (!canSend()) {
                 return;
             }
             if (listener != null) {
-                listener.onSend(value);
+                listener.onSend(value, getAttachments());
             }
             input.setText("");
+            clearAttachments();
         });
 
         LinearLayout modeRow = new LinearLayout(context);
@@ -131,7 +159,7 @@ public final class ComposerView extends LinearLayout {
 
         LinearLayout.LayoutParams attachParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 40));
         attachParams.rightMargin = LineTheme.dp(context, LineTheme.SM);
-        modeRow.addView(attach, attachParams);
+        modeRow.addView(attachButton, attachParams);
 
         modeSelectorButton = new LinearLayout(context);
         modeSelectorButton.setOrientation(HORIZONTAL);
@@ -181,6 +209,58 @@ public final class ComposerView extends LinearLayout {
         this.listener = listener;
     }
 
+    public void setDraft(String text) {
+        setDraft(text, Collections.emptyList());
+    }
+
+    public void setDraft(String text, List<InputAttachment> nextAttachments) {
+        String value = text == null ? "" : text;
+        input.setText(value);
+        attachments.clear();
+        if (nextAttachments != null) {
+            attachments.addAll(nextAttachments);
+        }
+        renderAttachments();
+        input.setSelection(input.getText().length());
+        input.requestFocus();
+        updateSendButton();
+    }
+
+    public List<InputAttachment> getAttachments() {
+        return Collections.unmodifiableList(new ArrayList<>(attachments));
+    }
+
+    public List<String> selectedAttachmentPaths(String source) {
+        String normalizedSource = InputAttachment.SOURCE_SSH.equals(source)
+                ? InputAttachment.SOURCE_SSH
+                : InputAttachment.SOURCE_LOCAL;
+        ArrayList<String> paths = new ArrayList<>();
+        for (InputAttachment attachment : attachments) {
+            if (attachment.getSource().equals(normalizedSource)) {
+                paths.add(attachment.getPath());
+            }
+        }
+        return paths;
+    }
+
+    public void toggleAttachment(InputAttachment attachment) {
+        if (attachment == null || attachment.getPath().length() == 0) {
+            return;
+        }
+        for (int i = 0; i < attachments.size(); i++) {
+            InputAttachment existing = attachments.get(i);
+            if (existing.matches(attachment.getPath(), attachment.getSource())) {
+                attachments.remove(i);
+                renderAttachments();
+                updateSendButton();
+                return;
+            }
+        }
+        attachments.add(attachment);
+        renderAttachments();
+        updateSendButton();
+    }
+
     public void render(ChatUiState state) {
         streaming = state.isStreaming();
         modelText.setText(state.getModelLabel());
@@ -191,6 +271,8 @@ public final class ComposerView extends LinearLayout {
             modePopup.dismiss();
         }
         input.setEnabled(!streaming);
+        attachButton.setEnabled(!streaming);
+        attachButton.setAlpha(streaming ? 0.62f : 1f);
         input.setHint(state.hasConfiguredModel() ? "输入消息..." : "请先到设置 → 模型管理配置模型");
         updateModeButtons();
         updateSendButton();
@@ -205,7 +287,7 @@ public final class ComposerView extends LinearLayout {
     }
 
     private void updateSendButton() {
-        boolean hasText = input.getText().toString().trim().length() > 0;
+        boolean hasContent = canSend();
         if (streaming) {
             sendButton.setIconType(IconButtonView.STOP);
             sendButton.setIconColor(LineTheme.TEXT_ON_COLOR);
@@ -213,12 +295,67 @@ public final class ComposerView extends LinearLayout {
             sendButton.setBackground(LineTheme.rounded(getContext(), LineTheme.DANGER, 20));
         } else {
             sendButton.setIconType(IconButtonView.ARROW_UP);
-            sendButton.setIconColor(hasText ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY);
+            sendButton.setIconColor(hasContent ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY);
             sendButton.setIconSizeDp(40, 22);
-            sendButton.setBackground(LineTheme.rounded(getContext(), hasText ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 20));
+            sendButton.setBackground(LineTheme.rounded(getContext(), hasContent ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 20));
         }
-        sendButton.setEnabled(streaming || hasText);
+        sendButton.setEnabled(streaming || hasContent);
         sendButton.setAlpha(sendButton.isEnabled() ? 1f : 0.72f);
+    }
+
+    private boolean canSend() {
+        return input.getText().toString().trim().length() > 0 || !attachments.isEmpty();
+    }
+
+    private void clearAttachments() {
+        attachments.clear();
+        renderAttachments();
+        updateSendButton();
+    }
+
+    private void renderAttachments() {
+        attachmentList.removeAllViews();
+        if (attachments.isEmpty()) {
+            attachmentScroll.setVisibility(GONE);
+            return;
+        }
+        attachmentScroll.setVisibility(VISIBLE);
+        for (InputAttachment attachment : attachments) {
+            attachmentList.addView(attachmentChip(attachment));
+        }
+    }
+
+    private View attachmentChip(InputAttachment attachment) {
+        Context context = getContext();
+        LinearLayout chip = new LinearLayout(context);
+        chip.setOrientation(HORIZONTAL);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setBackground(LineTheme.roundedStroke(context, LineTheme.INPUT_BG, 17, LineTheme.BORDER));
+        LineTheme.padding(chip, LineTheme.MD, 0, LineTheme.SM, 0);
+
+        TextView name = LineTheme.textMedium(context, attachment.getName(), LineTheme.FONT_SM, LineTheme.TEXT_SECONDARY);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        name.setMaxWidth(LineTheme.dp(context, 170));
+        chip.addView(name, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+
+        IconButtonView remove = new IconButtonView(context, IconButtonView.CLOSE);
+        remove.setContentDescription("移除附件");
+        remove.setIconColor(LineTheme.TEXT_TERTIARY);
+        remove.setIconSizeDp(18, 12);
+        remove.setOnClickListener(v -> {
+            attachments.remove(attachment);
+            renderAttachments();
+            updateSendButton();
+        });
+        LinearLayout.LayoutParams removeParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 18), LineTheme.dp(context, 18));
+        removeParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
+        chip.addView(remove, removeParams);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LineTheme.dp(context, 34));
+        params.rightMargin = LineTheme.dp(context, LineTheme.SM);
+        chip.setLayoutParams(params);
+        return chip;
     }
 
     private void updateModeButtons() {

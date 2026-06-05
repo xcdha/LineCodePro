@@ -1,6 +1,7 @@
 package cn.lineai.data.repository;
 
 import cn.lineai.model.ChatMessage;
+import cn.lineai.model.InputAttachment;
 import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
 import org.json.JSONArray;
@@ -103,7 +104,8 @@ public final class MessageRecord {
                 readString(rawJson, "review_state"),
                 readString(rawJson, "review_message"),
                 readString(rawJson, "compact_status"),
-                readString(rawJson, "response_input_item_json"));
+                readString(rawJson, "response_input_item_json"),
+                readAttachments(rawJson));
     }
 
     private ArrayList<ToolCall> readToolCalls(String rawJson) {
@@ -142,5 +144,36 @@ public final class MessageRecord {
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    private ArrayList<InputAttachment> readAttachments(String rawJson) {
+        ArrayList<InputAttachment> attachments = new ArrayList<>();
+        if (rawJson == null || rawJson.trim().length() == 0) {
+            return attachments;
+        }
+        try {
+            JSONObject object = new JSONObject(rawJson);
+            JSONArray array = object.optJSONArray("attachments");
+            if (array == null) {
+                return attachments;
+            }
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.optJSONObject(i);
+                if (item == null) {
+                    continue;
+                }
+                String path = item.optString("path");
+                if (path.length() == 0) {
+                    continue;
+                }
+                attachments.add(new InputAttachment(
+                        item.optString("name"),
+                        path,
+                        item.optString("source")
+                ));
+            }
+        } catch (Exception ignored) {
+        }
+        return attachments;
     }
 }

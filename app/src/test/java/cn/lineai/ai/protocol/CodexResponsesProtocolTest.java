@@ -156,6 +156,93 @@ public final class CodexResponsesProtocolTest {
         }
     }
 
+    @Test
+    public void codexStreamUsesOutputTextDoneWhenDeltaIsMissing() throws Exception {
+        LocalSseServer server = new LocalSseServer(
+                sse("message", new JSONObject()
+                        .put("type", "response.output_text.done")
+                        .put("text", "hello")
+                        .toString())
+                        + sse("message", new JSONObject()
+                        .put("type", "response.completed")
+                        .put("response", new JSONObject().put("id", "resp_1"))
+                        .toString()));
+        server.start();
+        try {
+            ModelConfig config = codexConfig(server.port());
+            ArrayList<ModelMessage> messages = new ArrayList<>();
+            messages.add(new UserModelMessage("say hello"));
+            RecordingCallback callback = new RecordingCallback();
+
+            ModelCompletionResponse response = new CodexResponsesProtocol().stream(
+                    config,
+                    messages,
+                    callback,
+                    null,
+                    new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false, Collections.emptyList())
+            );
+
+            assertEquals("hello", response.getText());
+            assertTrue(callback.awaitText());
+            assertEquals("hello", callback.text());
+        } finally {
+            server.close();
+        }
+    }
+
+    @Test
+    public void codexStreamDoesNotDuplicateCompletedOutputAfterDelta() throws Exception {
+        JSONObject outputItem = new JSONObject()
+                .put("type", "message")
+                .put("content", new JSONArray().put(new JSONObject()
+                        .put("type", "output_text")
+                        .put("text", "hello")));
+        LocalSseServer server = new LocalSseServer(
+                sse("message", new JSONObject()
+                        .put("type", "response.output_text.delta")
+                        .put("delta", "hello")
+                        .toString())
+                        + sse("message", new JSONObject()
+                        .put("type", "response.completed")
+                        .put("response", new JSONObject()
+                                .put("id", "resp_1")
+                                .put("output", new JSONArray().put(outputItem)))
+                        .toString()));
+        server.start();
+        try {
+            ModelConfig config = codexConfig(server.port());
+            ArrayList<ModelMessage> messages = new ArrayList<>();
+            messages.add(new UserModelMessage("say hello"));
+            RecordingCallback callback = new RecordingCallback();
+
+            ModelCompletionResponse response = new CodexResponsesProtocol().stream(
+                    config,
+                    messages,
+                    callback,
+                    null,
+                    new ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false, Collections.emptyList())
+            );
+
+            assertEquals("hello", response.getText());
+            assertTrue(callback.awaitText());
+            assertEquals("hello", callback.text());
+        } finally {
+            server.close();
+        }
+    }
+
+    private ModelConfig codexConfig(int port) {
+        return new ModelConfig(
+                "m1",
+                "Codex",
+                ModelProtocolType.CODEX_RESPONSES,
+                "Codex",
+                "http://127.0.0.1:" + port + "/v1/chat/completions",
+                "sk-test",
+                "gpt-5-codex"
+        );
+    }
+
     private String sse(String event, String data) {
         return "event: " + event + "\n"
                 + "data: " + data + "\n\n";

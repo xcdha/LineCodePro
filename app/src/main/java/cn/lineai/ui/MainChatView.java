@@ -2,6 +2,8 @@ package cn.lineai.ui;
 
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -22,7 +24,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.model.ChatUiState;
+import cn.lineai.model.ChatMessage;
 import cn.lineai.model.FileTreeNode;
+import cn.lineai.model.InputAttachment;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProviderPreset;
 import cn.lineai.model.ModelProviderPresets;
@@ -30,6 +34,7 @@ import cn.lineai.model.SheetOption;
 import cn.lineai.mvp.MainContract;
 import cn.lineai.mvp.MainUiController;
 import cn.lineai.ui.component.BottomSheetView;
+import cn.lineai.ui.component.AttachmentPickerSheetView;
 import cn.lineai.ui.component.ChatMessageListView;
 import cn.lineai.ui.component.ComposerView;
 import cn.lineai.ui.component.AboutScreenView;
@@ -47,6 +52,7 @@ import cn.lineai.ui.component.LLMSettingsScreenView;
 import cn.lineai.ui.component.LicensesScreenView;
 import cn.lineai.ui.component.MCPSettingsScreenView;
 import cn.lineai.ui.component.MemorySettingsScreenView;
+import cn.lineai.ui.component.MessageActionListener;
 import cn.lineai.ui.component.McpExtensionEditScreenView;
 import cn.lineai.ui.component.ModelAddOptionsScreenView;
 import cn.lineai.ui.component.ModelAddScreenView;
@@ -92,10 +98,16 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     private final DrawerView drawerView;
     private final BottomSheetView bottomSheetView;
     private final DirectoryPickerSheetView directoryPickerSheetView;
+    private final AttachmentPickerSheetView attachmentPickerSheetView;
     private final FrameLayout screenHost;
     private ChatUiState lastState;
     private String shellCommandText = "";
     private String currentScreenId = "";
+    private String attachmentPickerTitle = "";
+    private String attachmentPickerMessage = "";
+    private String attachmentPickerSource = InputAttachment.SOURCE_LOCAL;
+    private boolean attachmentPickerLoading;
+    private FileTreeNode attachmentPickerTree;
 
     public MainChatView(Context context, MainUiController presenter) {
         super(context);
@@ -152,6 +164,19 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             }
         });
         messageListView.setMarkdownLinkHandler(url -> MainChatView.this.presenter.onOpenUrl(url));
+        messageListView.setMessageActionListener(new MessageActionListener() {
+            @Override
+            public void onCopyMessage(ChatMessage message) {
+                copyMessage(message);
+            }
+
+            @Override
+            public void onRecallMessage(ChatMessage message) {
+                if (message != null) {
+                    MainChatView.this.presenter.onRecallMessage(message.getId());
+                }
+            }
+        });
         contentView.addView(messageListView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
@@ -161,8 +186,13 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         composerView = new ComposerView(context);
         composerView.setListener(new ComposerView.Listener() {
             @Override
-            public void onSend(String text) {
-                MainChatView.this.presenter.onSendMessage(text);
+            public void onSend(String text, List<InputAttachment> attachments) {
+                MainChatView.this.presenter.onSendMessage(text, attachments);
+            }
+
+            @Override
+            public void onAttachClick() {
+                MainChatView.this.presenter.onAttachmentPickerRequested();
             }
 
             @Override
@@ -260,6 +290,26 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         });
         addView(directoryPickerSheetView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
+        attachmentPickerSheetView = new AttachmentPickerSheetView(context);
+        attachmentPickerSheetView.setListener(new AttachmentPickerSheetView.Listener() {
+            @Override
+            public void onAttachmentPickerClosed() {
+                MainChatView.this.presenter.onAttachmentPickerCancelled();
+            }
+
+            @Override
+            public void onAttachmentNodeSelected(String path, boolean directory) {
+                MainChatView.this.presenter.onAttachmentPickerNodeSelected(path, directory);
+            }
+
+            @Override
+            public void onAttachmentFileToggled(String path, String name, String source) {
+                composerView.toggleAttachment(new InputAttachment(name, path, source));
+                renderAttachmentPicker();
+            }
+        });
+        addView(attachmentPickerSheetView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
         screenHost = new FrameLayout(context);
         screenHost.setBackgroundColor(LineTheme.BG);
         screenHost.setClickable(true);
@@ -282,10 +332,23 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     }
 
     @Override
+    public void setComposerDraft(String text) {
+        showChatScreen();
+        composerView.setDraft(text);
+    }
+
+    @Override
+    public void setComposerDraft(String text, List<InputAttachment> attachments) {
+        showChatScreen();
+        composerView.setDraft(text, attachments);
+    }
+
+    @Override
     public void showDrawer() {
         KeyboardController.clearFocusAndHide(this);
         bottomSheetView.close();
         directoryPickerSheetView.close();
+        attachmentPickerSheetView.close();
         renderDrawer(lastState);
         drawerView.open();
     }
@@ -295,6 +358,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         KeyboardController.clearFocusAndHide(this);
         drawerView.close();
         directoryPickerSheetView.close();
+        attachmentPickerSheetView.close();
         bottomSheetView.show(title, options);
     }
 
@@ -303,6 +367,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         KeyboardController.clearFocusAndHide(this);
         bottomSheetView.close();
         directoryPickerSheetView.close();
+        attachmentPickerSheetView.close();
 
         Dialog dialog = new Dialog(getContext());
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -357,6 +422,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         drawerView.close();
         bottomSheetView.close();
         directoryPickerSheetView.close();
+        attachmentPickerSheetView.close();
         final EditText input = new EditText(getContext());
         input.setSingleLine(true);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -386,6 +452,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         drawerView.close();
         bottomSheetView.close();
         directoryPickerSheetView.close();
+        attachmentPickerSheetView.close();
         AlertDialog dialog = new AlertDialog.Builder(getContext())
                 .setTitle(title == null ? "" : title)
                 .setMessage(message == null ? "" : message)
@@ -404,7 +471,24 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         KeyboardController.clearFocusAndHide(this);
         drawerView.close();
         bottomSheetView.close();
+        attachmentPickerSheetView.close();
         directoryPickerSheetView.show(title, subtitle, tree, selectedPath, loading, message);
+    }
+
+    @Override
+    public void showAttachmentPicker(String title, FileTreeNode tree, boolean loading, String message, String source) {
+        KeyboardController.clearFocusAndHide(this);
+        drawerView.close();
+        bottomSheetView.close();
+        directoryPickerSheetView.close();
+        attachmentPickerTitle = title == null ? "" : title;
+        attachmentPickerTree = tree;
+        attachmentPickerLoading = loading;
+        attachmentPickerMessage = message == null ? "" : message;
+        attachmentPickerSource = InputAttachment.SOURCE_SSH.equals(source)
+                ? InputAttachment.SOURCE_SSH
+                : InputAttachment.SOURCE_LOCAL;
+        renderAttachmentPicker();
     }
 
     @Override
@@ -413,11 +497,17 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         drawerView.close();
         bottomSheetView.close();
         directoryPickerSheetView.close();
+        attachmentPickerSheetView.close();
     }
 
     @Override
     public void hideDirectoryPicker() {
         directoryPickerSheetView.close();
+    }
+
+    @Override
+    public void hideAttachmentPicker() {
+        attachmentPickerSheetView.close();
     }
 
     @Override
@@ -428,6 +518,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         drawerView.close();
         bottomSheetView.close();
         directoryPickerSheetView.close();
+        attachmentPickerSheetView.close();
         screenHost.removeAllViews();
         screenHost.addView(buildScreen(screenId), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         screenHost.setVisibility(VISIBLE);
@@ -486,6 +577,24 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             getContext().startActivity(intent);
         } catch (RuntimeException e) {
             Toast.makeText(getContext(), "无法打开链接: " + safeUrl, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void copyMessage(ChatMessage message) {
+        if (message == null) {
+            return;
+        }
+        String text = message.getContent();
+        if ((text == null || text.length() == 0) && message.getReasoningContent().length() > 0) {
+            text = message.getReasoningContent();
+        }
+        if (text == null || text.length() == 0) {
+            return;
+        }
+        ClipboardManager clipboard = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("LineCode message", text));
+            Toast.makeText(getContext(), "已复制", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -564,6 +673,10 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             directoryPickerSheetView.close();
             return true;
         }
+        if (attachmentPickerSheetView.getVisibility() == VISIBLE) {
+            attachmentPickerSheetView.close();
+            return true;
+        }
         if (bottomSheetView.getVisibility() == VISIBLE) {
             bottomSheetView.close();
             return true;
@@ -577,6 +690,17 @@ public final class MainChatView extends FrameLayout implements MainContract.View
 
     private void handleScreenBack() {
         presenter.onScreenBackFrom(currentScreenId);
+    }
+
+    private void renderAttachmentPicker() {
+        attachmentPickerSheetView.show(
+                attachmentPickerTitle,
+                attachmentPickerTree,
+                composerView.selectedAttachmentPaths(attachmentPickerSource),
+                attachmentPickerLoading,
+                attachmentPickerMessage,
+                attachmentPickerSource
+        );
     }
 
     private View buildScreen(String screenId) {

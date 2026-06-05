@@ -29,6 +29,8 @@ public final class AssistantMessageView extends LinearLayout {
     private String projectPath = "";
     private MarkdownLinkHandler markdownLinkHandler;
     private ToolReviewListener toolReviewListener;
+    private MessageActionListener actionListener;
+    private ChatMessage currentMessage;
 
     public AssistantMessageView(Context context) {
         super(context);
@@ -57,6 +59,18 @@ public final class AssistantMessageView extends LinearLayout {
         addView(toolCallsContainer, toolParams);
 
         actionBar = new MessageActionBarView(context, MessageActionBarView.ALIGN_LEFT, false);
+        actionBar.setListener(new MessageActionBarView.Listener() {
+            @Override
+            public void onCopy() {
+                if (actionListener != null && currentMessage != null) {
+                    actionListener.onCopyMessage(currentMessage);
+                }
+            }
+
+            @Override
+            public void onRecall() {
+            }
+        });
         LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LineTheme.dp(context, 22));
         actionParams.topMargin = LineTheme.dp(context, 3);
         addView(actionBar, actionParams);
@@ -71,6 +85,7 @@ public final class AssistantMessageView extends LinearLayout {
     }
 
     public void bind(ChatMessage message, boolean thinkingAutoExpand, boolean thinkingScrollable, boolean codeWrapEnabled) {
+        currentMessage = message;
         String messageId = message.getId() == null ? "" : message.getId();
         String reasoning = message.getReasoningContent();
         String safeReasoning = reasoning == null ? "" : reasoning;
@@ -134,6 +149,10 @@ public final class AssistantMessageView extends LinearLayout {
                 ((ToolCallBlockView) toolCallsContainer.getChildAt(i)).setToolReviewListener(listener);
             }
         }
+    }
+
+    public void setMessageActionListener(MessageActionListener listener) {
+        actionListener = listener;
     }
 
     public void setMarkdownLinkHandler(MarkdownLinkHandler handler) {

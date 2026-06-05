@@ -1,6 +1,7 @@
 package cn.lineai.context;
 
 import cn.lineai.model.ChatMessage;
+import cn.lineai.model.InputAttachment;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -37,6 +38,7 @@ public final class ContextManager {
         }
         return MESSAGE_OVERHEAD_TOKENS
                 + estimateTokens(effectiveContent(message))
+                + estimateAttachments(message)
                 + (includeReasoning ? estimateTokens(message.getReasoningContent()) : 0)
                 + estimateToolCalls(message);
     }
@@ -96,6 +98,19 @@ public final class ContextManager {
         int total = 0;
         for (cn.lineai.tool.ToolCall call : message.getToolCalls()) {
             total += estimateTokens(call.getName()) + estimateTokens(call.getArguments());
+        }
+        return total;
+    }
+
+    private int estimateAttachments(ChatMessage message) {
+        if (message == null || !message.hasAttachments()) {
+            return 0;
+        }
+        int total = 0;
+        for (InputAttachment attachment : message.getAttachments()) {
+            total += estimateTokens(attachment.getName())
+                    + estimateTokens(attachment.getSource())
+                    + estimateTokens(attachment.getPath());
         }
         return total;
     }

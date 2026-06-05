@@ -45,9 +45,15 @@ public final class ChatMessage {
     private final String reviewMessage;
     private final String compactStatus;
     private final String responseInputItemJson;
+    private final List<InputAttachment> attachments;
 
     public ChatMessage(String id, Role role, String content, boolean streaming) {
         this(id, role, content, "", streaming, false, false);
+    }
+
+    public ChatMessage(String id, Role role, String content, boolean streaming, List<InputAttachment> attachments) {
+        this(id, role, content, "", streaming, false, false,
+                Collections.emptyList(), Collections.emptyList(), "", "", false, "", "", "", "", "", attachments);
     }
 
     public ChatMessage(String id, Role role, String content, String reasoningContent, boolean streaming) {
@@ -125,6 +131,31 @@ public final class ChatMessage {
             String compactStatus,
             String responseInputItemJson
     ) {
+        this(id, role, content, reasoningContent, streaming, hidden, excludeFromContext,
+                toolCalls, toolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
+                compactStatus, responseInputItemJson, Collections.emptyList());
+    }
+
+    public ChatMessage(
+            String id,
+            Role role,
+            String content,
+            String reasoningContent,
+            boolean streaming,
+            boolean hidden,
+            boolean excludeFromContext,
+            List<ToolCall> toolCalls,
+            List<ToolResult> toolResults,
+            String toolCallId,
+            String toolName,
+            boolean error,
+            String diffId,
+            String reviewState,
+            String reviewMessage,
+            String compactStatus,
+            String responseInputItemJson,
+            List<InputAttachment> attachments
+    ) {
         this.id = id;
         this.role = role == null ? Role.USER : role;
         this.content = content == null ? "" : content;
@@ -142,6 +173,9 @@ public final class ChatMessage {
         this.reviewMessage = reviewMessage == null ? "" : reviewMessage;
         this.compactStatus = normalizeCompactStatus(compactStatus);
         this.responseInputItemJson = responseInputItemJson == null ? "" : responseInputItemJson.trim();
+        this.attachments = attachments == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(attachments));
     }
 
     public String getId() {
@@ -232,6 +266,14 @@ public final class ChatMessage {
         return responseInputItemJson;
     }
 
+    public List<InputAttachment> getAttachments() {
+        return attachments;
+    }
+
+    public boolean hasAttachments() {
+        return !attachments.isEmpty();
+    }
+
     public String getProtocolRole() {
         return role.getProtocolName();
     }
@@ -239,43 +281,43 @@ public final class ChatMessage {
     public ChatMessage withContent(String nextContent, String nextReasoningContent, boolean nextStreaming) {
         return new ChatMessage(id, role, nextContent, nextReasoningContent, nextStreaming, hidden,
                 excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
-                compactStatus, responseInputItemJson);
+                compactStatus, responseInputItemJson, attachments);
     }
 
     public ChatMessage withToolCalls(List<ToolCall> nextToolCalls, boolean nextHidden) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, nextHidden,
                 excludeFromContext, nextToolCalls, toolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
-                compactStatus, responseInputItemJson);
+                compactStatus, responseInputItemJson, attachments);
     }
 
     public ChatMessage withToolResults(List<ToolResult> nextToolResults) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
                 excludeFromContext, toolCalls, nextToolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
-                compactStatus, responseInputItemJson);
+                compactStatus, responseInputItemJson, attachments);
     }
 
     public ChatMessage withToolReview(String nextDiffId, String nextReviewState, String nextReviewMessage) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
                 excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error,
-                nextDiffId, nextReviewState, nextReviewMessage, compactStatus, responseInputItemJson);
+                nextDiffId, nextReviewState, nextReviewMessage, compactStatus, responseInputItemJson, attachments);
     }
 
     public ChatMessage withExcludeFromContext(boolean nextExcludeFromContext) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
                 nextExcludeFromContext, toolCalls, toolResults, toolCallId, toolName, error,
-                diffId, reviewState, reviewMessage, compactStatus, responseInputItemJson);
+                diffId, reviewState, reviewMessage, compactStatus, responseInputItemJson, attachments);
     }
 
     public ChatMessage withCompactStatus(String nextCompactStatus, boolean nextStreaming) {
         return new ChatMessage(id, role, content, reasoningContent, nextStreaming, hidden,
                 excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error,
-                diffId, reviewState, reviewMessage, nextCompactStatus, responseInputItemJson);
+                diffId, reviewState, reviewMessage, nextCompactStatus, responseInputItemJson, attachments);
     }
 
     public ChatMessage withResponseInputItemJson(String nextResponseInputItemJson) {
         return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
                 excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error,
-                diffId, reviewState, reviewMessage, compactStatus, nextResponseInputItemJson);
+                diffId, reviewState, reviewMessage, compactStatus, nextResponseInputItemJson, attachments);
     }
 
     public static ChatMessage toolResult(String id, String content, String toolCallId, String toolName, boolean error) {
