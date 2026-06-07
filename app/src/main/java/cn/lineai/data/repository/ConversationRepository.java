@@ -29,7 +29,10 @@ public final class ConversationRepository {
         );
         try {
             while (cursor.moveToNext()) {
-                records.add(readConversation(cursor, new ArrayList<>()));
+                ConversationRecord conversation = readConversation(cursor, new ArrayList<>());
+                if (hasVisibleMessages(conversation.getId())) {
+                    records.add(conversation);
+                }
             }
         } finally {
             cursor.close();
@@ -71,10 +74,17 @@ public final class ConversationRepository {
         );
         try {
             if (cursor.moveToFirst()) {
-                return getConversation(cursor.getString(0));
+                ConversationRecord current = getConversation(cursor.getString(0));
+                if (current != null && hasVisibleMessages(current.getId())) {
+                    return current;
+                }
             }
         } finally {
             cursor.close();
+        }
+        List<ConversationRecord> metas = getConversationMetas();
+        if (!metas.isEmpty()) {
+            return getConversation(metas.get(0).getId());
         }
         return null;
     }
@@ -180,6 +190,24 @@ public final class ConversationRepository {
             cursor.close();
         }
         return messages;
+    }
+
+    private boolean hasVisibleMessages(String conversationId) {
+        Cursor cursor = database.getReadableDatabase().query(
+                "messages",
+                new String[] {"id"},
+                "conversation_id = ? AND hidden = 0 AND role NOT IN (?, ?)",
+                new String[] {conversationId, "system", "tool"},
+                null,
+                null,
+                null,
+                "1"
+        );
+        try {
+            return cursor.moveToFirst();
+        } finally {
+            cursor.close();
+        }
     }
 
     private ConversationRecord readConversation(Cursor cursor, List<MessageRecord> messages) {

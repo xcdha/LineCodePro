@@ -752,9 +752,13 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onNewConversation() {
         cancelActiveGeneration();
+        if (chatSessionStore.isStreaming()) {
+            markStreamingMessagesStopped();
+            markRunningAgentProgressStopped();
+        }
         chatSessionStore.setStreaming(false);
-        chatSessionStore.startNewConversation(System.currentTimeMillis());
         persistCurrentConversation();
+        chatSessionStore.startNewConversation(System.currentTimeMillis());
         if (view != null) {
             view.hideOverlays();
             view.showChatScreen();
@@ -764,17 +768,22 @@ public final class MainCoordinator implements MainUiController {
 
     @Override
     public void onConversationSelected(String id) {
-        if (id == null || id.length() == 0 || id.equals(chatSessionStore.getCurrentConversationId())) {
+        if (id == null || id.length() == 0) {
             if (view != null) {
                 view.hideOverlays();
-                if (id != null && id.equals(chatSessionStore.getCurrentConversationId())) {
-                    view.showChatScreen();
-                }
             }
             return;
         }
         cancelActiveGeneration();
+        boolean wasStreaming = chatSessionStore.isStreaming();
+        if (wasStreaming) {
+            markStreamingMessagesStopped();
+            markRunningAgentProgressStopped();
+        }
         chatSessionStore.setStreaming(false);
+        if (wasStreaming || !id.equals(chatSessionStore.getCurrentConversationId())) {
+            persistCurrentConversation();
+        }
         loadConversation(id);
         if (view != null) {
             view.hideOverlays();
@@ -1532,8 +1541,12 @@ public final class MainCoordinator implements MainUiController {
         } else if ("compact:cancel".equals(id)) {
             // The bottom sheet is closed below.
         } else if ("clear".equals(id)) {
+            String currentConversationId = chatSessionStore.getCurrentConversationId();
             messages.clear();
-            persistCurrentConversation();
+            if (currentConversationId.length() > 0) {
+                conversationRepository.deleteConversation(currentConversationId);
+            }
+            chatSessionStore.clearCurrentConversation();
         }
         if (view != null && !"settings".equals(id) && !"tutorial".equals(id)) {
             view.hideOverlays();
@@ -3165,11 +3178,13 @@ public final class MainCoordinator implements MainUiController {
 
     private ModelRequestOptions requestOptions(AiBehaviorSettings aiSettings, ModelConfig selectedModel, int usedToolCallCount) {
         syncModePermission();
+        toolRegistry.reloadExtensions();
+        Set<String> enabledToolNames = toolSettingsRepository.getEnabledToolNames(toolRegistry.getAll());
         return new ModelRequestOptions(
                 aiSettings.getReasoningEffort(),
                 aiSettings.isPreserveReasoningEnabled(),
                 hasRemainingToolCalls(selectedModel, usedToolCallCount)
-                        ? toolRegistry.getByNameSet(toolSettingsRepository.getEnabledToolNames())
+                        ? toolRegistry.getByNameSet(enabledToolNames)
                         : new ArrayList<BaseTool>()
         );
     }
@@ -4494,6 +4509,9 @@ public final class MainCoordinator implements MainUiController {
     private void persistCurrentConversation() {
         String currentConversationId = chatSessionStore.getCurrentConversationId();
         if (currentConversationId.length() == 0) {
+            return;
+        }
+        if (messages.isEmpty()) {
             return;
         }
         long now = System.currentTimeMillis();

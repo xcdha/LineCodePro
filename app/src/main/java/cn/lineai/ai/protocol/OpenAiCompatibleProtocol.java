@@ -180,14 +180,20 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 builders.put(index, builder);
             }
             if (item.has("id") && !item.isNull("id")) {
-                builder.id = item.optString("id");
+                String id = item.optString("id");
+                if (id.length() > 0) {
+                    builder.id = id;
+                }
             }
             JSONObject function = item.optJSONObject("function");
             if (function == null) {
                 continue;
             }
             if (function.has("name") && !function.isNull("name")) {
-                builder.name = function.optString("name");
+                String name = function.optString("name");
+                if (name.length() > 0) {
+                    builder.name = name;
+                }
             }
             if (function.has("arguments") && !function.isNull("arguments")) {
                 builder.arguments.append(function.optString("arguments"));

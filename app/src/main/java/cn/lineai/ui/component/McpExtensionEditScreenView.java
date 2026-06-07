@@ -5,8 +5,10 @@ import android.graphics.Typeface;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.model.ExtensionMcpConfig;
@@ -35,7 +37,10 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
     private FormTextFieldView nameField;
     private FormTextFieldView urlField;
     private SettingsSectionView headersSection;
+    private SettingsSectionView querySection;
     private SettingsSectionView toolsSection;
+    private boolean querying;
+    private boolean queried;
 
     public McpExtensionEditScreenView(Context context, ExtensionMcpConfig editingMcp, Listener listener) {
         super(context, editingMcp == null ? "添加 MCP" : "修改 MCP", listener::onBack, saveAction(context));
@@ -55,13 +60,13 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
                 headerRows.add(new HeaderRow(context, header, headerRows, this::renderHeaders));
             }
             queriedTools = new ArrayList<>(editingMcp.getTools());
+            queried = !queriedTools.isEmpty();
         }
         renderHeaders();
 
-        SettingsSectionView query = new SettingsSectionView(context, "查询");
-        query.addRow(new ActionRowView(context, IconButtonView.SEARCH, "查询 MCP 列表",
-                "填写地址后查询服务暴露的 tools。", false, true, this::queryTools), false);
-        content.addView(query, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        querySection = new SettingsSectionView(context, "查询");
+        content.addView(querySection, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        renderQuery();
 
         toolsSection = new SettingsSectionView(context, "TOOLS 列表");
         content.addView(toolsSection, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
@@ -82,24 +87,51 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
     }
 
     private void queryTools() {
+        if (querying) {
+            return;
+        }
         String url = fieldValue(urlField);
         if (!validUrl(url)) {
             Toast.makeText(getContext(), "MCP 地址必须以 http:// 或 https:// 开头", Toast.LENGTH_SHORT).show();
             return;
         }
-        Toast.makeText(getContext(), "正在查询 MCP tools...", Toast.LENGTH_SHORT).show();
+        querying = true;
+        renderQuery();
+        renderTools();
         new Thread(() -> {
             try {
                 List<McpToolSummary> tools = listener.onQueryTools(url, headers());
                 mainHandler.post(() -> {
+                    querying = false;
+                    queried = true;
                     queriedTools = new ArrayList<>(tools);
+                    renderQuery();
                     renderTools();
                     Toast.makeText(getContext(), "已查询到 " + queriedTools.size() + " 个 tools", Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_LONG).show());
+                mainHandler.post(() -> {
+                    querying = false;
+                    queried = true;
+                    renderQuery();
+                    renderTools();
+                    Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                });
             }
         }, "linecode-mcp-query").start();
+    }
+
+    private void renderQuery() {
+        querySection.removeAllRows();
+        if (querying) {
+            querySection.addRow(queryBusyRow(), false);
+            return;
+        }
+        String desc = queriedTools.isEmpty()
+                ? "填写地址后查询服务暴露的 tools。"
+                : "已查询到 " + queriedTools.size() + " 个 tools。";
+        querySection.addRow(new ActionRowView(getContext(), IconButtonView.SEARCH, "查询 MCP 列表",
+                desc, false, true, this::queryTools), false);
     }
 
     private void renderTools() {
@@ -111,11 +143,12 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
             }
         }
         toolsSection.setTitle("TOOLS 列表 · 已启用 " + enabledCount + "/" + queriedTools.size());
+        if (querying) {
+            toolsSection.addRow(stateRow("正在查询 MCP tools...", true), false);
+            return;
+        }
         if (queriedTools.isEmpty()) {
-            TextView empty = LineTheme.text(getContext(), "查询后会在这里显示 tools 列表，可单独开启或关闭。", LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-            empty.setGravity(Gravity.CENTER);
-            LineTheme.padding(empty, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
-            toolsSection.addRow(empty, false);
+            toolsSection.addRow(stateRow(queried ? "没有查询到 tools。" : "查询后会在这里显示 tools 列表，可单独开启或关闭。", false), false);
             return;
         }
         for (int i = 0; i < queriedTools.size(); i++) {
@@ -127,6 +160,53 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
                         renderTools();
                     }), i < queriedTools.size() - 1);
         }
+    }
+
+    private View queryBusyRow() {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(LineTheme.dp(getContext(), 68));
+        row.setAlpha(0.85f);
+        LineTheme.padding(row, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
+
+        ProgressBar progressBar = new ProgressBar(getContext());
+        progressBar.setIndeterminate(true);
+        row.addView(progressBar, new LinearLayout.LayoutParams(LineTheme.dp(getContext(), 34), LineTheme.dp(getContext(), 34)));
+
+        LinearLayout textWrap = new LinearLayout(getContext());
+        textWrap.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
+        textParams.leftMargin = LineTheme.dp(getContext(), LineTheme.MD);
+        row.addView(textWrap, textParams);
+
+        textWrap.addView(LineTheme.textMedium(getContext(), "查询 MCP 列表", LineTheme.FONT_MD, LineTheme.TEXT));
+        TextView desc = LineTheme.text(getContext(), "正在查询服务暴露的 tools。", LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        descParams.topMargin = LineTheme.dp(getContext(), 2);
+        textWrap.addView(desc, descParams);
+        return row;
+    }
+
+    private View stateRow(String text, boolean busy) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        row.setMinimumHeight(LineTheme.dp(getContext(), 56));
+        LineTheme.padding(row, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
+        if (busy) {
+            ProgressBar progressBar = new ProgressBar(getContext());
+            progressBar.setIndeterminate(true);
+            row.addView(progressBar, new LinearLayout.LayoutParams(LineTheme.dp(getContext(), 22), LineTheme.dp(getContext(), 22)));
+        }
+        TextView label = LineTheme.text(getContext(), text, LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        label.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        if (busy) {
+            labelParams.leftMargin = LineTheme.dp(getContext(), LineTheme.SM);
+        }
+        row.addView(label, labelParams);
+        return row;
     }
 
     private void setToolEnabled(String name, boolean enabled) {

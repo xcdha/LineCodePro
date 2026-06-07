@@ -5,9 +5,13 @@ import android.content.Context;
 import android.graphics.Typeface;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
 import android.view.Window;
+import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.model.ExtensionAgentConfig;
@@ -183,14 +187,32 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setBackground(LineTheme.rounded(getContext(), LineTheme.SURFACE_ELEVATED, 16));
         LineTheme.padding(panel, LineTheme.LG, LineTheme.LG, LineTheme.LG, LineTheme.LG);
-        panel.addView(LineTheme.textMedium(getContext(), "让 AI 写 Agent", LineTheme.FONT_LG, LineTheme.TEXT));
+        LinearLayout header = new LinearLayout(getContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout titleWrap = new LinearLayout(getContext());
+        titleWrap.setOrientation(LinearLayout.VERTICAL);
+        titleWrap.addView(LineTheme.textMedium(getContext(), "让 AI 写 Agent", LineTheme.FONT_LG, LineTheme.TEXT));
         TextView desc = LineTheme.text(getContext(), "描述目标后会自动填入当前表单。", LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
-        panel.addView(desc, top());
-        FormTextFieldView input = new FormTextFieldView(getContext(), "需求描述", "",
-                "例如：专门分析 Android 原生 View 性能问题，先读相关 View 和 Presenter，再给修复方案。",
-                null, true, false);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        descParams.topMargin = LineTheme.dp(getContext(), 2);
+        titleWrap.addView(desc, descParams);
+        header.addView(titleWrap, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        IconButtonView close = new IconButtonView(getContext(), IconButtonView.CLOSE);
+        close.setIconColor(LineTheme.TEXT_SECONDARY);
+        close.setIconSizeDp(34, 17);
+        close.setBackground(LineTheme.rounded(getContext(), LineTheme.SURFACE_LIGHT, 17));
+        close.setOnClickListener(v -> dialog.dismiss());
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(LineTheme.dp(getContext(), 34), LineTheme.dp(getContext(), 34));
+        closeParams.leftMargin = LineTheme.dp(getContext(), LineTheme.MD);
+        header.addView(close, closeParams);
+        panel.addView(header);
+
+        EditText input = aiPromptInput(getContext());
         panel.addView(input, top());
-        panel.addView(actionButton("生成并填写", () -> generateDraft(dialog, input)), top());
+        GenerateButtonView button = new GenerateButtonView(getContext(), "生成并填写");
+        button.setOnClickListener(v -> generateDraft(dialog, input, button, close));
+        panel.addView(button, top());
         dialog.setContentView(panel);
         dialog.setOnShowListener(d -> {
             Window window = dialog.getWindow();
@@ -207,13 +229,16 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
         return Math.max(LineTheme.dp(getContext(), 280), width);
     }
 
-    private void generateDraft(Dialog dialog, FormTextFieldView input) {
-        String description = value(input);
+    private void generateDraft(Dialog dialog, EditText input, GenerateButtonView button, View closeButton) {
+        String description = textValue(input);
         if (description.length() == 0) {
             Toast.makeText(getContext(), "请先描述 Agent 需求", Toast.LENGTH_SHORT).show();
             return;
         }
-        Toast.makeText(getContext(), "正在生成 Agent...", Toast.LENGTH_SHORT).show();
+        button.setBusy(true);
+        input.setEnabled(false);
+        closeButton.setEnabled(false);
+        closeButton.setAlpha(0.5f);
         new Thread(() -> {
             try {
                 ExtensionAgentConfig draft = listener.onGenerateDraft(description);
@@ -225,7 +250,13 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
                     Toast.makeText(getContext(), "已生成并填写", Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_LONG).show());
+                mainHandler.post(() -> {
+                    button.setBusy(false);
+                    input.setEnabled(true);
+                    closeButton.setEnabled(true);
+                    closeButton.setAlpha(1f);
+                    Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                });
             }
         }, "linecode-agent-ai-writer").start();
     }
@@ -253,15 +284,6 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
         ));
     }
 
-    private TextView actionButton(String title, Runnable action) {
-        TextView view = LineTheme.textMedium(getContext(), title, LineTheme.FONT_MD, LineTheme.ACCENT);
-        view.setGravity(Gravity.CENTER);
-        view.setBackground(LineTheme.rounded(getContext(), LineTheme.ACCENT_MUTED, 8));
-        LineTheme.padding(view, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
-        view.setOnClickListener(v -> action.run());
-        return view;
-    }
-
     private TextView empty(String text) {
         TextView view = LineTheme.text(getContext(), text, LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
         view.setGravity(Gravity.CENTER);
@@ -279,6 +301,27 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
 
     private String value(FormTextFieldView field) {
         return field == null ? "" : field.getInput().getText().toString().trim();
+    }
+
+    private String textValue(EditText input) {
+        return input == null ? "" : input.getText().toString().trim();
+    }
+
+    private EditText aiPromptInput(Context context) {
+        EditText input = new EditText(context);
+        input.setHint("例如：我想要一个专门帮我分析 Android 原生 View 性能问题的 Agent，会先读相关 View 和 Presenter，定位性能瓶颈，然后给出修复建议。");
+        input.setHintTextColor(LineTheme.TEXT_TERTIARY);
+        input.setTextColor(LineTheme.TEXT);
+        input.setTextSize(LineTheme.FONT_MD);
+        input.setMinHeight(LineTheme.dp(context, 160));
+        input.setGravity(Gravity.TOP | Gravity.START);
+        input.setSingleLine(false);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        input.setIncludeFontPadding(false);
+        input.setBackground(LineTheme.roundedStroke(context, LineTheme.INPUT_BG, 8, LineTheme.BORDER_LIGHT));
+        input.setPadding(LineTheme.dp(context, LineTheme.MD), LineTheme.dp(context, LineTheme.MD),
+                LineTheme.dp(context, LineTheme.MD), LineTheme.dp(context, LineTheme.MD));
+        return input;
     }
 
     private static TextView saveAction(Context context) {
@@ -362,6 +405,46 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
             this.id = id == null ? "" : id;
             this.label = label == null ? "" : label;
             this.desc = desc == null ? "" : desc;
+        }
+    }
+
+    private static final class GenerateButtonView extends LinearLayout {
+        private final ProgressBar progressBar;
+        private final IconButtonView icon;
+        private final TextView label;
+
+        GenerateButtonView(Context context, String title) {
+            super(context);
+            setOrientation(HORIZONTAL);
+            setGravity(Gravity.CENTER);
+            setMinimumHeight(LineTheme.dp(context, 44));
+            setClickable(true);
+            setBackground(LineTheme.rounded(context, LineTheme.ACCENT, 8));
+            LineTheme.padding(this, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
+
+            progressBar = new ProgressBar(context);
+            progressBar.setIndeterminate(true);
+            progressBar.setVisibility(GONE);
+            addView(progressBar, new LayoutParams(LineTheme.dp(context, 22), LineTheme.dp(context, 22)));
+
+            icon = new IconButtonView(context, IconButtonView.SPARKLES);
+            icon.setIconColor(LineTheme.TEXT_ON_COLOR);
+            icon.setIconSizeDp(18, 16);
+            icon.setClickable(false);
+            addView(icon, new LayoutParams(LineTheme.dp(context, 18), LineTheme.dp(context, 18)));
+
+            label = LineTheme.textMedium(context, title, LineTheme.FONT_MD, LineTheme.TEXT_ON_COLOR);
+            LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            labelParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
+            addView(label, labelParams);
+        }
+
+        void setBusy(boolean busy) {
+            setEnabled(!busy);
+            setAlpha(busy ? 0.85f : 1f);
+            progressBar.setVisibility(busy ? VISIBLE : GONE);
+            icon.setVisibility(busy ? GONE : VISIBLE);
+            label.setVisibility(busy ? GONE : VISIBLE);
         }
     }
 }

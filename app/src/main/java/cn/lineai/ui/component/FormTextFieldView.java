@@ -3,6 +3,7 @@ package cn.lineai.ui.component;
 import android.content.Context;
 import android.graphics.Typeface;
 import android.text.InputType;
+import android.view.Gravity;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -26,6 +27,7 @@ public final class FormTextFieldView extends LinearLayout {
         input.setTextSize(LineTheme.FONT_MD);
         input.setSingleLine(!multiline);
         input.setMinHeight(LineTheme.dp(context, multiline ? 120 : 44));
+        input.setGravity((multiline ? Gravity.TOP : Gravity.CENTER_VERTICAL) | Gravity.START);
         input.setIncludeFontPadding(false);
         input.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_LIGHT, 8, LineTheme.BORDER_LIGHT));
         input.setPadding(LineTheme.dp(context, LineTheme.MD), LineTheme.dp(context, LineTheme.SM), LineTheme.dp(context, LineTheme.MD), LineTheme.dp(context, LineTheme.SM));

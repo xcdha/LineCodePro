@@ -117,6 +117,26 @@ public final class ToolSettingsRepository {
         return enabled;
     }
 
+    public synchronized Set<String> getEnabledToolNames(Collection<BaseTool> implementedTools) {
+        HashSet<String> enabled = new HashSet<>(getEnabledToolNames());
+        HashSet<String> implementedNames = new HashSet<>();
+        if (implementedTools != null) {
+            for (BaseTool tool : implementedTools) {
+                if (tool == null || tool.getName().length() == 0) {
+                    continue;
+                }
+                implementedNames.add(tool.getName());
+                if (isEnabledExtensionTool(tool.getName(), tool.getCategory())) {
+                    enabled.add(tool.getName());
+                }
+            }
+        }
+        if (!implementedNames.isEmpty()) {
+            enabled.retainAll(implementedNames);
+        }
+        return enabled;
+    }
+
     public synchronized PermissionResult canExecuteTool(String toolName, ToolCategory category) {
         if (toolName == null || toolName.length() == 0) {
             return PermissionResult.denied("工具名为空");
@@ -280,9 +300,11 @@ public final class ToolSettingsRepository {
         StringBuilder builder = new StringBuilder();
         builder.append("## 可用工具\n")
                 .append("当前执行目标是 SSH Shell。本地文件读写、文件搜索、Agent、Agent Pipeline 和 HTTP 服务器已禁用。\n")
+                .append("应用侧自定义 HTTP MCP 可用时仍会作为工具提供，不依赖 SSH 主机环境。\n")
                 .append("不要引用应用私有 home 工作目录；如果系统提示提供了 SSH 项目目录，必须在该目录内操作。\n")
                 .append("如需读取、写入、列目录或搜索文件，请通过 shell 命令在 SSH 环境内完成。\n\n");
         List<McpToolConfig> promptConfigs = configs == null ? new ArrayList<>() : configs;
+        HashSet<String> renderedTools = new HashSet<>();
         for (McpToolConfig config : promptConfigs) {
             if (!"shell".equals(config.getId()) && !"web_search".equals(config.getId())) {
                 continue;
@@ -291,6 +313,7 @@ public final class ToolSettingsRepository {
             for (String tool : config.getTools()) {
                 if (enabled.contains(tool)) {
                     tools.add(tool);
+                    renderedTools.add(tool);
                 }
             }
             if (tools.isEmpty()) {
@@ -322,6 +345,7 @@ public final class ToolSettingsRepository {
             }
             builder.append('\n');
         }
+        appendExtensionTools(builder, enabled, renderedTools, toolByName);
         builder.append("每次工具返回后必须继续分析输出；如果任务还没完成，继续调用合适工具执行下一步。")
                 .append("不要因为刚执行过一次或两次 shell 命令就结束；只有确认任务完成、受阻或需要用户决定时才回复用户。\n");
         if (nativeToolProtocol) {
@@ -372,7 +396,11 @@ public final class ToolSettingsRepository {
         if (!ToolRegistry.isExtensionToolName(toolName)) {
             return false;
         }
-        if (!EXECUTION_LOCAL.equals(getExecutionMode())) {
+        String executionMode = getExecutionMode();
+        if (EXECUTION_SSH.equals(executionMode) && !ToolRegistry.isCustomMcpToolName(toolName)) {
+            return false;
+        }
+        if (!EXECUTION_LOCAL.equals(executionMode) && !EXECUTION_SSH.equals(executionMode)) {
             return false;
         }
         return !PERMISSION_READONLY.equals(getPermissionMode()) || category == ToolCategory.READ;
