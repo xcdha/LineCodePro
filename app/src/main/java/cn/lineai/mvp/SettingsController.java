@@ -67,4 +67,16 @@ public interface SettingsController {
     void onMcpToolGroupChanged(String id, boolean enabled);
 
     void onMcpWebSearchConfigChanged(WebSearchConfig config);
+
+    void onLineCodeExportRequested();
+
+    void onLineCodeExportTargetPicked(String uri, String displayName);
+
+    void onLineCodeExportCancelled();
+
+    void onLineCodeImportRequested();
+
+    void onLineCodeImportPicked(String uri, String displayName);
+
+    void onLineCodeImportCancelled();
 }

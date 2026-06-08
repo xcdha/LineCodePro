@@ -40,6 +40,10 @@ public interface MainContract {
 
         void openExternalProjectPicker();
 
+        void openLineCodeImportPicker();
+
+        void openLineCodeExportPicker(String fileName);
+
         void openManageAllFilesPermissionSettings();
 
         void requestLegacyStoragePermissions();

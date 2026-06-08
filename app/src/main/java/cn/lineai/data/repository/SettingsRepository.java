@@ -5,6 +5,8 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import cn.lineai.data.db.LineCodeDatabase;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public final class SettingsRepository {
     private final LineCodeDatabase database;
@@ -73,6 +75,27 @@ public final class SettingsRepository {
                 "key GLOB ? OR key GLOB ?",
                 new String[] {"@lineai_*", "@linecode_*"}
         );
+    }
+
+    public synchronized Map<String, String> getLineCodeSettings() {
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        Cursor cursor = database.getReadableDatabase().query(
+                "settings",
+                new String[] {"key", "value"},
+                "key GLOB ? OR key GLOB ?",
+                new String[] {"@lineai_*", "@linecode_*"},
+                null,
+                null,
+                "key ASC"
+        );
+        try {
+            while (cursor.moveToNext()) {
+                values.put(cursor.getString(0), cursor.getString(1));
+            }
+        } finally {
+            cursor.close();
+        }
+        return values;
     }
 
     private void upsert(String key, String value, String type) {

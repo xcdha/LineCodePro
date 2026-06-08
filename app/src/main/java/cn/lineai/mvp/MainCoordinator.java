@@ -18,6 +18,8 @@ import cn.lineai.ai.prompt.SystemPromptProvider;
 import cn.lineai.context.ContextCompactionResult;
 import cn.lineai.context.ContextCompactionService;
 import cn.lineai.context.ContextManager;
+import cn.lineai.data.importer.LineCodeArchiveService;
+import cn.lineai.data.importer.LineCodeImportService;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
 import cn.lineai.data.repository.ChatModeRepository;
 import cn.lineai.data.repository.ConversationRecord;
@@ -139,6 +141,7 @@ public final class MainCoordinator implements MainUiController {
     private final SystemPromptProvider systemPromptProvider;
     private final StoragePermissionManager storagePermissionManager;
     private final SafPathResolver safPathResolver;
+    private final LineCodeArchiveService lineCodeArchiveService;
     private MainContract.View view;
     private final ScreenNavigationController.Host navigationHost = new ScreenNavigationController.Host() {
         @Override
@@ -205,6 +208,8 @@ public final class MainCoordinator implements MainUiController {
     private boolean attachmentPickerActive;
     private int attachmentPickerLoadGeneration;
     private boolean startupProjectAvailabilityChecked;
+    private String pendingLineCodeImportUri = "";
+    private String pendingLineCodeImportDisplayName = "";
 
     private static final class ToolExecutionBatch {
         private final ArrayList<ToolResult> completedResults;
@@ -652,6 +657,7 @@ public final class MainCoordinator implements MainUiController {
         systemPromptProvider = dependencies.systemPromptProvider;
         storagePermissionManager = dependencies.storagePermissionManager;
         safPathResolver = dependencies.safPathResolver;
+        lineCodeArchiveService = dependencies.lineCodeArchiveService;
         mainThread = dependencies.mainThreadDispatcher;
         backgroundTasks = dependencies.backgroundTaskRunner;
         chatUiStateAssembler = new ChatUiStateAssembler(
@@ -964,6 +970,10 @@ public final class MainCoordinator implements MainUiController {
         String id = actionId == null ? "" : actionId;
         if (id.startsWith("file:delete:")) {
             deleteFileNode(id.substring("file:delete:".length()));
+            return;
+        }
+        if ("data:import_linecode".equals(id)) {
+            startLineCodeImport();
         }
     }
 
@@ -1758,6 +1768,69 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public void onLineCodeExportRequested() {
+        if (view != null) {
+            view.openLineCodeExportPicker(defaultLineCodeArchiveName());
+        }
+    }
+
+    @Override
+    public void onLineCodeExportTargetPicked(String uri, String displayName) {
+        String targetUri = safe(uri);
+        if (targetUri.length() == 0) {
+            return;
+        }
+        persistCurrentConversation();
+        backgroundTasks.execute("linecode-export", () -> {
+            try {
+                LineCodeArchiveService.ExportResult result = lineCodeArchiveService.exportArchive(targetUri);
+                mainThread.post(() -> showNotice("已导出 .linecode："
+                        + result.getConversationCount() + " 个会话，"
+                        + result.getModelCount() + " 个模型，"
+                        + result.getSettingCount() + " 项设置。"));
+            } catch (Exception e) {
+                mainThread.post(() -> showNotice("导出 .linecode 失败: " + errorMessage(e)));
+            }
+        });
+    }
+
+    @Override
+    public void onLineCodeExportCancelled() {
+    }
+
+    @Override
+    public void onLineCodeImportRequested() {
+        if (view != null) {
+            view.openLineCodeImportPicker();
+        }
+    }
+
+    @Override
+    public void onLineCodeImportPicked(String uri, String displayName) {
+        pendingLineCodeImportUri = safe(uri);
+        pendingLineCodeImportDisplayName = safe(displayName);
+        if (pendingLineCodeImportUri.length() == 0 || view == null) {
+            return;
+        }
+        String name = pendingLineCodeImportDisplayName.length() == 0
+                ? ".linecode 文件"
+                : pendingLineCodeImportDisplayName;
+        view.showConfirmationDialog(
+                "覆盖导入 .linecode",
+                "将从「" + name + "」恢复数据库、聊天记录、配置和 .linecode 工作区文件。当前本机数据会被覆盖。",
+                "覆盖导入",
+                true,
+                "data:import_linecode"
+        );
+    }
+
+    @Override
+    public void onLineCodeImportCancelled() {
+        pendingLineCodeImportUri = "";
+        pendingLineCodeImportDisplayName = "";
+    }
+
+    @Override
     public ExtensionOverviewState getExtensionOverview() {
         return extensionRepository.getOverview(projectPath);
     }
@@ -1940,6 +2013,62 @@ public final class MainCoordinator implements MainUiController {
             }
         }
         return ids;
+    }
+
+    private void startLineCodeImport() {
+        String uri = pendingLineCodeImportUri;
+        pendingLineCodeImportUri = "";
+        pendingLineCodeImportDisplayName = "";
+        if (uri.length() == 0) {
+            return;
+        }
+        cancelActiveGeneration();
+        chatSessionStore.setStreaming(false);
+        backgroundTasks.execute("linecode-import", () -> {
+            try {
+                LineCodeArchiveService.ImportResult result = lineCodeArchiveService.importArchive(
+                        uri,
+                        LineCodeImportService.Mode.REPLACE
+                );
+                mainThread.post(() -> {
+                    reloadAfterLineCodeImport();
+                    showNotice("已导入 .linecode："
+                            + result.getConversationCount() + " 个会话，"
+                            + result.getModelCount() + " 个模型，"
+                            + result.getSettingCount() + " 项设置，"
+                            + result.getRestoredFileCount() + " 个工作区文件。");
+                });
+            } catch (Exception e) {
+                mainThread.post(() -> showNotice("导入 .linecode 失败: " + errorMessage(e)));
+            }
+        });
+    }
+
+    private void reloadAfterLineCodeImport() {
+        toolRegistry.reloadExtensions();
+        applyProject(projectRepository.ensureSelectedProjectPath(toolSettingsRepository.getExecutionMode()));
+        invalidateSshFileTree();
+        requestSshFileTreeLoad(true);
+        ConversationRecord current = conversationRepository.getCurrentConversation();
+        if (current == null) {
+            chatSessionStore.clearCurrentConversation();
+        } else {
+            applyConversation(current);
+        }
+        refreshVisibleScreen("data");
+        render();
+    }
+
+    private String defaultLineCodeArchiveName() {
+        return "LineCode-" + System.currentTimeMillis() + ".linecode";
+    }
+
+    private String errorMessage(Exception error) {
+        if (error == null) {
+            return "未知错误";
+        }
+        String message = error.getMessage();
+        return message == null || message.length() == 0 ? error.getClass().getSimpleName() : message;
     }
 
     private JSONObject extractJsonObject(String text) throws Exception {

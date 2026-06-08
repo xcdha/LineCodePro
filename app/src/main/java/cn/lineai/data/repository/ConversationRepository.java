@@ -40,6 +40,28 @@ public final class ConversationRepository {
         return records;
     }
 
+    public synchronized List<ConversationRecord> getAllConversations() {
+        ArrayList<ConversationRecord> records = new ArrayList<>();
+        Cursor cursor = database.getReadableDatabase().query(
+                "conversations",
+                null,
+                null,
+                null,
+                null,
+                null,
+                "updated_at DESC"
+        );
+        try {
+            while (cursor.moveToNext()) {
+                String id = cursor.getString(cursor.getColumnIndexOrThrow("id"));
+                records.add(readConversation(cursor, getMessages(id)));
+            }
+        } finally {
+            cursor.close();
+        }
+        return records;
+    }
+
     public synchronized ConversationRecord getConversation(String id) {
         Cursor cursor = database.getReadableDatabase().query(
                 "conversations",
@@ -56,6 +78,24 @@ public final class ConversationRepository {
                 return null;
             }
             return readConversation(cursor, getMessages(id));
+        } finally {
+            cursor.close();
+        }
+    }
+
+    public synchronized String getCurrentConversationId() {
+        Cursor cursor = database.getReadableDatabase().query(
+                "conversations",
+                new String[] {"id"},
+                "current = 1",
+                null,
+                null,
+                null,
+                "updated_at DESC",
+                "1"
+        );
+        try {
+            return cursor.moveToFirst() ? cursor.getString(0) : "";
         } finally {
             cursor.close();
         }

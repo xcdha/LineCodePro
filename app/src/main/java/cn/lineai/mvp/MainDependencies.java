@@ -5,6 +5,7 @@ import cn.lineai.ai.ModelClient;
 import cn.lineai.ai.prompt.SystemPromptProvider;
 import cn.lineai.context.ContextCompactionService;
 import cn.lineai.context.ContextManager;
+import cn.lineai.data.importer.LineCodeArchiveService;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
 import cn.lineai.data.repository.ChatModeRepository;
 import cn.lineai.data.repository.ConversationRepository;
@@ -57,6 +58,7 @@ public final class MainDependencies {
     final SafPathResolver safPathResolver;
     final MainThreadDispatcher mainThreadDispatcher;
     final BackgroundTaskRunner backgroundTaskRunner;
+    final LineCodeArchiveService lineCodeArchiveService;
 
     public MainDependencies(Context context) {
         modelRepository = new ModelRepository(context);
@@ -88,6 +90,7 @@ public final class MainDependencies {
         safPathResolver = new SafPathResolver();
         mainThreadDispatcher = new MainThreadDispatcher();
         backgroundTaskRunner = new BackgroundTaskRunner();
+        lineCodeArchiveService = new LineCodeArchiveService(context);
         chatModeRepository.initialize(toolSettingsRepository);
     }
 }

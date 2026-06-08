@@ -84,12 +84,20 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         void recreateMainView(String screenId);
 
         void openDocumentPicker(String mimeType, String[] extensions, DocumentPickCallback callback);
+
+        void createDocument(String mimeType, String displayName, DocumentCreateCallback callback);
     }
 
     public interface DocumentPickCallback {
         void onDocumentPicked(String uri, String displayName);
 
         void onDocumentPickCancelled();
+    }
+
+    public interface DocumentCreateCallback {
+        void onDocumentCreated(String uri, String displayName);
+
+        void onDocumentCreateCancelled();
     }
 
     private final MainUiController presenter;
@@ -552,6 +560,44 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     }
 
     @Override
+    public void openLineCodeImportPicker() {
+        Context context = getContext();
+        if (!(context instanceof WorkspaceHost)) {
+            return;
+        }
+        ((WorkspaceHost) context).openDocumentPicker("*/*", new String[] {"LineCode.linecode"}, new DocumentPickCallback() {
+            @Override
+            public void onDocumentPicked(String uri, String displayName) {
+                presenter.onLineCodeImportPicked(uri, displayName);
+            }
+
+            @Override
+            public void onDocumentPickCancelled() {
+                presenter.onLineCodeImportCancelled();
+            }
+        });
+    }
+
+    @Override
+    public void openLineCodeExportPicker(String fileName) {
+        Context context = getContext();
+        if (!(context instanceof WorkspaceHost)) {
+            return;
+        }
+        ((WorkspaceHost) context).createDocument("application/zip", fileName, new DocumentCreateCallback() {
+            @Override
+            public void onDocumentCreated(String uri, String displayName) {
+                presenter.onLineCodeExportTargetPicked(uri, displayName);
+            }
+
+            @Override
+            public void onDocumentCreateCancelled() {
+                presenter.onLineCodeExportCancelled();
+            }
+        });
+    }
+
+    @Override
     public void openManageAllFilesPermissionSettings() {
         Context context = getContext();
         if (context instanceof WorkspaceHost) {
@@ -913,7 +959,22 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             return new ExperimentalSettingsScreenView(context, this::handleScreenBack);
         }
         if ("data".equals(screenId)) {
-            return new DataSettingsScreenView(context, this::handleScreenBack);
+            return new DataSettingsScreenView(context, new DataSettingsScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    handleScreenBack();
+                }
+
+                @Override
+                public void onExport() {
+                    presenter.onLineCodeExportRequested();
+                }
+
+                @Override
+                public void onImport() {
+                    presenter.onLineCodeImportRequested();
+                }
+            });
         }
         if ("storage".equals(screenId)) {
             return new StorageManagementScreenView(context, this::handleScreenBack);

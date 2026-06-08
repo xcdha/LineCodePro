@@ -24,10 +24,12 @@ public final class MainActivity extends Activity implements MainChatView.Workspa
     private static final int REQUEST_OPEN_WORKSPACE_TREE = 7001;
     private static final int REQUEST_LEGACY_STORAGE = 7002;
     private static final int REQUEST_OPEN_DOCUMENT = 7003;
+    private static final int REQUEST_CREATE_DOCUMENT = 7004;
 
     private MainCoordinator presenter;
     private MainChatView mainView;
     private MainChatView.DocumentPickCallback documentPickCallback;
+    private MainChatView.DocumentCreateCallback documentCreateCallback;
     private Object backCallback;
 
     @Override
@@ -62,6 +64,10 @@ public final class MainActivity extends Activity implements MainChatView.Workspa
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_OPEN_DOCUMENT) {
             handleDocumentResult(resultCode, data);
+            return;
+        }
+        if (requestCode == REQUEST_CREATE_DOCUMENT) {
+            handleCreateDocumentResult(resultCode, data);
             return;
         }
         if (requestCode != REQUEST_OPEN_WORKSPACE_TREE) {
@@ -241,6 +247,17 @@ public final class MainActivity extends Activity implements MainChatView.Workspa
         startActivityForResult(intent, REQUEST_OPEN_DOCUMENT);
     }
 
+    @Override
+    public void createDocument(String mimeType, String displayName, MainChatView.DocumentCreateCallback callback) {
+        documentCreateCallback = callback;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(mimeType == null || mimeType.length() == 0 ? "application/octet-stream" : mimeType);
+        intent.putExtra(Intent.EXTRA_TITLE, displayName == null || displayName.length() == 0 ? "LineCode.linecode" : displayName);
+        intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivityForResult(intent, REQUEST_CREATE_DOCUMENT);
+    }
+
     private void handleDocumentResult(int resultCode, Intent data) {
         MainChatView.DocumentPickCallback callback = documentPickCallback;
         documentPickCallback = null;
@@ -257,6 +274,27 @@ public final class MainActivity extends Activity implements MainChatView.Workspa
             takePersistableReadPermission(uri);
         }
         callback.onDocumentPicked(uri.toString(), displayName(uri));
+    }
+
+    private void handleCreateDocumentResult(int resultCode, Intent data) {
+        MainChatView.DocumentCreateCallback callback = documentCreateCallback;
+        documentCreateCallback = null;
+        if (callback == null) {
+            return;
+        }
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            callback.onDocumentCreateCancelled();
+            return;
+        }
+        Uri uri = data.getData();
+        int flags = data.getFlags();
+        if ((flags & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0) {
+            takePersistableReadPermission(uri);
+        }
+        if ((flags & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0) {
+            takePersistableWritePermission(uri);
+        }
+        callback.onDocumentCreated(uri.toString(), displayName(uri));
     }
 
     private void takePersistableReadPermission(Uri uri) {
