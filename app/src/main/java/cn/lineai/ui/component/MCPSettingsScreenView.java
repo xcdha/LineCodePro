@@ -58,8 +58,8 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         segmentParams.topMargin = LineTheme.dp(context, LineTheme.SM);
         card.addView(segment, segmentParams);
         String executionDesc = ToolSettingsRepository.EXECUTION_LOCAL.equals(state.getExecutionMode())
-                ? "本地工作区会在当前工作区路径内执行文件读写、文件搜索、Agent、HTTP 服务器、网页搜索和图片理解。搜索 API 与图片模型在工具设置中配置。"
-                : "SSH Shell 模式会禁用本地文件读写、文件搜索、Agent 和 HTTP 服务器；网页搜索仍由应用侧网络配置执行，搜索 API 在工具设置中配置。";
+                ? "本地工作区会在当前工作区路径内执行文件读写、文件搜索、Agent、HTTP 服务器、网页搜索、图片理解和图片生成。搜索 API 与图片模型在工具设置中配置。"
+                : "SSH Shell 模式会禁用本地文件读写、文件搜索、Agent 和 HTTP 服务器；图片理解通过 SFTP 读取 SSH 图片，网页搜索和图片生成仍由应用侧配置执行。";
         TextView desc = desc(context, executionDesc);
         LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         descParams.topMargin = LineTheme.dp(context, LineTheme.SM);
@@ -103,7 +103,10 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         if (ToolSettingsRepository.EXECUTION_LOCAL.equals(state.getExecutionMode())) {
             return !"shell".equals(config.getId());
         }
-        return "shell".equals(config.getId()) || "web_search".equals(config.getId());
+        return "shell".equals(config.getId())
+                || "web_search".equals(config.getId())
+                || "image_understanding".equals(config.getId())
+                || "image_generation".equals(config.getId());
     }
 
     private int iconFor(String id) {
@@ -111,6 +114,7 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         if ("shell".equals(id)) return IconButtonView.TERMINAL;
         if ("web_search".equals(id)) return IconButtonView.SEARCH;
         if ("image_understanding".equals(id)) return IconButtonView.PAINTBRUSH;
+        if ("image_generation".equals(id)) return IconButtonView.PAINTBRUSH;
         if ("agent".equals(id)) return IconButtonView.BRAIN;
         return IconButtonView.MCP;
     }

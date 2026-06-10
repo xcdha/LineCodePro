@@ -12,25 +12,39 @@ import cn.lineai.model.ModelContextParser;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolRegistry;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
+    static final String CODEX_PROTOCOL_VERSION = "0.120.0";
+    static final String CODEX_ORIGINATOR = "codex_cli_rs";
+    private static final String CODEX_INSTALLATION_ID = UUID.nameUUIDFromBytes(
+            "cn.lineai.linecode.codex".getBytes(StandardCharsets.UTF_8)
+    ).toString();
+    private static final String CODEX_WINDOW_ID = CODEX_INSTALLATION_ID + ":0";
+
     @Override
     public ModelCompletionResponse complete(ModelConfig config, List<ModelMessage> messages) throws ModelCompletionException {
         try {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config.getModelId()));
             body.put("input", ResponsesInputBuilder.inputJson(messages));
+            body.put("tools", new JSONArray());
+            body.put("tool_choice", "auto");
+            body.put("parallel_tool_calls", true);
+            body.put("store", isAzureResponsesEndpoint(config.getBaseUrl()));
+            body.put("include", new JSONArray());
             putInstructions(body, messages);
+            putCodexClientFields(body, config);
 
-            HashMap<String, String> headers = new HashMap<>();
-            headers.put("Authorization", "Bearer " + config.getApiKey());
+            HashMap<String, String> headers = codexHeaders(config.getApiKey());
             String raw = postJson(responsesEndpoint(config.getBaseUrl()), body, headers);
             JSONObject response = new JSONObject(raw);
             StringBuilder text = new StringBuilder(response.optString("output_text"));
@@ -60,22 +74,22 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             body.put("input", ResponsesInputBuilder.inputJson(messages));
             body.put("stream", true);
             body.put("parallel_tool_calls", true);
-            body.put("store", true);
-            body.put("include", new JSONArray());
+            body.put("store", isAzureResponsesEndpoint(config.getBaseUrl()));
+            JSONArray include = new JSONArray();
             putInstructions(body, messages);
             JSONArray tools = toolsJson(requestOptions.getTools());
-            if (tools.length() > 0) {
-                body.put("tools", tools);
-                body.put("tool_choice", "auto");
-            }
+            body.put("tools", tools);
+            body.put("tool_choice", "auto");
             if (!AiBehaviorSettings.REASONING_OFF.equals(requestOptions.getReasoningEffort())) {
                 body.put("reasoning", new JSONObject()
                         .put("effort", AiBehaviorSettings.REASONING_MAX.equals(requestOptions.getReasoningEffort()) ? "high" : requestOptions.getReasoningEffort())
                         .put("summary", "auto"));
+                include.put("reasoning.encrypted_content");
             }
+            body.put("include", include);
+            putCodexClientFields(body, config);
 
-            HashMap<String, String> headers = new HashMap<>();
-            headers.put("Authorization", "Bearer " + config.getApiKey());
+            HashMap<String, String> headers = codexHeaders(config.getApiKey());
 
             StringBuilder text = new StringBuilder();
             StringBuilder reasoning = new StringBuilder();
@@ -167,6 +181,44 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
         } catch (Exception e) {
             throw new ModelCompletionException("Codex Responses 协议流式解析失败: " + e.getMessage(), e);
         }
+    }
+
+    private HashMap<String, String> codexHeaders(String apiKey) {
+        HashMap<String, String> headers = new HashMap<>();
+        headers.put("Authorization", "Bearer " + apiKey);
+        headers.put("version", CODEX_PROTOCOL_VERSION);
+        headers.put("originator", CODEX_ORIGINATOR);
+        headers.put("User-Agent", codexUserAgent());
+        return headers;
+    }
+
+    static String codexUserAgent() {
+        return CODEX_ORIGINATOR + "/" + CODEX_PROTOCOL_VERSION + " (Android; LineCode)";
+    }
+
+    private void putCodexClientFields(JSONObject body, ModelConfig config) throws Exception {
+        body.put("prompt_cache_key", promptCacheKey(config));
+        body.put("client_metadata", new JSONObject()
+                .put("x-codex-installation-id", CODEX_INSTALLATION_ID)
+                .put("x-codex-window-id", CODEX_WINDOW_ID));
+    }
+
+    private String promptCacheKey(ModelConfig config) {
+        String model = config == null ? "" : ModelContextParser.apiModelId(config.getModelId());
+        return "linecode-codex-" + Integer.toHexString(model.hashCode());
+    }
+
+    private boolean isAzureResponsesEndpoint(String baseUrl) {
+        if (baseUrl == null) {
+            return false;
+        }
+        String normalized = baseUrl.toLowerCase(java.util.Locale.US);
+        return normalized.contains("openai.azure.")
+                || normalized.contains("cognitiveservices.azure.")
+                || normalized.contains("aoai.azure.")
+                || normalized.contains("azure-api.")
+                || normalized.contains("azurefd.")
+                || normalized.contains("windows.net/openai");
     }
 
     private String responsesEndpoint(String baseUrl) {

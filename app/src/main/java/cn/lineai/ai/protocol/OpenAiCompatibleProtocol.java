@@ -320,6 +320,9 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
     }
 
     private void applyReasoningRequest(ModelConfig config, JSONObject body, ModelRequestOptions options) throws Exception {
+        if (!OpenAiCompatibleCapabilities.supportsReasoningRequestParameters(config)) {
+            return;
+        }
         String base = config.getBaseUrl().toLowerCase(java.util.Locale.ROOT);
         String model = ModelContextParser.apiModelId(config.getModelId()).toLowerCase(java.util.Locale.ROOT);
         String effort = options.getReasoningEffort();
@@ -374,5 +377,11 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             return 16000;
         }
         return 4096;
+    }
+
+    JSONObject reasoningRequestBodyForTest(ModelConfig config, ModelRequestOptions options) throws Exception {
+        JSONObject body = new JSONObject();
+        applyReasoningRequest(config, body, options == null ? ModelRequestOptions.defaults() : options);
+        return body;
     }
 }

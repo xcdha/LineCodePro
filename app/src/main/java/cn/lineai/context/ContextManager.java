@@ -2,10 +2,10 @@ package cn.lineai.context;
 
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.InputAttachment;
+import cn.lineai.model.MessageContentSanitizer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.json.JSONObject;
 
 public final class ContextManager {
     private static final int CHARS_PER_TOKEN = 4;
@@ -116,26 +116,6 @@ public final class ContextManager {
     }
 
     private String effectiveContent(ChatMessage message) {
-        if (message == null || message.getRole() != ChatMessage.Role.TOOL) {
-            return message == null ? "" : message.getContent();
-        }
-        String content = message.getContent();
-        if (content == null || content.trim().length() == 0) {
-            return "";
-        }
-        try {
-            JSONObject object = new JSONObject(content);
-            if (!object.optBoolean("linecode_agent_progress")) {
-                return content;
-            }
-            String modelContent = object.optString("model_content");
-            if (modelContent.trim().length() > 0) {
-                return modelContent;
-            }
-            String output = object.optString("output");
-            return output.trim().length() > 0 ? output : "Agent 仍在运行，尚未生成最终结果。";
-        } catch (Exception ignored) {
-            return content;
-        }
+        return MessageContentSanitizer.forModel(message);
     }
 }

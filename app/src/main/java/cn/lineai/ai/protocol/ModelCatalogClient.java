@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,6 +20,9 @@ public final class ModelCatalogClient {
     public List<String> fetch(ModelProtocolType protocolType, String baseUrl, String apiKey) throws ModelCompletionException {
         if (protocolType == ModelProtocolType.ANTHROPIC_MESSAGES) {
             return fetchAnthropic(baseUrl, apiKey);
+        }
+        if (protocolType == ModelProtocolType.CODEX_RESPONSES) {
+            return fetchCodex(baseUrl, apiKey);
         }
         return fetchOpenAiCompatible(baseUrl, apiKey);
     }
@@ -33,6 +37,27 @@ public final class ModelCatalogClient {
             throw e;
         } catch (Exception e) {
             throw new ModelCompletionException("模型列表查询失败: " + e.getMessage(), e);
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private List<String> fetchCodex(String baseUrl, String apiKey) throws ModelCompletionException {
+        HttpURLConnection connection = null;
+        try {
+            connection = openGet(appendQuery(endpoint(baseUrl, "/models"),
+                    "client_version", CodexResponsesProtocol.CODEX_PROTOCOL_VERSION));
+            connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+            connection.setRequestProperty("version", CodexResponsesProtocol.CODEX_PROTOCOL_VERSION);
+            connection.setRequestProperty("originator", CodexResponsesProtocol.CODEX_ORIGINATOR);
+            connection.setRequestProperty("User-Agent", CodexResponsesProtocol.codexUserAgent());
+            return readModelIds(connection);
+        } catch (ModelCompletionException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ModelCompletionException("Codex 模型列表查询失败: " + e.getMessage(), e);
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -103,6 +128,14 @@ public final class ModelCatalogClient {
             return base;
         }
         return base + suffix;
+    }
+
+    private String appendQuery(String baseUrl, String key, String value) throws Exception {
+        String separator = baseUrl.contains("?") ? "&" : "?";
+        return baseUrl + separator
+                + URLEncoder.encode(key, "UTF-8")
+                + "="
+                + URLEncoder.encode(value, "UTF-8");
     }
 
     private String rootOrigin(String baseUrl) throws Exception {

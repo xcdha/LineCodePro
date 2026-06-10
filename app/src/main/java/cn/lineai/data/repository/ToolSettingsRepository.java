@@ -20,6 +20,7 @@ public final class ToolSettingsRepository {
     public static final String KEY_PERMISSION_MODE = "@lineai_permission_mode";
     public static final String KEY_MCP_EXECUTION_MODE = "@lineai_mcp_execution_mode";
     public static final String KEY_IMAGE_UNDERSTANDING_MODEL_ID = "@lineai_image_understanding_model_id";
+    public static final String KEY_IMAGE_GENERATION_MODEL_ID = "@lineai_image_generation_model_id";
     private static final String KEY_MCP_PREFIX = "@linecode_mcp_enabled_";
 
     public static final String PERMISSION_READONLY = "readonly";
@@ -35,8 +36,10 @@ public final class ToolSettingsRepository {
                     new String[] {"http_server"}),
             new McpToolConfig("agent", "Agent", "分派 Agent 处理任务", true,
                     new String[] {"agent", "agent_pipeline"}),
-            new McpToolConfig("image_understanding", "图片理解", "读取本地图片并调用已选择的视觉模型理解内容", false,
+            new McpToolConfig("image_understanding", "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,
                     new String[] {"image_understanding"}),
+            new McpToolConfig("image_generation", "图片生成", "调用已选择的生图模型生成图片，并以内联 Markdown 图片返回", false,
+                    new String[] {"image_generation"}),
             new McpToolConfig("shell", "SSH Shell", "通过 SSH 执行 shell 命令", true,
                     new String[] {"shell_execute"}),
             new McpToolConfig("web_search", "网页搜索", "搜索互联网并查看网页内容", false,
@@ -81,7 +84,8 @@ public final class ToolSettingsRepository {
                 getExecutionMode(),
                 getConfigs(),
                 webSearchConfigRepository.get(),
-                getImageUnderstandingModelId()
+                getImageUnderstandingModelId(),
+                getImageGenerationModelId()
         );
     }
 
@@ -99,6 +103,14 @@ public final class ToolSettingsRepository {
 
     public synchronized void setImageUnderstandingModelId(String modelId) {
         settingsRepository.setString(KEY_IMAGE_UNDERSTANDING_MODEL_ID, modelId == null ? "" : modelId.trim());
+    }
+
+    public synchronized String getImageGenerationModelId() {
+        return settingsRepository.getString(KEY_IMAGE_GENERATION_MODEL_ID, "").trim();
+    }
+
+    public synchronized void setImageGenerationModelId(String modelId) {
+        settingsRepository.setString(KEY_IMAGE_GENERATION_MODEL_ID, modelId == null ? "" : modelId.trim());
     }
 
     public synchronized void setMcpEnabled(String id, boolean enabled) {
@@ -119,7 +131,11 @@ public final class ToolSettingsRepository {
             if (EXECUTION_LOCAL.equals(executionMode) && "shell".equals(config.getId())) {
                 continue;
             }
-            if (EXECUTION_SSH.equals(executionMode) && !"shell".equals(config.getId()) && !"web_search".equals(config.getId())) {
+            if (EXECUTION_SSH.equals(executionMode)
+                    && !"shell".equals(config.getId())
+                    && !"web_search".equals(config.getId())
+                    && !"image_understanding".equals(config.getId())
+                    && !"image_generation".equals(config.getId())) {
                 continue;
             }
             for (String tool : config.getTools()) {
@@ -316,13 +332,16 @@ public final class ToolSettingsRepository {
         StringBuilder builder = new StringBuilder();
         builder.append("## 可用工具\n")
                 .append("当前执行目标是 SSH Shell。本地文件读写、文件搜索、Agent、Agent Pipeline 和 HTTP 服务器已禁用。\n")
-                .append("应用侧自定义 HTTP MCP 可用时仍会作为工具提供，不依赖 SSH 主机环境。\n")
+                .append("图片理解会通过 SFTP 读取 SSH 工作区图片；网页搜索、图片生成和应用侧自定义 HTTP MCP 可用时仍会作为工具提供。\n")
                 .append("不要引用应用私有 home 工作目录；如果系统提示提供了 SSH 项目目录，必须在该目录内操作。\n")
                 .append("如需读取、写入、列目录或搜索文件，请通过 shell 命令在 SSH 环境内完成。\n\n");
         List<McpToolConfig> promptConfigs = configs == null ? new ArrayList<>() : configs;
         HashSet<String> renderedTools = new HashSet<>();
         for (McpToolConfig config : promptConfigs) {
-            if (!"shell".equals(config.getId()) && !"web_search".equals(config.getId())) {
+            if (!"shell".equals(config.getId())
+                    && !"web_search".equals(config.getId())
+                    && !"image_understanding".equals(config.getId())
+                    && !"image_generation".equals(config.getId())) {
                 continue;
             }
             ArrayList<String> tools = new ArrayList<>();
@@ -358,6 +377,10 @@ public final class ToolSettingsRepository {
                 builder.append("shell_execute 默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。\n");
             } else if ("web_search".equals(config.getId())) {
                 builder.append("web_search 和 web_fetch 由应用侧网络配置执行，不依赖 SSH 主机环境。\n");
+            } else if ("image_understanding".equals(config.getId())) {
+                builder.append("image_understanding 通过 SFTP 读取 SSH 工作区图片，再由应用侧视觉模型配置执行。\n");
+            } else if ("image_generation".equals(config.getId())) {
+                builder.append("image_generation 由应用侧生图模型配置执行，不依赖 SSH 主机环境；结果会以内联 Markdown 图片返回。\n");
             }
             builder.append('\n');
         }
@@ -400,7 +423,8 @@ public final class ToolSettingsRepository {
     public static ToolCategory getToolCategory(String toolName) {
         if ("file_read".equals(toolName) || "glob".equals(toolName) || "list_dir".equals(toolName)
                 || "web_search".equals(toolName) || "web_fetch".equals(toolName)
-                || "image_understanding".equals(toolName)) {
+                || "image_understanding".equals(toolName)
+                || "image_generation".equals(toolName)) {
             return ToolCategory.READ;
         }
         if ("file_write".equals(toolName) || "file_edit".equals(toolName) || "file_delete".equals(toolName)) {

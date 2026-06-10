@@ -15,11 +15,10 @@ import cn.lineai.ai.message.SystemModelMessage;
 import cn.lineai.ai.message.ToolModelMessage;
 import cn.lineai.ai.message.UserModelMessage;
 import cn.lineai.ai.prompt.SystemPromptProvider;
+import cn.lineai.ai.protocol.OpenAiCompatibleCapabilities;
 import cn.lineai.context.ContextCompactionResult;
 import cn.lineai.context.ContextCompactionService;
 import cn.lineai.context.ContextManager;
-import cn.lineai.data.importer.LineCodeArchiveService;
-import cn.lineai.data.importer.LineCodeImportService;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
 import cn.lineai.data.repository.ChatModeRepository;
 import cn.lineai.data.repository.ConversationRecord;
@@ -49,6 +48,7 @@ import cn.lineai.model.FileTreeNode;
 import cn.lineai.model.InputAttachment;
 import cn.lineai.model.InputSettings;
 import cn.lineai.model.MemoryOverviewState;
+import cn.lineai.model.MessageContentSanitizer;
 import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.McpToolConfig;
@@ -100,8 +100,6 @@ public final class MainCoordinator implements MainUiController {
     private static final long STREAM_RENDER_INTERVAL_MS = 80L;
     private static final long AGENT_PROGRESS_RENDER_INTERVAL_MS = 100L;
     private static final int AGENT_MAX_TURNS = 8;
-    private static final int SSH_PREFETCH_MAX_ROOT_CHILDREN = 80;
-    private static final int SSH_PREFETCH_MAX_DIRECTORIES = 24;
     private static final String DIRECTORY_PICKER_MODE_SSH_REMOTE = "ssh_remote";
     private static final String AGENT_TERMINATED_MESSAGE = "Agent 已终止。";
     private static final String SHELL_EXECUTE_TOOL = "shell_execute";
@@ -117,6 +115,12 @@ public final class MainCoordinator implements MainUiController {
     private final ChatUiStateAssembler chatUiStateAssembler;
     private final ToolRunController toolRunController;
     private final GenerationController generationController = new GenerationController();
+    private final ModelManagementController modelManagementController;
+    private final SettingsManagementController settingsManagementController;
+    private final SshFileTreeController sshFileTreeController;
+    private final FileOperationController fileOperationController;
+    private final PermissionModeController permissionModeController;
+    private final ProjectSheetController projectSheetController;
     private final ModelRepository modelRepository;
     private final AiBehaviorSettingsRepository aiBehaviorSettingsRepository;
     private final ChatModeRepository chatModeRepository;
@@ -143,7 +147,7 @@ public final class MainCoordinator implements MainUiController {
     private final SystemPromptProvider systemPromptProvider;
     private final StoragePermissionManager storagePermissionManager;
     private final SafPathResolver safPathResolver;
-    private final LineCodeArchiveService lineCodeArchiveService;
+    private final LineCodeArchiveController lineCodeArchiveController;
     private MainContract.View view;
     private final ScreenNavigationController.Host navigationHost = new ScreenNavigationController.Host() {
         @Override
@@ -178,22 +182,9 @@ public final class MainCoordinator implements MainUiController {
     private String projectLabel = "LineCode";
     private String projectPath = "";
     private String projectSource = WorkspacePaths.SOURCE_DEFAULT;
-    private String permissionMode = "ask";
     private boolean pendingExternalProjectOpen;
     private PendingToolExecution pendingToolExecution;
     private String sessionAutoConfirmedConversationId = "";
-    private String fileClipboardPath = "";
-    private String fileClipboardName = "";
-    private boolean fileClipboardSsh;
-    private FileTreeNode cachedSshFileTree;
-    private boolean sshFileTreeLoading;
-    private String sshFileTreeError = "";
-    private int sshFileTreeLoadGeneration;
-    private String sshFileTreeRootPath = "";
-    private final HashMap<String, ArrayList<FileTreeNode>> sshDirectoryChildrenByPath = new HashMap<>();
-    private final HashMap<String, String> sshDirectoryNameByPath = new HashMap<>();
-    private final Set<String> sshDirectoryLoadedPaths = new HashSet<>();
-    private final Set<String> sshDirectoryLoadingPaths = new HashSet<>();
     private final Set<String> directoryPickerExpandedPaths = new HashSet<>();
     private FileTreeNode directoryPickerTree;
     private String directoryPickerMode = "";
@@ -210,8 +201,6 @@ public final class MainCoordinator implements MainUiController {
     private boolean attachmentPickerActive;
     private int attachmentPickerLoadGeneration;
     private boolean startupProjectAvailabilityChecked;
-    private String pendingLineCodeImportUri = "";
-    private String pendingLineCodeImportDisplayName = "";
 
     private static final class ToolExecutionBatch {
         private final ArrayList<ToolResult> completedResults;
@@ -634,6 +623,25 @@ public final class MainCoordinator implements MainUiController {
 
     MainCoordinator(MainDependencies dependencies) {
         modelRepository = dependencies.modelRepository;
+        modelManagementController = new ModelManagementController(
+                modelRepository,
+                new ModelManagementController.Host() {
+                    @Override
+                    public void refreshModelsScreen() {
+                        refreshVisibleScreen("models");
+                    }
+
+                    @Override
+                    public void returnToModelsScreen() {
+                        returnToScreen("models");
+                    }
+
+                    @Override
+                    public void render() {
+                        MainCoordinator.this.render();
+                    }
+                }
+        );
         aiBehaviorSettingsRepository = dependencies.aiBehaviorSettingsRepository;
         chatModeRepository = dependencies.chatModeRepository;
         inputSettingsRepository = dependencies.inputSettingsRepository;
@@ -659,9 +667,267 @@ public final class MainCoordinator implements MainUiController {
         systemPromptProvider = dependencies.systemPromptProvider;
         storagePermissionManager = dependencies.storagePermissionManager;
         safPathResolver = dependencies.safPathResolver;
-        lineCodeArchiveService = dependencies.lineCodeArchiveService;
         mainThread = dependencies.mainThreadDispatcher;
         backgroundTasks = dependencies.backgroundTaskRunner;
+        sshFileTreeController = new SshFileTreeController(
+                sshFileTreeRepository,
+                new SshFileTreeController.Host() {
+                    @Override
+                    public boolean isSshExecutionMode() {
+                        return MainCoordinator.this.isSshExecutionMode();
+                    }
+
+                    @Override
+                    public String projectPath() {
+                        return projectPath;
+                    }
+
+                    @Override
+                    public String projectLabel() {
+                        return projectLabel;
+                    }
+
+                    @Override
+                    public boolean isExpanded(String path) {
+                        return expandedFilePaths.contains(path);
+                    }
+
+                    @Override
+                    public void addExpandedPath(String path) {
+                        if (path != null && path.length() > 0) {
+                            expandedFilePaths.add(path);
+                        }
+                    }
+
+                    @Override
+                    public void setProjectPathFromSshRoot(String path) {
+                        projectPath = path == null ? "" : path;
+                    }
+
+                    @Override
+                    public String basename(String path) {
+                        return MainCoordinator.this.basename(path);
+                    }
+
+                    @Override
+                    public void render() {
+                        MainCoordinator.this.render();
+                    }
+                },
+                backgroundTasks::execute,
+                mainThread::post
+        );
+        fileOperationController = new FileOperationController(
+                fileTreeRepository,
+                sshFileTreeRepository,
+                new FileOperationController.Host() {
+                    @Override
+                    public boolean isSshExecutionMode() {
+                        return MainCoordinator.this.isSshExecutionMode();
+                    }
+
+                    @Override
+                    public void showInputDialog(String title, String message, String initialValue, String actionId) {
+                        if (view != null) {
+                            view.showInputDialog(title, message, initialValue, actionId);
+                        }
+                    }
+
+                    @Override
+                    public void showConfirmationDialog(String title, String message, String confirmLabel, boolean danger, String actionId) {
+                        if (view != null) {
+                            view.showConfirmationDialog(title, message, confirmLabel, danger, actionId);
+                        }
+                    }
+
+                    @Override
+                    public void showFileActionDialog(String title, String subtitle, ArrayList<SheetOption> options) {
+                        if (view != null) {
+                            view.showFileActionDialog(title, subtitle, options);
+                        }
+                    }
+
+                    @Override
+                    public void addExpandedPath(String path) {
+                        if (path != null && path.length() > 0) {
+                            expandedFilePaths.add(path);
+                        }
+                    }
+
+                    @Override
+                    public void refreshSshDirectoryAfterFileOperation(String path) {
+                        sshFileTreeController.refreshDirectoryAfterFileOperation(path);
+                    }
+
+                    @Override
+                    public void render() {
+                        MainCoordinator.this.render();
+                    }
+
+                    @Override
+                    public void showNotice(String text) {
+                        MainCoordinator.this.showNotice(text);
+                    }
+
+                    @Override
+                    public String basename(String path) {
+                        return MainCoordinator.this.basename(path);
+                    }
+
+                    @Override
+                    public String parentPath(String path) {
+                        return MainCoordinator.this.parentPath(path);
+                    }
+                },
+                backgroundTasks::execute,
+                mainThread::post
+        );
+        permissionModeController = new PermissionModeController(
+                toolSettingsRepository,
+                chatModeRepository,
+                new PermissionModeController.Host() {
+                    @Override
+                    public boolean hasExternalStorageAccess() {
+                        return storagePermissionManager.hasExternalStorageAccess();
+                    }
+
+                    @Override
+                    public String storagePermissionMessage() {
+                        return storagePermissionManager.permissionDeniedMessage();
+                    }
+
+                    @Override
+                    public void showPermissionSheet(ArrayList<SheetOption> options) {
+                        if (view != null) {
+                            view.showSheet("权限设置", options);
+                        }
+                    }
+                }
+        );
+        projectSheetController = new ProjectSheetController(
+                projectRepository,
+                new ProjectSheetController.Host() {
+                    @Override
+                    public String executionMode() {
+                        return toolSettingsRepository.getExecutionMode();
+                    }
+
+                    @Override
+                    public boolean isTermuxSshHost() {
+                        return MainCoordinator.this.isTermuxSshHost();
+                    }
+
+                    @Override
+                    public boolean hasExternalStorageAccess() {
+                        return storagePermissionManager.hasExternalStorageAccess();
+                    }
+
+                    @Override
+                    public String storagePermissionMessage() {
+                        return storagePermissionManager.permissionDeniedMessage();
+                    }
+                }
+        );
+        settingsManagementController = new SettingsManagementController(
+                aiBehaviorSettingsRepository,
+                inputSettingsRepository,
+                promptTemplateRepository,
+                learningContextRepository,
+                outputSettingsRepository,
+                themeSettingsRepository,
+                toolSettingsRepository,
+                new SettingsManagementController.Host() {
+                    @Override
+                    public String currentProjectPath() {
+                        return projectPath;
+                    }
+
+                    @Override
+                    public void render() {
+                        MainCoordinator.this.render();
+                    }
+
+                    @Override
+                    public void recreateForTheme(String screenId) {
+                        if (view != null) {
+                            view.recreateForTheme(screenId);
+                        }
+                    }
+
+                    @Override
+                    public void afterMcpExecutionModeChanged(String executionMode) {
+                        applyProject(projectRepository.ensureSelectedProjectPath(executionMode));
+                        sshFileTreeController.invalidateFileTree();
+                        requestSshFileTreeLoad(true);
+                        refreshVisibleScreen("mcp");
+                        MainCoordinator.this.render();
+                    }
+
+                    @Override
+                    public void refreshMcpScreen() {
+                        refreshVisibleScreen("mcp");
+                    }
+
+                    @Override
+                    public void returnToToolSettings() {
+                        returnToScreen("toolSettings");
+                    }
+                }
+        );
+        lineCodeArchiveController = new LineCodeArchiveController(
+                dependencies.lineCodeArchiveService,
+                new LineCodeArchiveController.Host() {
+                    @Override
+                    public void openExportPicker(String fileName) {
+                        if (view != null) {
+                            view.openLineCodeExportPicker(fileName);
+                        }
+                    }
+
+                    @Override
+                    public void persistBeforeExport() {
+                        persistCurrentConversation();
+                    }
+
+                    @Override
+                    public void openImportPicker() {
+                        if (view != null) {
+                            view.openLineCodeImportPicker();
+                        }
+                    }
+
+                    @Override
+                    public void showImportConfirmation(String sourceName) {
+                        if (view != null) {
+                            view.showConfirmationDialog(
+                                    "覆盖导入 .linecode",
+                                    "将从「" + sourceName + "」恢复数据库、聊天记录、配置和 .linecode 工作区文件。当前本机数据会被覆盖。",
+                                    "覆盖导入",
+                                    true,
+                                    "data:import_linecode"
+                            );
+                        }
+                    }
+
+                    @Override
+                    public void beforeImport() {
+                        cancelActiveGeneration();
+                        chatSessionStore.setStreaming(false);
+                    }
+
+                    @Override
+                    public void afterImport() {
+                        reloadAfterLineCodeImport();
+                    }
+
+                    @Override
+                    public void showNotice(String text) {
+                        MainCoordinator.this.showNotice(text);
+                    }
+                },
+                backgroundTasks::execute,
+                mainThread::post
+        );
         chatUiStateAssembler = new ChatUiStateAssembler(
                 modelRepository,
                 aiBehaviorSettingsRepository,
@@ -670,7 +936,6 @@ public final class MainCoordinator implements MainUiController {
                 contextManager
         );
         toolRunController = new ToolRunController(toolExecutionCoordinator, toolRegistry, toolSettingsRepository);
-        permissionMode = toolSettingsRepository.getPermissionMode();
         applyProject(projectRepository.ensureSelectedProjectPath(toolSettingsRepository.getExecutionMode()));
         expandedFilePaths.add(projectPath);
         loadCurrentConversation();
@@ -710,55 +975,13 @@ public final class MainCoordinator implements MainUiController {
         if (view == null) {
             return;
         }
-        String executionMode = toolSettingsRepository.getExecutionMode();
-        boolean sshMode = ToolSettingsRepository.EXECUTION_SSH.equals(executionMode);
-        boolean termuxSsh = sshMode && isTermuxSshHost();
-        ArrayList<SheetOption> options = new ArrayList<>();
-        ProjectRecord selected = projectRepository.getSelectedProject(executionMode);
-        List<ProjectRecord> projects = projectRepository.getProjects(executionMode);
-        for (ProjectRecord project : projects) {
-            options.add(new SheetOption(
-                    "project:select:" + project.getId(),
-                    project.getLabel(),
-                    projectDisplayDescription(project),
-                    project.getId().equals(selected.getId()),
-                    projectDeleteActionId(project),
-                    "删除"
-            ));
-        }
-        if (!sshMode) {
-            options.add(new SheetOption("project:open_local_saf", "打开本地项目",
-                    "通过系统 SAF 选择目录，并保存为本地项目",
-                    false));
-        }
-        options.add(new SheetOption("project:create", "创建工作区",
-                sshMode ? "在 SSH ~/.linecode/project 下创建项目" : "在 .linecode/project 下创建托管项目",
-                false));
-        if (!sshMode || termuxSsh) {
-            options.add(new SheetOption("storage:manage_all_files", "管理所有文件权限",
-                    storagePermissionManager.hasExternalStorageAccess() ? "已授权，可访问文件存储" : storagePermissionManager.permissionDeniedMessage(),
-                    storagePermissionManager.hasExternalStorageAccess()));
-        }
-        view.showSheet(sshMode ? "工作区 SSH" : "工作区", options);
+        ProjectSheetController.ProjectSheet sheet = projectSheetController.buildProjectSheet();
+        view.showSheet(sheet.getTitle(), sheet.getOptions());
     }
 
     @Override
     public void onPermissionClick() {
-        if (view == null) {
-            return;
-        }
-        permissionMode = toolSettingsRepository.getPermissionMode();
-        ArrayList<SheetOption> options = new ArrayList<>();
-        options.add(new SheetOption(ToolSettingsRepository.PERMISSION_AUTO, "自动", "自动执行已启用工具，危险工具按策略确认",
-                ToolSettingsRepository.PERMISSION_AUTO.equals(permissionMode)));
-        options.add(new SheetOption(ToolSettingsRepository.PERMISSION_CONFIRM, "确认", "危险操作需要确认后执行",
-                ToolSettingsRepository.PERMISSION_CONFIRM.equals(permissionMode)));
-        options.add(new SheetOption(ToolSettingsRepository.PERMISSION_READONLY, "只读", "仅允许读取、搜索和列目录，禁止写入与 Shell",
-                ToolSettingsRepository.PERMISSION_READONLY.equals(permissionMode)));
-        options.add(new SheetOption("storage:manage_all_files", "管理所有文件权限",
-                storagePermissionManager.hasExternalStorageAccess() ? "已授权，可访问文件存储" : storagePermissionManager.permissionDeniedMessage(),
-                storagePermissionManager.hasExternalStorageAccess()));
-        view.showSheet("权限设置", options);
+        permissionModeController.showPermissionSheet();
     }
 
     @Override
@@ -844,13 +1067,13 @@ public final class MainCoordinator implements MainUiController {
             if (expandedFilePaths.contains(path)) {
                 expandedFilePaths.remove(path);
                 if (isSshExecutionMode()) {
-                    rebuildCachedSshFileTree();
+                    sshFileTreeController.rebuildCachedTree();
                 }
             } else {
                 expandedFilePaths.add(path);
                 if (isSshExecutionMode()) {
-                    requestSshDirectoryLoad(path, false, false);
-                    rebuildCachedSshFileTree();
+                    sshFileTreeController.requestDirectoryLoad(path, false, false);
+                    sshFileTreeController.rebuildCachedTree();
                 }
             }
             render();
@@ -859,33 +1082,7 @@ public final class MainCoordinator implements MainUiController {
 
     @Override
     public void onFileNodeLongPressed(String path, String name, boolean directory, boolean root) {
-        if (view == null || path == null || path.length() == 0) {
-            return;
-        }
-        ArrayList<SheetOption> options = new ArrayList<>();
-        if (directory) {
-            options.add(new SheetOption("file:create_file:" + path, "新建文件", path, false));
-            options.add(new SheetOption("file:create_folder:" + path, "新建文件夹", path, false));
-            if (canPasteInto(directory)) {
-                options.add(new SheetOption("file:paste:" + path, "粘贴", fileClipboardName, false));
-            }
-            if (!root) {
-                options.add(new SheetOption("file:copy:" + path, "复制", name, false));
-                options.add(new SheetOption("file:rename:" + path, "重命名", name, false));
-                options.add(new SheetOption("file:delete:" + path, "删除", path, false));
-            }
-        } else {
-            options.add(new SheetOption("file:copy:" + path, "复制", name, false));
-            options.add(new SheetOption("file:rename:" + path, "重命名", name, false));
-            options.add(new SheetOption("file:delete:" + path, "删除", path, false));
-        }
-        if (!options.isEmpty()) {
-            view.showFileActionDialog(
-                    root ? "工作区根目录" : (name == null || name.length() == 0 ? "文件操作" : name),
-                    path,
-                    options
-            );
-        }
+        fileOperationController.showFileNodeActions(path, name, directory, root);
     }
 
     @Override
@@ -955,15 +1152,15 @@ public final class MainCoordinator implements MainUiController {
             return;
         }
         if (id.startsWith("file:create_file:")) {
-            createFileFromInput(id.substring("file:create_file:".length()), value);
+            fileOperationController.createFileFromInput(id.substring("file:create_file:".length()), value);
             return;
         }
         if (id.startsWith("file:create_folder:")) {
-            createFolderFromInput(id.substring("file:create_folder:".length()), value);
+            fileOperationController.createFolderFromInput(id.substring("file:create_folder:".length()), value);
             return;
         }
         if (id.startsWith("file:rename:")) {
-            renameFileNodeFromInput(id.substring("file:rename:".length()), value);
+            fileOperationController.renameFileNodeFromInput(id.substring("file:rename:".length()), value);
         }
     }
 
@@ -971,11 +1168,11 @@ public final class MainCoordinator implements MainUiController {
     public void onDialogConfirmed(String actionId) {
         String id = actionId == null ? "" : actionId;
         if (id.startsWith("file:delete:")) {
-            deleteFileNode(id.substring("file:delete:".length()));
+            fileOperationController.deleteFileNode(id.substring("file:delete:".length()));
             return;
         }
         if ("data:import_linecode".equals(id)) {
-            startLineCodeImport();
+            lineCodeArchiveController.confirmImport();
         }
     }
 
@@ -1524,35 +1721,26 @@ public final class MainCoordinator implements MainUiController {
             }
             return;
         } else if (id != null && id.startsWith("file:create_file:")) {
-            requestCreateFile(id.substring("file:create_file:".length()));
+            fileOperationController.requestCreateFile(id.substring("file:create_file:".length()));
             return;
         } else if (id != null && id.startsWith("file:create_folder:")) {
-            requestCreateFolder(id.substring("file:create_folder:".length()));
+            fileOperationController.requestCreateFolder(id.substring("file:create_folder:".length()));
             return;
         } else if (id != null && id.startsWith("file:copy:")) {
-            copyFileNode(id.substring("file:copy:".length()));
+            fileOperationController.copyFileNode(id.substring("file:copy:".length()));
         } else if (id != null && id.startsWith("file:paste:")) {
-            pasteFileNode(id.substring("file:paste:".length()));
+            fileOperationController.pasteFileNode(id.substring("file:paste:".length()));
             return;
         } else if (id != null && id.startsWith("file:rename:")) {
-            requestRenameFileNode(id.substring("file:rename:".length()));
+            fileOperationController.requestRenameFileNode(id.substring("file:rename:".length()));
             return;
         } else if (id != null && id.startsWith("file:delete:")) {
-            requestDeleteFileNode(id.substring("file:delete:".length()));
+            fileOperationController.requestDeleteFileNode(id.substring("file:delete:".length()));
             return;
         } else if ("storage:manage_all_files".equals(id)) {
             openStoragePermissionSettings();
-        } else if (isPermissionModeOption(id)) {
-            permissionMode = ToolSettingsRepository.normalizePermissionMode(id);
-            toolSettingsRepository.setPermissionMode(permissionMode);
-            if (ToolSettingsRepository.PERMISSION_READONLY.equals(permissionMode)) {
-                chatModeRepository.setModeOnly(ChatMode.CHAT);
-            } else {
-                chatModeRepository.rememberRestorablePermission(permissionMode);
-                if (ChatMode.CHAT.equals(chatModeRepository.getMode())) {
-                    chatModeRepository.setModeOnly(ChatMode.AGENT);
-                }
-            }
+        } else if (permissionModeController.applyPermissionModeOption(id)) {
+            // Handled above.
         } else if ("settings".equals(id)) {
             showScreen("settings");
         } else if ("tutorial".equals(id)) {
@@ -1577,15 +1765,6 @@ public final class MainCoordinator implements MainUiController {
             view.hideOverlays();
         }
         render();
-    }
-
-    private boolean isPermissionModeOption(String id) {
-        return ToolSettingsRepository.PERMISSION_AUTO.equals(id)
-                || ToolSettingsRepository.PERMISSION_CONFIRM.equals(id)
-                || ToolSettingsRepository.PERMISSION_READONLY.equals(id)
-                || "ask".equals(id)
-                || "workspace".equals(id)
-                || "manual".equals(id);
     }
 
     @Override
@@ -1616,7 +1795,7 @@ public final class MainCoordinator implements MainUiController {
         if (safeUrl.length() == 0) {
             return;
         }
-        if (OutputSettings.BROWSER_EXTERNAL.equals(outputSettingsRepository.get().getBrowserMode())) {
+        if (OutputSettings.BROWSER_EXTERNAL.equals(settingsManagementController.getOutputSettings().getBrowserMode())) {
             if (view != null) {
                 view.openExternalUrl(safeUrl);
             }
@@ -1627,226 +1806,182 @@ public final class MainCoordinator implements MainUiController {
 
     @Override
     public AiBehaviorSettings getAiBehaviorSettings() {
-        return aiBehaviorSettingsRepository.get();
+        return settingsManagementController.getAiBehaviorSettings();
     }
 
     @Override
     public void onAiToneModeChanged(String toneMode) {
-        aiBehaviorSettingsRepository.setToneMode(toneMode);
+        settingsManagementController.setAiToneMode(toneMode);
     }
 
     @Override
     public void onAiReasoningEffortChanged(String effort) {
-        aiBehaviorSettingsRepository.setReasoningEffort(effort);
+        settingsManagementController.setAiReasoningEffort(effort);
     }
 
     @Override
     public void onAiThinkingScrollChanged(boolean enabled) {
-        aiBehaviorSettingsRepository.setThinkingScrollEnabled(enabled);
-        render();
+        settingsManagementController.setAiThinkingScrollEnabled(enabled);
     }
 
     @Override
     public void onAiThinkingAutoExpandChanged(boolean enabled) {
-        aiBehaviorSettingsRepository.setThinkingAutoExpandEnabled(enabled);
-        render();
+        settingsManagementController.setAiThinkingAutoExpandEnabled(enabled);
     }
 
     @Override
     public void onAiPreserveReasoningChanged(boolean enabled) {
-        aiBehaviorSettingsRepository.setPreserveReasoningEnabled(enabled);
+        settingsManagementController.setAiPreserveReasoningEnabled(enabled);
     }
 
     @Override
     public void onAiLearningModeChanged(boolean enabled) {
-        aiBehaviorSettingsRepository.setLearningModeEnabled(enabled);
+        settingsManagementController.setAiLearningModeEnabled(enabled);
     }
 
     @Override
     public InputSettings getInputSettings() {
-        return inputSettingsRepository.get();
+        return settingsManagementController.getInputSettings();
     }
 
     @Override
     public void onEnterKeyBehaviorChanged(String behavior) {
-        inputSettingsRepository.setEnterKeyBehavior(behavior);
-        render();
+        settingsManagementController.setEnterKeyBehavior(behavior);
     }
 
     @Override
     public List<PromptTemplateItem> getPromptTemplates() {
-        return promptTemplateRepository.getTemplates();
+        return settingsManagementController.getPromptTemplates();
     }
 
     @Override
     public void onPromptTemplateSaved(String id, String value) {
-        promptTemplateRepository.saveTemplate(id, value);
+        settingsManagementController.savePromptTemplate(id, value);
     }
 
     @Override
     public void onPromptTemplateReset(String id) {
-        promptTemplateRepository.resetTemplate(id);
+        settingsManagementController.resetPromptTemplate(id);
     }
 
     @Override
     public MemoryOverviewState getMemoryOverview() {
-        return learningContextRepository.getOverview(projectPath);
+        return settingsManagementController.getMemoryOverview();
     }
 
     @Override
     public void onMemorySaved(String id, String scope, String content) {
-        learningContextRepository.saveMemory(id, scope, projectPath, content);
+        settingsManagementController.saveMemory(id, scope, content);
     }
 
     @Override
     public void onMemoryDeleted(String id) {
-        learningContextRepository.deleteMemory(id);
+        settingsManagementController.deleteMemory(id);
     }
 
     @Override
     public OutputSettings getOutputSettings() {
-        return outputSettingsRepository.get();
+        return settingsManagementController.getOutputSettings();
     }
 
     @Override
     public void onCodeWrapChanged(boolean enabled) {
-        outputSettingsRepository.setCodeWrapEnabled(enabled);
-        render();
+        settingsManagementController.setCodeWrapEnabled(enabled);
     }
 
     @Override
     public void onBrowserModeChanged(String mode) {
-        outputSettingsRepository.setBrowserMode(mode);
-        render();
+        settingsManagementController.setBrowserMode(mode);
     }
 
     @Override
     public void onBrowserJavaScriptChanged(boolean enabled) {
-        outputSettingsRepository.setBrowserJavaScriptEnabled(enabled);
-        render();
+        settingsManagementController.setBrowserJavaScriptEnabled(enabled);
     }
 
     @Override
     public ThemeSettingsState getThemeSettings() {
-        return themeSettingsRepository.getState();
+        return settingsManagementController.getThemeSettings();
     }
 
     @Override
     public void onThemeModeChanged(String mode) {
-        themeSettingsRepository.applyThemeMode(mode);
-        if (view != null) {
-            view.recreateForTheme("theme");
-        }
+        settingsManagementController.setThemeMode(mode);
     }
 
     @Override
     public void onCustomThemeColorsSaved(Map<String, String> colors) {
-        themeSettingsRepository.saveCustomThemeColors(colors);
-        if (view != null) {
-            view.recreateForTheme("theme");
-        }
+        settingsManagementController.saveCustomThemeColors(colors);
     }
 
     @Override
     public McpSettingsState getMcpSettingsState() {
-        return toolSettingsRepository.getMcpSettingsState();
+        return settingsManagementController.getMcpSettingsState();
     }
 
     @Override
     public void onMcpExecutionModeChanged(String mode) {
-        toolSettingsRepository.setExecutionMode(mode);
-        applyProject(projectRepository.ensureSelectedProjectPath(toolSettingsRepository.getExecutionMode()));
-        invalidateSshFileTree();
-        requestSshFileTreeLoad(true);
-        refreshVisibleScreen("mcp");
-        render();
+        settingsManagementController.setMcpExecutionMode(mode);
     }
 
     @Override
     public void onMcpToolGroupChanged(String id, boolean enabled) {
-        toolSettingsRepository.setMcpEnabled(id, enabled);
-        refreshVisibleScreen("mcp");
-        render();
+        settingsManagementController.setMcpToolGroupEnabled(id, enabled);
     }
 
     @Override
     public void onMcpWebSearchConfigChanged(WebSearchConfig config) {
-        toolSettingsRepository.setWebSearchConfig(config);
+        settingsManagementController.setMcpWebSearchConfig(config);
     }
 
     @Override
     public String getImageUnderstandingModelId() {
-        return toolSettingsRepository.getImageUnderstandingModelId();
+        return settingsManagementController.getImageUnderstandingModelId();
     }
 
     @Override
     public void onImageUnderstandingModelSelected(String id) {
-        toolSettingsRepository.setImageUnderstandingModelId(id);
-        returnToScreen("toolSettings");
-        render();
+        settingsManagementController.setImageUnderstandingModelId(id);
+    }
+
+    @Override
+    public String getImageGenerationModelId() {
+        return settingsManagementController.getImageGenerationModelId();
+    }
+
+    @Override
+    public void onImageGenerationModelSelected(String id) {
+        settingsManagementController.setImageGenerationModelId(id);
     }
 
     @Override
     public void onLineCodeExportRequested() {
-        if (view != null) {
-            view.openLineCodeExportPicker(defaultLineCodeArchiveName());
-        }
+        lineCodeArchiveController.requestExport();
     }
 
     @Override
     public void onLineCodeExportTargetPicked(String uri, String displayName) {
-        String targetUri = safe(uri);
-        if (targetUri.length() == 0) {
-            return;
-        }
-        persistCurrentConversation();
-        backgroundTasks.execute("linecode-export", () -> {
-            try {
-                LineCodeArchiveService.ExportResult result = lineCodeArchiveService.exportArchive(targetUri);
-                mainThread.post(() -> showNotice("已导出 .linecode："
-                        + result.getConversationCount() + " 个会话，"
-                        + result.getModelCount() + " 个模型，"
-                        + result.getSettingCount() + " 项设置。"));
-            } catch (Exception e) {
-                mainThread.post(() -> showNotice("导出 .linecode 失败: " + errorMessage(e)));
-            }
-        });
+        lineCodeArchiveController.exportTargetPicked(uri);
     }
 
     @Override
     public void onLineCodeExportCancelled() {
+        lineCodeArchiveController.exportCancelled();
     }
 
     @Override
     public void onLineCodeImportRequested() {
-        if (view != null) {
-            view.openLineCodeImportPicker();
-        }
+        lineCodeArchiveController.requestImport();
     }
 
     @Override
     public void onLineCodeImportPicked(String uri, String displayName) {
-        pendingLineCodeImportUri = safe(uri);
-        pendingLineCodeImportDisplayName = safe(displayName);
-        if (pendingLineCodeImportUri.length() == 0 || view == null) {
-            return;
-        }
-        String name = pendingLineCodeImportDisplayName.length() == 0
-                ? ".linecode 文件"
-                : pendingLineCodeImportDisplayName;
-        view.showConfirmationDialog(
-                "覆盖导入 .linecode",
-                "将从「" + name + "」恢复数据库、聊天记录、配置和 .linecode 工作区文件。当前本机数据会被覆盖。",
-                "覆盖导入",
-                true,
-                "data:import_linecode"
-        );
+        lineCodeArchiveController.importPicked(uri, displayName);
     }
 
     @Override
     public void onLineCodeImportCancelled() {
-        pendingLineCodeImportUri = "";
-        pendingLineCodeImportDisplayName = "";
+        lineCodeArchiveController.importCancelled();
     }
 
     @Override
@@ -2034,39 +2169,10 @@ public final class MainCoordinator implements MainUiController {
         return ids;
     }
 
-    private void startLineCodeImport() {
-        String uri = pendingLineCodeImportUri;
-        pendingLineCodeImportUri = "";
-        pendingLineCodeImportDisplayName = "";
-        if (uri.length() == 0) {
-            return;
-        }
-        cancelActiveGeneration();
-        chatSessionStore.setStreaming(false);
-        backgroundTasks.execute("linecode-import", () -> {
-            try {
-                LineCodeArchiveService.ImportResult result = lineCodeArchiveService.importArchive(
-                        uri,
-                        LineCodeImportService.Mode.REPLACE
-                );
-                mainThread.post(() -> {
-                    reloadAfterLineCodeImport();
-                    showNotice("已导入 .linecode："
-                            + result.getConversationCount() + " 个会话，"
-                            + result.getModelCount() + " 个模型，"
-                            + result.getSettingCount() + " 项设置，"
-                            + result.getRestoredFileCount() + " 个工作区文件。");
-                });
-            } catch (Exception e) {
-                mainThread.post(() -> showNotice("导入 .linecode 失败: " + errorMessage(e)));
-            }
-        });
-    }
-
     private void reloadAfterLineCodeImport() {
         toolRegistry.reloadExtensions();
         applyProject(projectRepository.ensureSelectedProjectPath(toolSettingsRepository.getExecutionMode()));
-        invalidateSshFileTree();
+        sshFileTreeController.invalidateFileTree();
         requestSshFileTreeLoad(true);
         ConversationRecord current = conversationRepository.getCurrentConversation();
         if (current == null) {
@@ -2076,18 +2182,6 @@ public final class MainCoordinator implements MainUiController {
         }
         refreshVisibleScreen("data");
         render();
-    }
-
-    private String defaultLineCodeArchiveName() {
-        return "LineCode-" + System.currentTimeMillis() + ".linecode";
-    }
-
-    private String errorMessage(Exception error) {
-        if (error == null) {
-            return "未知错误";
-        }
-        String message = error.getMessage();
-        return message == null || message.length() == 0 ? error.getClass().getSimpleName() : message;
     }
 
     private JSONObject extractJsonObject(String text) throws Exception {
@@ -2175,12 +2269,12 @@ public final class MainCoordinator implements MainUiController {
 
     @Override
     public List<ModelConfig> getModels() {
-        return modelRepository.getModels();
+        return modelManagementController.getModels();
     }
 
     @Override
     public ModelConfig getModel(String id) {
-        return modelRepository.getModel(id);
+        return modelManagementController.getModel(id);
     }
 
     @Override
@@ -2196,7 +2290,7 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public FileTreeNode getFileTree() {
         if (isSshExecutionMode()) {
-            return getSshFileTree();
+            return sshFileTreeController.getFileTree();
         }
         return fileTreeRepository.buildTree(projectPath, expandedFilePaths);
     }
@@ -2209,29 +2303,22 @@ public final class MainCoordinator implements MainUiController {
 
     @Override
     public String getSelectedModelId() {
-        return modelRepository.getSelectedModelId();
+        return modelManagementController.getSelectedModelId();
     }
 
     @Override
     public void onModelSelected(String id) {
-        modelRepository.setSelectedModelId(id);
-        refreshVisibleScreen("models");
-        render();
+        modelManagementController.selectModel(id);
     }
 
     @Override
     public void onModelSaved(ModelConfig model) {
-        ModelConfig saved = modelRepository.save(model);
-        modelRepository.setSelectedModelId(saved.getId());
-        returnToScreen("models");
-        render();
+        modelManagementController.saveModel(model);
     }
 
     @Override
     public void onModelsDeleted(List<String> ids) {
-        modelRepository.deleteModels(ids);
-        refreshVisibleScreen("models");
-        render();
+        modelManagementController.deleteModels(ids);
     }
 
     @Override
@@ -2247,8 +2334,15 @@ public final class MainCoordinator implements MainUiController {
             showNotice("外部工作区不可访问：\n" + path + "\n请确认已开启“管理所有文件”权限。");
             return;
         }
-        ProjectRecord project = projectRepository.saveExternalProject(path, WorkspacePaths.basename(path));
-        applyProject(project);
+        ProjectRecord project;
+        if (isSshExecutionMode() && isTermuxSshHost()) {
+            project = projectRepository.saveSshProject(path, WorkspacePaths.basename(path));
+            applyProject(project);
+            requestSshFileTreeLoad(true);
+        } else {
+            project = projectRepository.saveExternalProject(path, WorkspacePaths.basename(path));
+            applyProject(project);
+        }
         if (view != null) {
             view.hideOverlays();
         }
@@ -2315,13 +2409,6 @@ public final class MainCoordinator implements MainUiController {
         }
     }
 
-    private String projectDeleteActionId(ProjectRecord project) {
-        if (project == null || WorkspacePaths.DEFAULT_PROJECT_ID.equals(project.getId()) || "ssh:default".equals(project.getId())) {
-            return "";
-        }
-        return "project:delete:" + project.getId();
-    }
-
     private void applyProject(ProjectRecord project) {
         if (project == null) {
             return;
@@ -2336,7 +2423,7 @@ public final class MainCoordinator implements MainUiController {
         if (projectPath.length() > 0) {
             expandedFilePaths.add(projectPath);
         }
-        invalidateSshFileTree();
+        sshFileTreeController.invalidateFileTree();
     }
 
     private void requestOpenExternalProject() {
@@ -2386,97 +2473,6 @@ public final class MainCoordinator implements MainUiController {
         }
     }
 
-    private void requestCreateFile(String parentPath) {
-        if (view != null) {
-            view.showInputDialog("新建文件", parentPath, "", "file:create_file:" + parentPath);
-        }
-    }
-
-    private void requestCreateFolder(String parentPath) {
-        if (view != null) {
-            view.showInputDialog("新建文件夹", parentPath, "", "file:create_folder:" + parentPath);
-        }
-    }
-
-    private void requestRenameFileNode(String path) {
-        if (view != null) {
-            view.showInputDialog("重命名", path, basename(path), "file:rename:" + path);
-        }
-    }
-
-    private void requestDeleteFileNode(String path) {
-        if (view != null) {
-            view.showConfirmationDialog("确认删除",
-                    "确定要删除 \"" + basename(path) + "\" 吗？此操作不可撤销。\n\n" + path,
-                    "删除",
-                    true,
-                    "file:delete:" + path);
-        }
-    }
-
-    private void createFileFromInput(String parentPath, String name) {
-        runFileOperation(parentPath, () -> {
-            if (isSshExecutionMode()) {
-                sshFileTreeRepository.createFile(parentPath, name);
-            } else {
-                fileTreeRepository.createFile(parentPath, name);
-            }
-        });
-    }
-
-    private void createFolderFromInput(String parentPath, String name) {
-        runFileOperation(parentPath, () -> {
-            if (isSshExecutionMode()) {
-                sshFileTreeRepository.createDirectory(parentPath, name);
-            } else {
-                fileTreeRepository.createDirectory(parentPath, name);
-            }
-        });
-    }
-
-    private void renameFileNodeFromInput(String path, String newName) {
-        runFileOperation(parentPath(path), () -> {
-            if (isSshExecutionMode()) {
-                sshFileTreeRepository.rename(path, newName);
-            } else {
-                fileTreeRepository.rename(path, newName);
-            }
-        });
-    }
-
-    private void deleteFileNode(String path) {
-        runFileOperation(parentPath(path), () -> {
-            if (isSshExecutionMode()) {
-                sshFileTreeRepository.delete(path);
-            } else {
-                fileTreeRepository.delete(path);
-            }
-        });
-    }
-
-    private void copyFileNode(String path) {
-        fileClipboardPath = path == null ? "" : path;
-        fileClipboardName = basename(path);
-        fileClipboardSsh = isSshExecutionMode();
-    }
-
-    private void pasteFileNode(String targetDirectoryPath) {
-        if (fileClipboardPath.length() == 0 || fileClipboardSsh != isSshExecutionMode()) {
-            return;
-        }
-        runFileOperation(targetDirectoryPath, () -> {
-            if (isSshExecutionMode()) {
-                sshFileTreeRepository.copyInto(fileClipboardPath, targetDirectoryPath);
-            } else {
-                fileTreeRepository.copyInto(fileClipboardPath, targetDirectoryPath);
-            }
-        });
-    }
-
-    private boolean canPasteInto(boolean directory) {
-        return directory && fileClipboardPath.length() > 0 && fileClipboardSsh == isSshExecutionMode();
-    }
-
     private void createProjectFromInput(String executionMode, String name) {
         String cleanName = name == null ? "" : name.trim();
         if (cleanName.length() == 0) {
@@ -2506,35 +2502,6 @@ public final class MainCoordinator implements MainUiController {
         } catch (RuntimeException e) {
             showNotice("创建工作区失败: " + e.getMessage());
         }
-    }
-
-    private void runFileOperation(String expandedPath, FileOperation operation) {
-        backgroundTasks.execute("linecode-file-operation", () -> {
-            try {
-                operation.run();
-                mainThread.post(() -> {
-                    if (expandedPath != null && expandedPath.length() > 0) {
-                        expandedFilePaths.add(expandedPath);
-                    }
-                    if (isSshExecutionMode()) {
-                        refreshSshDirectoryAfterFileOperation(expandedPath);
-                    }
-                    render();
-                });
-            } catch (Exception e) {
-                mainThread.post(() -> showNotice("文件操作失败: " + e.getMessage()));
-            }
-        });
-    }
-
-    private void refreshSshDirectoryAfterFileOperation(String expandedPath) {
-        String path = expandedPath == null ? "" : expandedPath.trim();
-        if (path.length() == 0) {
-            requestSshFileTreeLoad(true);
-            return;
-        }
-        invalidateSshDirectory(path);
-        requestSshDirectoryLoad(path, path.equals(projectPath) || path.equals(sshFileTreeRootPath), false);
     }
 
     private void startLocalDirectoryPicker(String mode) {
@@ -2744,241 +2711,8 @@ public final class MainCoordinator implements MainUiController {
         return projectRepository.getDefaultHomePath();
     }
 
-    private FileTreeNode getSshFileTree() {
-        if (cachedSshFileTree != null) {
-            return cachedSshFileTree;
-        }
-        String label = sshFileTreeLoading
-                ? "正在读取 SSH 目录..."
-                : (sshFileTreeError.length() == 0 ? "SSH" : sshFileTreeError);
-        String placeholderPath = projectPath.length() == 0 ? "." : projectPath;
-        return new FileTreeNode(label, placeholderPath, true, true, Collections.emptyList());
-    }
-
     private void requestSshFileTreeLoad(boolean force) {
-        if (!isSshExecutionMode()) {
-            return;
-        }
-        String root = projectPath == null ? "" : projectPath.trim();
-        if (root.length() == 0 && sshFileTreeRootPath.length() > 0) {
-            root = sshFileTreeRootPath;
-        }
-        if (root.length() == 0) {
-            root = ".";
-        }
-        if (force) {
-            invalidateSshFileTree();
-        }
-        requestSshDirectoryLoad(root, true, false);
-    }
-
-    private void requestSshDirectoryLoad(String path, boolean root, boolean force) {
-        if (!isSshExecutionMode()) {
-            return;
-        }
-        String cleanPath = path == null ? "" : path.trim();
-        if (cleanPath.length() == 0) {
-            cleanPath = ".";
-        }
-        if (force) {
-            invalidateSshDirectory(cleanPath);
-        }
-        if (!force && sshDirectoryLoadedPaths.contains(cleanPath)) {
-            rebuildCachedSshFileTree();
-            return;
-        }
-        if (sshDirectoryLoadingPaths.contains(cleanPath)) {
-            return;
-        }
-        sshDirectoryLoadingPaths.add(cleanPath);
-        sshFileTreeLoading = true;
-        if (root && sshFileTreeRootPath.length() == 0) {
-            sshFileTreeRootPath = cleanPath;
-        }
-        rebuildCachedSshFileTree();
-        startSshDirectoryLoad(cleanPath, root, sshFileTreeLoadGeneration);
-    }
-
-    private void startSshDirectoryLoad(String path, boolean root, int generation) {
-        backgroundTasks.execute("linecode-ssh-directory-index", () -> {
-            try {
-                FileTreeNode listing = sshFileTreeRepository.listDirectory(path);
-                mainThread.post(() -> {
-                    if (generation != sshFileTreeLoadGeneration) {
-                        return;
-                    }
-                    sshDirectoryLoadingPaths.remove(path);
-                    updateSshDirectoryListing(listing);
-                    sshFileTreeError = "";
-                    updateSshLoadingState();
-                    if (root) {
-                        sshFileTreeRootPath = listing.getPath();
-                    }
-                    if (projectPath.length() == 0) {
-                        projectPath = listing.getPath();
-                        expandedFilePaths.add(projectPath);
-                    }
-                    rebuildCachedSshFileTree();
-                    render();
-                    if (root) {
-                        startSshIndexPrefetch(listing.getChildren(), generation);
-                    }
-                });
-            } catch (Exception e) {
-                mainThread.post(() -> {
-                    if (generation != sshFileTreeLoadGeneration) {
-                        return;
-                    }
-                    sshDirectoryLoadingPaths.remove(path);
-                    sshFileTreeError = e.getMessage();
-                    updateSshLoadingState();
-                    rebuildCachedSshFileTree();
-                    render();
-                });
-            }
-        });
-    }
-
-    private void startSshIndexPrefetch(List<FileTreeNode> rootChildren, int generation) {
-        if (rootChildren == null || rootChildren.size() > SSH_PREFETCH_MAX_ROOT_CHILDREN) {
-            return;
-        }
-        ArrayList<String> paths = new ArrayList<>();
-        for (FileTreeNode child : rootChildren) {
-            if (child == null || !child.isDirectory()) {
-                continue;
-            }
-            String path = child.getPath();
-            if (path.length() == 0 || sshDirectoryLoadedPaths.contains(path) || sshDirectoryLoadingPaths.contains(path)) {
-                continue;
-            }
-            paths.add(path);
-            sshDirectoryLoadingPaths.add(path);
-            if (paths.size() >= SSH_PREFETCH_MAX_DIRECTORIES) {
-                break;
-            }
-        }
-        if (paths.isEmpty()) {
-            updateSshLoadingState();
-            return;
-        }
-        updateSshLoadingState();
-        backgroundTasks.execute("linecode-ssh-index-prefetch", () -> {
-            for (String path : paths) {
-                try {
-                    FileTreeNode listing = sshFileTreeRepository.listDirectory(path);
-                    mainThread.post(() -> applySshPrefetchListing(path, listing, generation, false, ""));
-                } catch (Exception e) {
-                    String message = e.getMessage();
-                    mainThread.post(() -> applySshPrefetchListing(path, null, generation, true, message));
-                }
-            }
-        });
-    }
-
-    private void applySshPrefetchListing(String path, FileTreeNode listing, int generation, boolean error, String message) {
-        if (generation != sshFileTreeLoadGeneration) {
-            return;
-        }
-        sshDirectoryLoadingPaths.remove(path);
-        if (!error && listing != null) {
-            updateSshDirectoryListing(listing);
-        } else if (message != null && message.length() > 0 && expandedFilePaths.contains(path)) {
-            sshFileTreeError = message;
-        }
-        updateSshLoadingState();
-        rebuildCachedSshFileTree();
-        if (expandedFilePaths.contains(path)) {
-            render();
-        }
-    }
-
-    private void updateSshDirectoryListing(FileTreeNode listing) {
-        if (listing == null || listing.getPath().length() == 0) {
-            return;
-        }
-        ArrayList<FileTreeNode> children = new ArrayList<>(listing.getChildren());
-        sshDirectoryChildrenByPath.put(listing.getPath(), children);
-        sshDirectoryLoadedPaths.add(listing.getPath());
-        sshDirectoryNameByPath.put(listing.getPath(), listing.getName());
-        for (FileTreeNode child : children) {
-            if (child != null && child.isDirectory()) {
-                sshDirectoryNameByPath.put(child.getPath(), child.getName());
-            }
-        }
-    }
-
-    private void rebuildCachedSshFileTree() {
-        String rootPath = sshFileTreeRootPath.length() == 0 ? projectPath : sshFileTreeRootPath;
-        if (rootPath == null || rootPath.trim().length() == 0) {
-            cachedSshFileTree = null;
-            return;
-        }
-        String rootName = sshDirectoryNameByPath.containsKey(rootPath)
-                ? sshDirectoryNameByPath.get(rootPath)
-                : basename(rootPath);
-        if (rootName == null || rootName.length() == 0) {
-            rootName = projectLabel;
-        }
-        cachedSshFileTree = buildVisibleSshDirectory(rootPath, rootName, true);
-    }
-
-    private FileTreeNode buildVisibleSshDirectory(String path, String name, boolean forceExpanded) {
-        boolean expanded = forceExpanded || expandedFilePaths.contains(path);
-        ArrayList<FileTreeNode> children = new ArrayList<>();
-        if (expanded) {
-            List<FileTreeNode> indexedChildren = sshDirectoryChildrenByPath.get(path);
-            if (indexedChildren != null) {
-                for (FileTreeNode child : indexedChildren) {
-                    if (child == null) {
-                        continue;
-                    }
-                    if (child.isDirectory()) {
-                        String childName = child.getName().length() == 0 ? basename(child.getPath()) : child.getName();
-                        children.add(buildVisibleSshDirectory(child.getPath(), childName, false));
-                    } else {
-                        children.add(child);
-                    }
-                }
-            }
-            if (sshDirectoryLoadingPaths.contains(path) && indexedChildren == null) {
-                children.add(new FileTreeNode("正在读取...", path + "#loading", false, false, Collections.emptyList()));
-            }
-            if (sshFileTreeError.length() > 0 && path.equals(sshFileTreeRootPath) && indexedChildren == null) {
-                children.add(new FileTreeNode(sshFileTreeError, path + "#error", false, false, Collections.emptyList()));
-            }
-        }
-        return new FileTreeNode(name, path, true, expanded, children);
-    }
-
-    private void updateSshLoadingState() {
-        sshFileTreeLoading = !sshDirectoryLoadingPaths.isEmpty();
-    }
-
-    private void invalidateSshFileTree() {
-        sshFileTreeLoadGeneration++;
-        cachedSshFileTree = null;
-        sshFileTreeRootPath = "";
-        sshFileTreeError = "";
-        sshFileTreeLoading = false;
-        sshDirectoryChildrenByPath.clear();
-        sshDirectoryNameByPath.clear();
-        sshDirectoryLoadedPaths.clear();
-        sshDirectoryLoadingPaths.clear();
-    }
-
-    private void invalidateSshDirectory(String path) {
-        String cleanPath = path == null ? "" : path.trim();
-        if (cleanPath.length() == 0) {
-            return;
-        }
-        sshFileTreeLoadGeneration++;
-        cachedSshFileTree = null;
-        sshFileTreeError = "";
-        sshDirectoryChildrenByPath.remove(cleanPath);
-        sshDirectoryLoadedPaths.remove(cleanPath);
-        sshDirectoryLoadingPaths.remove(cleanPath);
-        updateSshLoadingState();
+        sshFileTreeController.requestFileTreeLoad(force);
     }
 
     private boolean isSshExecutionMode() {
@@ -2989,20 +2723,6 @@ public final class MainCoordinator implements MainUiController {
         SshConfig config = sshService.getConfig();
         String host = config == null ? "" : config.getHost();
         return "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host);
-    }
-
-    private String projectDisplayDescription(ProjectRecord project) {
-        if (project == null) {
-            return "";
-        }
-        String path = WorkspacePaths.displayPath(project.getPath());
-        if (WorkspacePaths.SOURCE_SSH.equals(project.getSource()) && path.length() == 0) {
-            return "SSH 登录目录";
-        }
-        if (path.length() > 0) {
-            return path;
-        }
-        return project.getDescription() == null ? "" : project.getDescription();
     }
 
     private void validateSelectedProjectAvailabilityOnStartup() {
@@ -3085,10 +2805,6 @@ public final class MainCoordinator implements MainUiController {
         return value.substring(0, index);
     }
 
-    private interface FileOperation {
-        void run() throws Exception;
-    }
-
     private void showNotice(String text) {
         messages.add(new ChatMessage(nextId(), ChatMessage.Role.ASSISTANT, text, false));
         render();
@@ -3097,7 +2813,6 @@ public final class MainCoordinator implements MainUiController {
     private String syncModePermission() {
         String mode = chatModeRepository.getMode();
         chatModeRepository.applyMode(mode, toolSettingsRepository);
-        permissionMode = toolSettingsRepository.getPermissionMode();
         return chatModeRepository.getMode();
     }
 
@@ -3170,7 +2885,7 @@ public final class MainCoordinator implements MainUiController {
         }
         if (message.getRole() == ChatMessage.Role.TOOL) {
             return new ToolModelMessage(
-                    modelToolContent(message.getContent()),
+                    modelToolContent(message),
                     message.getToolCallId(),
                     message.getToolName(),
                     message.isError()
@@ -3179,7 +2894,7 @@ public final class MainCoordinator implements MainUiController {
         if (message.getRole() == ChatMessage.Role.USER) {
             return new UserModelMessage(message.getContent(), message.getResponseInputItemJson());
         }
-        return new AssistantModelMessage(message.getContent(),
+        return new AssistantModelMessage(MessageContentSanitizer.forModel(message),
                 includeReasoning ? message.getReasoningContent() : "",
                 message.getToolCalls());
     }
@@ -3261,8 +2976,10 @@ public final class MainCoordinator implements MainUiController {
             return false;
         }
         ModelProtocolType type = selectedModel.getProtocolType();
-        return type == ModelProtocolType.OPENAI_COMPATIBLE
-                || type == ModelProtocolType.ANTHROPIC_MESSAGES
+        if (type == ModelProtocolType.OPENAI_COMPATIBLE) {
+            return OpenAiCompatibleCapabilities.supportsNativeTools(selectedModel);
+        }
+        return type == ModelProtocolType.ANTHROPIC_MESSAGES
                 || type == ModelProtocolType.CODEX_RESPONSES;
     }
 
@@ -3312,24 +3029,8 @@ public final class MainCoordinator implements MainUiController {
         render();
     }
 
-    private String modelToolContent(String content) {
-        if (content == null || content.trim().length() == 0) {
-            return "";
-        }
-        try {
-            JSONObject object = new JSONObject(content);
-            if (!object.optBoolean("linecode_agent_progress")) {
-                return content;
-            }
-            String modelContent = object.optString("model_content");
-            if (modelContent.trim().length() > 0) {
-                return modelContent;
-            }
-            String output = object.optString("output");
-            return output.trim().length() > 0 ? output : "Agent 仍在运行，尚未生成最终结果。";
-        } catch (Exception ignored) {
-            return content;
-        }
+    private String modelToolContent(ChatMessage message) {
+        return MessageContentSanitizer.toolContentForModel(message);
     }
 
     private ModelRequestOptions requestOptions(AiBehaviorSettings aiSettings, ModelConfig selectedModel, int usedToolCallCount) {
@@ -3487,7 +3188,7 @@ public final class MainCoordinator implements MainUiController {
     }
 
     private void appendTranscriptMessage(StringBuilder builder, String role, String content, int maxChars) {
-        String text = content == null ? "" : content.trim();
+        String text = MessageContentSanitizer.stripInlineDataImages(content).trim();
         if (text.length() == 0) {
             return;
         }
@@ -4473,6 +4174,40 @@ public final class MainCoordinator implements MainUiController {
         } else {
             messages.add(message);
         }
+        appendInlineToolResultToAssistant(result);
+    }
+
+    private void appendInlineToolResultToAssistant(ToolResult result) {
+        if (!isFinalSuccessfulImageGenerationResult(result)) {
+            return;
+        }
+        String markdown = imageGenerationDisplayMarkdown(result.getContent());
+        if (markdown.length() == 0) {
+            return;
+        }
+        int assistantIndex = findAssistantMessageIndexForToolCall(result.getToolCallId());
+        if (assistantIndex < 0) {
+            return;
+        }
+        ChatMessage assistant = messages.get(assistantIndex);
+        if (assistant.getContent().contains(markdown)) {
+            return;
+        }
+        String current = assistant.getContent().trim();
+        String nextContent = current.length() == 0 ? markdown : current + "\n\n" + markdown;
+        messages.set(assistantIndex, assistant.withContent(nextContent, assistant.getReasoningContent(), assistant.isStreaming()));
+    }
+
+    private boolean isFinalSuccessfulImageGenerationResult(ToolResult result) {
+        return result != null
+                && "image_generation".equals(result.getToolName())
+                && !result.isError()
+                && result.getContent().trim().length() > 0
+                && result.getReviewState().length() == 0;
+    }
+
+    private String imageGenerationDisplayMarkdown(String content) {
+        return MessageContentSanitizer.imageGenerationDisplayMarkdown(content);
     }
 
     private int findToolMessageIndex(String toolCallId) {
@@ -4483,6 +4218,24 @@ public final class MainCoordinator implements MainUiController {
             ChatMessage message = messages.get(i);
             if (message.getRole() == ChatMessage.Role.TOOL && toolCallId.equals(message.getToolCallId())) {
                 return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findAssistantMessageIndexForToolCall(String toolCallId) {
+        if (toolCallId == null || toolCallId.length() == 0) {
+            return -1;
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage message = messages.get(i);
+            if (message.getRole() != ChatMessage.Role.ASSISTANT || !message.hasToolCalls()) {
+                continue;
+            }
+            for (ToolCall call : message.getToolCalls()) {
+                if (toolCallId.equals(call.getId())) {
+                    return i;
+                }
             }
         }
         return -1;
@@ -4872,7 +4625,7 @@ public final class MainCoordinator implements MainUiController {
             expandedFilePaths.add(parentPath);
         }
         if (isSshExecutionMode()) {
-            refreshSshDirectoryAfterFileOperation(parentPath);
+            sshFileTreeController.refreshDirectoryAfterFileOperation(parentPath);
         }
     }
 

@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
-val releaseVersionName = "1.0.1"
+val releaseVersionName = "1.0.3"
 val releaseApkName = "LineCode Pro $releaseVersionName.APK"
 val releaseIdsigName = "$releaseApkName.idsig"
 val releaseSigningProperties = Properties()
@@ -148,11 +148,25 @@ android {
                 debugSymbolLevel = "NONE"
             }
         }
+        create("debugUserCert") {
+            initWith(getByName("debug"))
+            matchingFallbacks += listOf("debug")
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+}
+
+val exportDebugUserCertApk by tasks.registering(Copy::class) {
+    dependsOn("assembleDebugUserCert")
+    from(layout.buildDirectory.dir("outputs/apk/debugUserCert"))
+    include("*.apk")
+    into(layout.buildDirectory.dir("outputs/apk/debugUserCert/export"))
+    rename { "LineCode-user-cert-debug.apk" }
 }
 
 configurations.matching {

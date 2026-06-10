@@ -28,9 +28,13 @@ public final class ToolCallGenericView extends LinearLayout {
         removeAllViews();
         String name = toolCall == null ? "" : toolCall.getName();
         JSONObject input = ToolCallUtils.parseInput(toolCall);
+        boolean running = result == null
+                || "running".equals(result.getReviewState())
+                || "pending".equals(result.getReviewState());
         boolean hasResult = result != null && result.getContent().length() > 0;
+        boolean hasFinalResult = hasResult && !running;
         boolean error = result != null && result.isError();
-        int statusColor = error ? LineTheme.DANGER : hasResult ? LineTheme.SUCCESS : LineTheme.ACCENT;
+        int statusColor = error ? LineTheme.DANGER : hasFinalResult ? LineTheme.SUCCESS : LineTheme.ACCENT;
 
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
@@ -57,7 +61,7 @@ public final class ToolCallGenericView extends LinearLayout {
         nameView.setSingleLine(true);
         titleBlock.addView(nameView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        if (!hasResult) {
+        if (running) {
             ProgressBar bar = new ProgressBar(getContext());
             bar.setIndeterminate(true);
             header.addView(bar, new LayoutParams(LineTheme.dp(getContext(), 18), LineTheme.dp(getContext(), 18)));
@@ -75,7 +79,7 @@ public final class ToolCallGenericView extends LinearLayout {
             addSection("输入", inputText, LineTheme.TEXT_SECONDARY, 2);
         }
         if (hasResult) {
-            addSection("返回值", result.getContent(), error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY, 8);
+            addSection(running ? "进度" : "返回值", result.getContent(), error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY, running ? 3 : 8);
         }
     }
 

@@ -10,6 +10,7 @@ import org.commonmark.node.Document;
 import org.commonmark.node.FencedCodeBlock;
 import org.commonmark.node.Heading;
 import org.commonmark.node.HtmlBlock;
+import org.commonmark.node.Image;
 import org.commonmark.node.IndentedCodeBlock;
 import org.commonmark.node.LinkReferenceDefinition;
 import org.commonmark.node.ListBlock;
@@ -17,6 +18,7 @@ import org.commonmark.node.ListItem;
 import org.commonmark.node.Node;
 import org.commonmark.node.OrderedList;
 import org.commonmark.node.Paragraph;
+import org.commonmark.node.Text;
 import org.commonmark.node.ThematicBreak;
 import org.commonmark.ext.gfm.tables.TableBlock;
 
@@ -72,6 +74,11 @@ public final class MarkdownRenderer {
             return;
         }
         if (node instanceof Paragraph) {
+            Image image = onlyImage(node);
+            if (image != null) {
+                addBlock(target, new MarkdownImageView(context, image.getDestination(), plainText(image)), depth == 0 ? 2 : 0, 7);
+                return;
+            }
             CharSequence text = inlineRenderer.render(node);
             if (text.toString().trim().length() > 0) {
                 addBlock(target, new MarkdownTextBlockView(context, text, LineTheme.FONT_MD, false, linkHandler), depth == 0 ? 2 : 0, 7);
@@ -144,6 +151,45 @@ public final class MarkdownRenderer {
         params.topMargin = LineTheme.dp(context, topDp);
         params.bottomMargin = LineTheme.dp(context, bottomDp);
         target.addView(view, params);
+    }
+
+    private Image onlyImage(Node node) {
+        Image image = null;
+        Node child = node.getFirstChild();
+        while (child != null) {
+            if (child instanceof Image) {
+                if (image != null) {
+                    return null;
+                }
+                image = (Image) child;
+            } else if (child instanceof Text) {
+                if (((Text) child).getLiteral().trim().length() > 0) {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+            child = child.getNext();
+        }
+        return image;
+    }
+
+    private String plainText(Node node) {
+        StringBuilder builder = new StringBuilder();
+        appendPlainText(builder, node);
+        return builder.toString().trim();
+    }
+
+    private void appendPlainText(StringBuilder builder, Node node) {
+        Node child = node.getFirstChild();
+        while (child != null) {
+            if (child instanceof Text) {
+                builder.append(((Text) child).getLiteral());
+            } else {
+                appendPlainText(builder, child);
+            }
+            child = child.getNext();
+        }
     }
 
     private int headingSize(int level) {

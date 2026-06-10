@@ -16,6 +16,7 @@ import cn.lineai.ai.protocol.OpenAiResponsesCompactionProtocol;
 import cn.lineai.data.repository.PromptTemplateRepository;
 import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ChatMessage;
+import cn.lineai.model.MessageContentSanitizer;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProtocolType;
 import cn.lineai.tool.BaseTool;
@@ -179,15 +180,15 @@ public final class ContextCompactionService {
             return new UserModelMessage(message.getContent(), message.getResponseInputItemJson());
         }
         if (message.getRole() == ChatMessage.Role.SYSTEM) {
-            return new SystemModelMessage(message.getContent());
+            return new SystemModelMessage(MessageContentSanitizer.forModel(message));
         }
         if (message.getRole() == ChatMessage.Role.TOOL) {
-            return new ToolModelMessage(message.getContent(), message.getToolCallId(), message.getToolName(), message.isError());
+            return new ToolModelMessage(MessageContentSanitizer.forModel(message), message.getToolCallId(), message.getToolName(), message.isError());
         }
         if (message.getRole() == ChatMessage.Role.ASSISTANT) {
-            return new AssistantModelMessage(message.getContent(), message.getReasoningContent(), message.getToolCalls());
+            return new AssistantModelMessage(MessageContentSanitizer.forModel(message), message.getReasoningContent(), message.getToolCalls());
         }
-        return new UserModelMessage(message.getContent());
+        return new UserModelMessage(MessageContentSanitizer.forModel(message));
     }
 
     private String toCompactTranscript(List<ChatMessage> messages) {
@@ -199,7 +200,7 @@ public final class ContextCompactionService {
             }
             builder.append("## ").append(i + 1).append(". ").append(message.getRole().getProtocolName());
             if (message.getContent().trim().length() > 0) {
-                builder.append("\n\n").append(message.getContent());
+                builder.append("\n\n").append(MessageContentSanitizer.forModel(message));
             }
             if (message.hasToolCalls()) {
                 builder.append("\n\nTool calls:\n");

@@ -72,6 +72,10 @@ public interface SettingsController {
 
     void onImageUnderstandingModelSelected(String id);
 
+    String getImageGenerationModelId();
+
+    void onImageGenerationModelSelected(String id);
+
     void onLineCodeExportRequested();
 
     void onLineCodeExportTargetPicked(String uri, String displayName);

@@ -26,6 +26,7 @@ public final class ToolSettingsRepositoryTest {
         enabled.add("file_read");
         enabled.add("web_search");
         enabled.add("image_understanding");
+        enabled.add("image_generation");
         enabled.add("agent");
         enabled.add("agent_pipeline");
         McpToolConfig config = new McpToolConfig(
@@ -33,7 +34,7 @@ public final class ToolSettingsRepositoryTest {
                 "动态工具",
                 "",
                 true,
-                new String[] {"file_read", "web_search", "image_understanding", "agent", "agent_pipeline", "shell_execute"}
+                new String[] {"file_read", "web_search", "image_understanding", "image_generation", "agent", "agent_pipeline", "shell_execute"}
         );
 
         String prompt = ToolSettingsRepository.renderToolPrompt(
@@ -50,6 +51,8 @@ public final class ToolSettingsRepositoryTest {
         Assert.assertTrue(prompt.contains("\"query\""));
         Assert.assertTrue(prompt.contains("image_understanding [read]"));
         Assert.assertTrue(prompt.contains("\"path\""));
+        Assert.assertTrue(prompt.contains("image_generation [read]"));
+        Assert.assertTrue(prompt.contains("\"prompt\""));
         Assert.assertTrue(prompt.contains("agent [system]"));
         Assert.assertTrue(prompt.contains("agent_pipeline [system]"));
         Assert.assertTrue(prompt.contains("\"depends_on\""));
@@ -88,11 +91,16 @@ public final class ToolSettingsRepositoryTest {
     @Test
     public void sshToolPromptIncludesCustomMcpTools() {
         Map<String, BaseTool> toolByName = new LinkedHashMap<>();
+        ToolRegistry registry = new ToolRegistry();
         BaseTool customMcp = new DummyCustomMcpTool();
-        toolByName.put("shell_execute", new ToolRegistry().get("shell_execute"));
+        toolByName.put("shell_execute", registry.get("shell_execute"));
+        toolByName.put("image_understanding", registry.get("image_understanding"));
+        toolByName.put("image_generation", registry.get("image_generation"));
         toolByName.put(customMcp.getName(), customMcp);
         Set<String> enabled = new LinkedHashSet<>();
         enabled.add("shell_execute");
+        enabled.add("image_understanding");
+        enabled.add("image_generation");
         enabled.add(customMcp.getName());
         McpToolConfig shell = new McpToolConfig(
                 "shell",
@@ -101,16 +109,34 @@ public final class ToolSettingsRepositoryTest {
                 true,
                 new String[] {"shell_execute"}
         );
+        McpToolConfig imageUnderstanding = new McpToolConfig(
+                "image_understanding",
+                "图片理解",
+                "",
+                true,
+                new String[] {"image_understanding"}
+        );
+        McpToolConfig imageGeneration = new McpToolConfig(
+                "image_generation",
+                "图片生成",
+                "",
+                true,
+                new String[] {"image_generation"}
+        );
 
         String prompt = ToolSettingsRepository.renderToolPrompt(
                 ToolSettingsRepository.EXECUTION_SSH,
-                java.util.Collections.singletonList(shell),
+                java.util.Arrays.asList(shell, imageUnderstanding, imageGeneration),
                 enabled,
                 toolByName,
                 true
         );
 
         Assert.assertTrue(prompt.contains("shell_execute"));
+        Assert.assertTrue(prompt.contains("image_understanding"));
+        Assert.assertTrue(prompt.contains("通过 SFTP 读取 SSH 工作区图片"));
+        Assert.assertTrue(prompt.contains("image_generation"));
+        Assert.assertTrue(prompt.contains("以内联 Markdown 图片返回"));
         Assert.assertTrue(prompt.contains("mcpx_test_lookup"));
         Assert.assertTrue(prompt.contains("调用测试 MCP"));
         Assert.assertTrue(prompt.contains("本地文件读写、文件搜索、Agent、Agent Pipeline 和 HTTP 服务器已禁用"));

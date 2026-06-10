@@ -28,6 +28,9 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
@@ -110,16 +113,25 @@ public final class CodexResponsesProtocolTest {
                     new NoopCallback(),
                     null,
                     new ModelRequestOptions(
-                            AiBehaviorSettings.REASONING_OFF,
+                            AiBehaviorSettings.REASONING_MEDIUM,
                             false,
                             Collections.singletonList(new DummyTool())
                     )
             );
 
             assertEquals("/v1/responses", server.requestPath());
+            assertEquals(CodexResponsesProtocol.CODEX_PROTOCOL_VERSION, server.requestHeader("version"));
+            assertEquals(CodexResponsesProtocol.CODEX_ORIGINATOR, server.requestHeader("originator"));
+            assertEquals(CodexResponsesProtocol.codexUserAgent(), server.requestHeader("user-agent"));
             JSONObject body = new JSONObject(server.requestBody());
             assertEquals("system prompt", body.getString("instructions"));
             assertTrue(body.getBoolean("parallel_tool_calls"));
+            assertTrue(!body.getBoolean("store"));
+            assertEquals("reasoning.encrypted_content", body.getJSONArray("include").getString(0));
+            assertEquals("medium", body.getJSONObject("reasoning").getString("effort"));
+            assertTrue(body.getString("prompt_cache_key").startsWith("linecode-codex-"));
+            assertTrue(body.getJSONObject("client_metadata").getString("x-codex-installation-id").length() > 0);
+            assertTrue(body.getJSONObject("client_metadata").getString("x-codex-window-id").length() > 0);
             assertEquals("auto", body.getString("tool_choice"));
             assertEquals("file_read", body.getJSONArray("tools").getJSONObject(0).getString("name"));
             assertEquals(1, response.getToolCalls().size());
@@ -249,6 +261,32 @@ public final class CodexResponsesProtocolTest {
         }
     }
 
+    @Test
+    public void codexModelCatalogUsesClientVersionAndCodexHeaders() throws Exception {
+        LocalSseServer server = new LocalSseServer(new JSONObject()
+                .put("data", new JSONArray()
+                        .put(new JSONObject().put("id", "gpt-5-codex"))
+                        .put(new JSONObject().put("id", "gpt-5.1-codex")))
+                .toString());
+        server.start();
+        try {
+            List<String> ids = new ModelCatalogClient().fetch(
+                    ModelProtocolType.CODEX_RESPONSES,
+                    "http://127.0.0.1:" + server.port() + "/v1",
+                    "sk-test"
+            );
+
+            assertEquals("/v1/models?client_version=" + CodexResponsesProtocol.CODEX_PROTOCOL_VERSION, server.requestPath());
+            assertEquals(CodexResponsesProtocol.CODEX_PROTOCOL_VERSION, server.requestHeader("version"));
+            assertEquals(CodexResponsesProtocol.CODEX_ORIGINATOR, server.requestHeader("originator"));
+            assertEquals(CodexResponsesProtocol.codexUserAgent(), server.requestHeader("user-agent"));
+            assertEquals(2, ids.size());
+            assertEquals("gpt-5-codex", ids.get(0));
+        } finally {
+            server.close();
+        }
+    }
+
     private ModelConfig codexConfig(int port) {
         return new ModelConfig(
                 "m1",
@@ -274,6 +312,7 @@ public final class CodexResponsesProtocolTest {
         private Thread thread;
         private String requestPath = "";
         private String requestBody = "";
+        private final Map<String, String> requestHeaders = new HashMap<>();
 
         LocalSseServer(String responseBody) throws Exception {
             this(responseBody, false);
@@ -307,6 +346,10 @@ public final class CodexResponsesProtocolTest {
             return requestBody;
         }
 
+        String requestHeader(String name) {
+            return requestHeaders.get(name.toLowerCase(java.util.Locale.US));
+        }
+
         private void handle(Socket socket) throws Exception {
             try {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
@@ -321,6 +364,10 @@ public final class CodexResponsesProtocolTest {
                 String line;
                 while ((line = reader.readLine()) != null && line.length() > 0) {
                     String lower = line.toLowerCase(java.util.Locale.US);
+                    int colon = line.indexOf(':');
+                    if (colon > 0) {
+                        requestHeaders.put(lower.substring(0, colon).trim(), line.substring(colon + 1).trim());
+                    }
                     if (lower.startsWith("content-length:")) {
                         contentLength = Integer.parseInt(line.substring("content-length:".length()).trim());
                     }

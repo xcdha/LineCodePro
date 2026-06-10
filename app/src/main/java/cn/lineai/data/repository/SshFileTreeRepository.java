@@ -5,6 +5,8 @@ import cn.lineai.ssh.SshService;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.SftpException;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -47,6 +49,36 @@ public final class SshFileTreeRepository {
                 throw e;
             }
         }, 30000);
+    }
+
+    public byte[] readFileBytes(String path, long maxBytes) throws Exception {
+        return sshService.withSftp(sftp -> {
+            String cleanPath = normalizeSftpPath(path);
+            if (sftp.lstat(cleanPath).isDir()) {
+                throw new IllegalStateException("路径是目录，无法读取文件: " + path);
+            }
+            long size = sftp.lstat(cleanPath).getSize();
+            if (maxBytes > 0 && size > maxBytes) {
+                throw new IllegalStateException("文件过大，当前上限为 " + (maxBytes / 1024L / 1024L) + " MB: " + path);
+            }
+            InputStream input = sftp.get(cleanPath);
+            try {
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                long total = 0L;
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    total += read;
+                    if (maxBytes > 0 && total > maxBytes) {
+                        throw new IllegalStateException("文件过大，当前上限为 " + (maxBytes / 1024L / 1024L) + " MB: " + path);
+                    }
+                    output.write(buffer, 0, read);
+                }
+                return output.toByteArray();
+            } finally {
+                input.close();
+            }
+        }, 120000);
     }
 
     private FileTreeNode listDirectoryWithSftp(String directoryPath) throws Exception {

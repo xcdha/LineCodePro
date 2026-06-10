@@ -21,27 +21,33 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
         void onWebSearchConfigChanged(WebSearchConfig config);
 
         void onOpenImageUnderstandingModelPicker();
+
+        void onOpenImageGenerationModelPicker();
     }
 
     private final Listener listener;
     private final McpSettingsState state;
     private final String imageUnderstandingModelLabel;
+    private final String imageGenerationModelLabel;
 
     public ToolSettingsScreenView(
             Context context,
             McpSettingsState state,
             String imageUnderstandingModelLabel,
+            String imageGenerationModelLabel,
             Listener listener
     ) {
         super(context, "工具设置", listener::onBack, null);
         this.listener = listener;
         this.state = state == null ? new McpSettingsState(ToolSettingsRepository.EXECUTION_LOCAL, null) : state;
         this.imageUnderstandingModelLabel = imageUnderstandingModelLabel == null ? "" : imageUnderstandingModelLabel.trim();
+        this.imageGenerationModelLabel = imageGenerationModelLabel == null ? "" : imageGenerationModelLabel.trim();
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
 
         addSectionHeader(content, "图片操作");
         addImageUnderstanding(content);
+        addImageGeneration(content);
 
         addSectionHeader(content, "搜索");
         addWebSearch(content);
@@ -51,7 +57,7 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
         Context context = content.getContext();
         LinearLayout card = card(context);
         card.addView(title(context, "图片理解模型"));
-        TextView desc = desc(context, "image_understanding 工具会读取本地图片，并用这里选择的模型根据提示词返回图片内容。支持 OpenAI 兼容、Codex Responses 和 Anthropic Messages 协议。");
+        TextView desc = desc(context, "image_understanding 工具会读取本地或 SSH 工作区图片，并用这里选择的模型根据提示词返回图片内容。支持 OpenAI 兼容、Codex Responses 和 Anthropic Messages 协议。");
         LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         descParams.topMargin = LineTheme.dp(context, 2);
         card.addView(desc, descParams);
@@ -67,6 +73,32 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
         card.addView(selected, selectedParams);
 
         LinearLayout button = actionButton(context, "选择模型", IconButtonView.PAINTBRUSH, true, v -> listener.onOpenImageUnderstandingModelPicker());
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 42));
+        buttonParams.topMargin = LineTheme.dp(context, LineTheme.MD);
+        card.addView(button, buttonParams);
+        addCard(content, card);
+    }
+
+    private void addImageGeneration(LinearLayout content) {
+        Context context = content.getContext();
+        LinearLayout card = card(context);
+        card.addView(title(context, "图片生成模型"));
+        TextView desc = desc(context, "image_generation 工具会调用这里选择的生图模型生成图片。生成结果以内联 Markdown 图片返回，并直接显示在聊天内容里。");
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        descParams.topMargin = LineTheme.dp(context, 2);
+        card.addView(desc, descParams);
+
+        TextView selected = LineTheme.text(context,
+                imageGenerationModelLabel.length() == 0 ? "未选择模型" : imageGenerationModelLabel,
+                LineTheme.FONT_SM,
+                imageGenerationModelLabel.length() == 0 ? LineTheme.TEXT_TERTIARY : LineTheme.TEXT,
+                Typeface.BOLD);
+        selected.setSingleLine(true);
+        LinearLayout.LayoutParams selectedParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        selectedParams.topMargin = LineTheme.dp(context, LineTheme.MD);
+        card.addView(selected, selectedParams);
+
+        LinearLayout button = actionButton(context, "选择模型", IconButtonView.PAINTBRUSH, true, v -> listener.onOpenImageGenerationModelPicker());
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 42));
         buttonParams.topMargin = LineTheme.dp(context, LineTheme.MD);
         card.addView(button, buttonParams);

@@ -11,6 +11,7 @@ import cn.lineai.ui.component.toolcall.ToolReviewListener;
 import cn.lineai.ui.theme.LineTheme;
 import cn.lineai.ui.markdown.MarkdownLinkHandler;
 import cn.lineai.ui.markdown.MarkdownView;
+import java.util.ArrayList;
 
 public final class AssistantMessageView extends LinearLayout {
     private final ContextCompactBlockView compactBlockView;
@@ -180,8 +181,14 @@ public final class AssistantMessageView extends LinearLayout {
             toolCallsContainer.removeAllViews();
             return;
         }
+        ArrayList<ToolCall> visibleToolCalls = visibleToolCalls(message);
+        if (visibleToolCalls.isEmpty()) {
+            toolCallsContainer.setVisibility(GONE);
+            toolCallsContainer.removeAllViews();
+            return;
+        }
         toolCallsContainer.setVisibility(VISIBLE);
-        int targetCount = message.getToolCalls().size();
+        int targetCount = visibleToolCalls.size();
         while (toolCallsContainer.getChildCount() > targetCount) {
             toolCallsContainer.removeViewAt(toolCallsContainer.getChildCount() - 1);
         }
@@ -194,13 +201,37 @@ public final class AssistantMessageView extends LinearLayout {
             toolCallsContainer.addView(block, params);
         }
         for (int i = 0; i < targetCount; i++) {
-            ToolCall call = message.getToolCalls().get(i);
+            ToolCall call = visibleToolCalls.get(i);
             ToolResult result = message.getToolResult(call.getId());
             ToolCallBlockView block = (ToolCallBlockView) toolCallsContainer.getChildAt(i);
             block.setToolReviewListener(toolReviewListener);
             block.setProjectPath(projectPath);
             block.bind(call, result);
         }
+    }
+
+    private ArrayList<ToolCall> visibleToolCalls(ChatMessage message) {
+        ArrayList<ToolCall> visible = new ArrayList<>();
+        if (message == null) {
+            return visible;
+        }
+        for (ToolCall call : message.getToolCalls()) {
+            ToolResult result = message.getToolResult(call.getId());
+            if (isHiddenSuccessfulImageGeneration(call, result)) {
+                continue;
+            }
+            visible.add(call);
+        }
+        return visible;
+    }
+
+    private boolean isHiddenSuccessfulImageGeneration(ToolCall call, ToolResult result) {
+        return call != null
+                && "image_generation".equals(call.getName())
+                && result != null
+                && !result.isError()
+                && result.getContent().trim().length() > 0
+                && result.getReviewState().length() == 0;
     }
 
     private String toolSignature(ChatMessage message) {

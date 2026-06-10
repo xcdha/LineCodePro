@@ -1,6 +1,7 @@
 package cn.lineai.ai.protocol;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 
 import cn.lineai.ai.ModelCompletionResponse;
 import cn.lineai.ai.ImageInputPayload;
@@ -101,6 +102,30 @@ public final class OpenAiCompatibleProtocolTest {
         } finally {
             server.close();
         }
+    }
+
+    @Test
+    public void nvidiaGatewayDoesNotSendUnsupportedThinkingParameters() throws Exception {
+        ModelConfig config = new ModelConfig(
+                "nvidia-qwen",
+                "NVIDIA Qwen",
+                ModelProtocolType.OPENAI_COMPATIBLE,
+                "NVIDIA",
+                "https://integrate.api.nvidia.com/v1",
+                "sk-test",
+                "qwen/qwen3-coder"
+        );
+
+        JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                config,
+                new ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, true)
+        );
+
+        assertFalse(body.has("enable_thinking"));
+        assertFalse(body.has("thinking_budget"));
+        assertFalse(body.has("preserve_thinking"));
+        assertFalse(body.has("thinking"));
+        assertFalse(body.has("reasoning"));
     }
 
     private static JSONObject chunk(JSONObject delta, String finishReason) throws Exception {

@@ -821,6 +821,31 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 }
             });
         }
+        if ("imageGenerationModel".equals(screenId)) {
+            return new ModelListScreenView(context, presenter.getModels(), presenter.getImageGenerationModelId(), "选择图片生成模型", false, new ModelListScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    handleScreenBack();
+                }
+
+                @Override
+                public void onAddModel() {
+                }
+
+                @Override
+                public void onSelectModel(String id) {
+                    presenter.onImageGenerationModelSelected(id);
+                }
+
+                @Override
+                public void onEditModel(String id) {
+                }
+
+                @Override
+                public void onDeleteModels(List<String> ids) {
+                }
+            });
+        }
         if ("extensions".equals(screenId)) {
             return new ExtensionsScreenView(context, new ExtensionsScreenView.Listener() {
                 @Override
@@ -909,7 +934,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             });
         }
         if ("toolSettings".equals(screenId)) {
-            return new ToolSettingsScreenView(context, presenter.getMcpSettingsState(), imageUnderstandingModelLabel(), new ToolSettingsScreenView.Listener() {
+            return new ToolSettingsScreenView(context, presenter.getMcpSettingsState(), imageUnderstandingModelLabel(), imageGenerationModelLabel(), new ToolSettingsScreenView.Listener() {
                 @Override
                 public void onBack() {
                     handleScreenBack();
@@ -923,6 +948,11 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 @Override
                 public void onOpenImageUnderstandingModelPicker() {
                     presenter.onSettingsItemSelected("imageUnderstandingModel");
+                }
+
+                @Override
+                public void onOpenImageGenerationModelPicker() {
+                    presenter.onSettingsItemSelected("imageGenerationModel");
                 }
             });
         }
@@ -1313,6 +1343,15 @@ public final class MainChatView extends FrameLayout implements MainContract.View
 
     private String imageUnderstandingModelLabel() {
         ModelConfig model = presenter.getModel(presenter.getImageUnderstandingModelId());
+        if (model == null) {
+            return "";
+        }
+        String modelId = model.getModelId();
+        return model.getName() + (modelId.length() == 0 ? "" : " · " + modelId);
+    }
+
+    private String imageGenerationModelLabel() {
+        ModelConfig model = presenter.getModel(presenter.getImageGenerationModelId());
         if (model == null) {
             return "";
         }
