@@ -172,6 +172,7 @@ public final class MainCoordinator implements MainUiController {
         }
     };
     private ModelCancellationToken currentCancellationToken;
+    private String lastMessageModelId = "";
     private final StringBuilder pendingStreamTextDelta = new StringBuilder();
     private final StringBuilder pendingStreamReasoningDelta = new StringBuilder();
     private final HashMap<String, StringBuilder> streamingRawTextByMessageId = new HashMap<>();
@@ -995,6 +996,7 @@ public final class MainCoordinator implements MainUiController {
         persistCurrentConversation();
         chatSessionStore.startNewConversation(System.currentTimeMillis());
         clearSessionAutoToolConfirmations();
+        lastMessageModelId = "";
         if (view != null) {
             view.hideOverlays();
             view.showChatScreen();
@@ -1214,6 +1216,13 @@ public final class MainCoordinator implements MainUiController {
             render();
             return;
         }
+
+        String currentModelId = selectedModel.getModelId();
+        if (lastMessageModelId.length() > 0 && !lastMessageModelId.equals(currentModelId)) {
+            messages.add(ChatMessage.modelSwitchNotice(nextId(), lastMessageModelId, currentModelId));
+            persistCurrentConversation();
+        }
+        lastMessageModelId = currentModelId;
 
         int generationId = chatSessionStore.nextGenerationId();
         ModelCancellationToken cancellationToken = new ModelCancellationToken();
@@ -1805,6 +1814,11 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public void showModelManagement() {
+        showScreen("models");
+    }
+
+    @Override
     public AiBehaviorSettings getAiBehaviorSettings() {
         return settingsManagementController.getAiBehaviorSettings();
     }
@@ -2309,6 +2323,15 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onModelSelected(String id) {
         modelManagementController.selectModel(id);
+    }
+
+    @Override
+    public void onModelQuickSwitch(String modelId) {
+        if (chatSessionStore.isStreaming()) {
+            return;
+        }
+        modelRepository.setSelectedModelId(modelId);
+        render();
     }
 
     @Override
@@ -2853,8 +2876,7 @@ public final class MainCoordinator implements MainUiController {
                 aiSettings.getToneMode(),
                 chatModePromptContext(activeChatMode),
                 systemContext,
-                buildToolPrompt(selectedModel, usedToolCallCount),
-                selectedModel
+                buildToolPrompt(selectedModel, usedToolCallCount)
         );
         modelMessages.add(new SystemModelMessage(systemPrompt));
         int contextTokens = selectedModel == null
@@ -3273,27 +3295,8 @@ public final class MainCoordinator implements MainUiController {
             render();
             return;
         }
-        if (hasImageGenerationResult(batch.completedResults)) {
-            chatSessionStore.setStreaming(false);
-            currentCancellationToken = null;
-            persistCurrentConversation();
-            render();
-            return;
-        }
         persistCurrentConversation();
         continueModelAfterTools(generationId, selectedModel, usedToolCallCount, cancellationToken);
-    }
-
-    private boolean hasImageGenerationResult(List<ToolResult> results) {
-        if (results == null) {
-            return false;
-        }
-        for (ToolResult result : results) {
-            if (result != null && "image_generation".equals(result.getToolName())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void continueModelAfterTools(
@@ -3710,11 +3713,9 @@ public final class MainCoordinator implements MainUiController {
             return false;
         }
         if (AgentTool.TYPE_EXPLORE.equals(type)) {
-            return tool.getCategory() == ToolCategory.READ
-                    || tool.getCategory() == ToolCategory.GENERATE;
+            return tool.getCategory() == ToolCategory.READ;
         }
         return tool.getCategory() == ToolCategory.READ
-                || tool.getCategory() == ToolCategory.GENERATE
                 || tool.getCategory() == ToolCategory.WRITE
                 || "http_server".equals(name);
     }
@@ -4665,6 +4666,7 @@ public final class MainCoordinator implements MainUiController {
         }
         applyConversation(conversation);
         conversationRepository.setCurrentConversationId(conversation.getId());
+        lastMessageModelId = "";
     }
 
     private void applyConversation(ConversationRecord conversation) {

@@ -60,6 +60,8 @@ public final class ChatUiStateAssembler {
         String modelLabel = selectedModel == null
                 ? "未选择模型"
                 : contextInfo.getApiModelId();
+        String selectedModelId = selectedModel == null ? "" : selectedModel.getId();
+        List<ModelConfig> availableModels = modelRepository.getModels();
         String uiProjectPath = WorkspacePaths.SOURCE_SSH.equals(projectSource) && safe(projectPath).length() == 0
                 ? "SSH 登录目录"
                 : safe(projectPath);
@@ -78,7 +80,9 @@ public final class ChatUiStateAssembler {
                 inputSettings.getEnterKeyBehavior(),
                 activeChatMode,
                 conversationId,
-                messages
+                messages,
+                selectedModelId,
+                availableModels
         );
     }
 

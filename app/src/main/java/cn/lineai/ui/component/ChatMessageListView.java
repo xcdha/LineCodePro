@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -214,11 +215,28 @@ public final class ChatMessageListView extends FrameLayout {
         return box;
     }
 
+    private static View createModelSwitchNotice(Context context, String noticeText) {
+        LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        LineTheme.padding(row, LineTheme.LG, LineTheme.SM, LineTheme.LG, LineTheme.SM);
+        TextView label = LineTheme.text(context, noticeText, LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        label.setGravity(Gravity.CENTER);
+        label.setSingleLine(true);
+        label.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(label, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        return row;
+    }
+
     private static final class MessageAdapter extends BaseAdapter {
         private static final int MAX_CACHED_ROWS = 140;
         private static final int VIEW_TYPE_CONFIGURE = 0;
         private static final int VIEW_TYPE_USER = 1;
         private static final int VIEW_TYPE_ASSISTANT = 2;
+        private static final int VIEW_TYPE_MODEL_SWITCH = 3;
 
         private final Context context;
         private final ArrayList<ChatMessage> visibleMessages = new ArrayList<>();
@@ -324,7 +342,7 @@ public final class ChatMessageListView extends FrameLayout {
 
         @Override
         public int getViewTypeCount() {
-            return 3;
+            return 4;
         }
 
         @Override
@@ -333,6 +351,9 @@ public final class ChatMessageListView extends FrameLayout {
                 return VIEW_TYPE_CONFIGURE;
             }
             ChatMessage message = visibleMessages.get(position);
+            if (message.isModelSwitchNotification()) {
+                return VIEW_TYPE_MODEL_SWITCH;
+            }
             return message.getRole() == ChatMessage.Role.USER ? VIEW_TYPE_USER : VIEW_TYPE_ASSISTANT;
         }
 
@@ -342,6 +363,19 @@ public final class ChatMessageListView extends FrameLayout {
                 return convertView == null ? createConfigureState(context) : convertView;
             }
             ChatMessage message = visibleMessages.get(position);
+
+            if (message.isModelSwitchNotification()) {
+                String ck = cacheKey(message);
+                View cached = rowCache.get(ck);
+                if (cached != null && canReturnCachedView(cached, convertView, parent)) {
+                    return cached;
+                }
+                View notice = createModelSwitchNotice(context, message.getModelSwitchNotification());
+                rowCache.put(ck, notice);
+                trimCache();
+                return notice;
+            }
+
             String cacheKey = cacheKey(message);
             View cached = rowCache.get(cacheKey);
             if (cached != null && canReturnCachedView(cached, convertView, parent)) {
@@ -473,6 +507,7 @@ public final class ChatMessageListView extends FrameLayout {
                     && a.isStreaming() == b.isStreaming()
                     && a.isHidden() == b.isHidden()
                     && stringEquals(a.getCompactStatus(), b.getCompactStatus())
+                    && stringEquals(a.getModelSwitchNotification(), b.getModelSwitchNotification())
                     && sameAttachments(a, b)
                     && sameToolCalls(a, b)
                     && sameToolResults(a, b));

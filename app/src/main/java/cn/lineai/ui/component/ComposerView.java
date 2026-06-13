@@ -22,6 +22,7 @@ import cn.lineai.model.ChatMode;
 import cn.lineai.model.ChatUiState;
 import cn.lineai.model.InputAttachment;
 import cn.lineai.model.InputSettings;
+import cn.lineai.model.ModelConfig;
 import cn.lineai.ui.theme.LineTheme;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,10 +37,16 @@ public final class ComposerView extends LinearLayout {
         void onModeChanged(String mode);
 
         void onStop();
+
+        void onModelQuickSwitch(String modelId);
+
+        void onModelManageClick();
     }
 
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final LinearLayout modelSelectorButton;
     private final TextView modelText;
+    private final IconButtonView modelChevron;
     private final TextView contextText;
     private final LinearLayout modeSelectorButton;
     private final TextView modeSelectorText;
@@ -51,9 +58,12 @@ public final class ComposerView extends LinearLayout {
     private final IconButtonView sendButton;
     private final ArrayList<InputAttachment> attachments = new ArrayList<>();
     private PopupWindow modePopup;
+    private PopupWindow modelPopup;
     private boolean streaming;
     private String chatMode = ChatMode.DEFAULT;
     private String enterKeyBehavior = InputSettings.ENTER_SEND;
+    private String selectedModelId = "";
+    private List<ModelConfig> availableModels = Collections.emptyList();
     private Listener listener;
 
     public ComposerView(Context context) {
@@ -85,9 +95,30 @@ public final class ComposerView extends LinearLayout {
         LineTheme.padding(metaRow, LineTheme.LG, 0, LineTheme.LG, 0);
         panel.addView(metaRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 34)));
 
+        modelSelectorButton = new LinearLayout(context);
+        modelSelectorButton.setOrientation(HORIZONTAL);
+        modelSelectorButton.setGravity(Gravity.CENTER_VERTICAL);
+        modelSelectorButton.setClickable(true);
+        modelSelectorButton.setFocusable(true);
+        modelSelectorButton.setOnClickListener(v -> showModelPopup(modelSelectorButton));
+        modelSelectorButton.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 14));
+        LineTheme.padding(modelSelectorButton, LineTheme.SM, 0, LineTheme.SM, 0);
+
         modelText = LineTheme.textMedium(context, "", LineTheme.FONT_XS, LineTheme.TEXT_SECONDARY);
         modelText.setSingleLine(true);
-        metaRow.addView(modelText, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        modelText.setMaxWidth(LineTheme.dp(context, 180));
+        modelText.setEllipsize(TextUtils.TruncateAt.END);
+        modelSelectorButton.addView(modelText, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+
+        modelChevron = new IconButtonView(context, IconButtonView.CHEVRON_DOWN);
+        modelChevron.setIconColor(LineTheme.TEXT_SECONDARY);
+        modelChevron.setIconSizeDp(16, 12);
+        modelChevron.setClickable(false);
+        LinearLayout.LayoutParams modelChevronParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 16), LineTheme.dp(context, 16));
+        modelChevronParams.leftMargin = LineTheme.dp(context, 2);
+        modelSelectorButton.addView(modelChevron, modelChevronParams);
+
+        metaRow.addView(modelSelectorButton, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
         contextText = LineTheme.text(context, "", LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.BOLD);
         LinearLayout.LayoutParams contextParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
@@ -151,6 +182,16 @@ public final class ComposerView extends LinearLayout {
                 return submitCurrentInput();
             }
             return false;
+        });
+        input.setOnFocusChangeListener((view, hasFocus) -> {
+            if (hasFocus) {
+                if (modePopup != null && modePopup.isShowing()) {
+                    modePopup.dismiss();
+                }
+                if (modelPopup != null && modelPopup.isShowing()) {
+                    modelPopup.dismiss();
+                }
+            }
         });
         LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
         inputRow.addView(input, inputParams);
@@ -280,6 +321,8 @@ public final class ComposerView extends LinearLayout {
     public void render(ChatUiState state) {
         streaming = state.isStreaming();
         modelText.setText(state.getModelLabel());
+        selectedModelId = state.getSelectedModelId();
+        availableModels = state.getAvailableModels();
         contextText.setText(state.getContextLabel());
         contextText.setTextColor(state.getContextPercent() >= 80 ? LineTheme.WARNING : LineTheme.TEXT_TERTIARY);
         chatMode = state.getChatMode();
@@ -287,11 +330,15 @@ public final class ComposerView extends LinearLayout {
         if (streaming && modePopup != null) {
             modePopup.dismiss();
         }
+        if (streaming && modelPopup != null) {
+            modelPopup.dismiss();
+        }
         input.setEnabled(!streaming);
         attachButton.setEnabled(!streaming);
         attachButton.setAlpha(streaming ? 0.62f : 1f);
         input.setHint(state.hasConfiguredModel() ? "输入消息..." : "请先到设置 → 模型管理配置模型");
         updateModeButtons();
+        updateModelSelector();
         updateSendButton();
     }
 
@@ -408,6 +455,104 @@ public final class ComposerView extends LinearLayout {
         modeSelectorButton.setBackground(LineTheme.rounded(getContext(), LineTheme.INPUT_BG, 17));
         modeSelectorButton.setEnabled(!streaming);
         modeSelectorButton.setAlpha(streaming ? 0.62f : 1f);
+    }
+
+    private void updateModelSelector() {
+        modelSelectorButton.setEnabled(!streaming);
+        modelSelectorButton.setAlpha(streaming ? 0.62f : 1f);
+        modelChevron.setIconColor(streaming ? LineTheme.TEXT_TERTIARY : LineTheme.TEXT_SECONDARY);
+    }
+
+    private void showModelPopup(View anchor) {
+        if (streaming) return;
+        if (modelPopup != null && modelPopup.isShowing()) { modelPopup.dismiss(); return; }
+        Context ctx = getContext();
+        int popupWidth = LineTheme.dp(ctx, 240);
+        int rowHeight = LineTheme.dp(ctx, 38);
+        int separatorHeight = LineTheme.dp(ctx, 1);
+        int manageRowHeight = LineTheme.dp(ctx, 36);
+        int modelCount = availableModels.size();
+        int visibleRows = Math.min(modelCount, 8);
+        int popupHeight = rowHeight * visibleRows + separatorHeight + manageRowHeight + LineTheme.dp(ctx, 6);
+        LinearLayout content = new LinearLayout(ctx);
+        content.setOrientation(VERTICAL);
+        content.setBackground(LineTheme.roundedStroke(ctx, LineTheme.INPUT_BG, 14, LineTheme.BORDER_LIGHT));
+        LineTheme.padding(content, 3, 3, 3, 3);
+        if (modelCount > 8) {
+            android.widget.ScrollView sw = new android.widget.ScrollView(ctx);
+            LinearLayout sc = new LinearLayout(ctx);
+            sc.setOrientation(VERTICAL);
+            for (int i = 0; i < modelCount; i++) {
+                ModelConfig m = availableModels.get(i);
+                sc.addView(modelOptionRow(ctx, m, m.getId().equals(selectedModelId)),
+                        new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
+            }
+            sw.addView(sc, new android.widget.ScrollView.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            content.addView(sw, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight * visibleRows));
+        } else {
+            for (int i = 0; i < modelCount; i++) {
+                ModelConfig m = availableModels.get(i);
+                content.addView(modelOptionRow(ctx, m, m.getId().equals(selectedModelId)),
+                        new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
+            }
+        }
+        View divider = new View(ctx);
+        divider.setBackgroundColor(LineTheme.BORDER_LIGHT);
+        content.addView(divider, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, separatorHeight));
+        TextView manageItem = LineTheme.textMedium(ctx, "\u2699 \u7ba1\u7406\u6a21\u578b...", LineTheme.FONT_SM, LineTheme.TEXT_TERTIARY);
+        manageItem.setGravity(Gravity.CENTER_VERTICAL);
+        manageItem.setSingleLine(true);
+        manageItem.setPadding(LineTheme.dp(ctx, LineTheme.MD), 0, LineTheme.dp(ctx, LineTheme.MD), 0);
+        manageItem.setClickable(true);
+        manageItem.setOnClickListener(v -> {
+            if (modelPopup != null) modelPopup.dismiss();
+            post(() -> {
+                if (listener != null) listener.onModelManageClick();
+            });
+        });
+        content.addView(manageItem, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, manageRowHeight));
+        modelPopup = new PopupWindow(content, popupWidth, popupHeight, true);
+        modelPopup.setOutsideTouchable(true);
+        modelPopup.setBackgroundDrawable(new ColorDrawable(android.graphics.Color.TRANSPARENT));
+        int[] location = new int[2];
+        anchor.getLocationOnScreen(location);
+        int screenWidth = ctx.getResources().getDisplayMetrics().widthPixels;
+        int centeredX = location[0] + (anchor.getWidth() - popupWidth) / 2;
+        int popupX = Math.max(LineTheme.dp(ctx, LineTheme.SM), Math.min(centeredX, screenWidth - popupWidth - LineTheme.dp(ctx, LineTheme.SM)));
+        modelPopup.showAtLocation(this, Gravity.NO_GRAVITY, popupX, Math.max(0, location[1] - popupHeight - LineTheme.dp(ctx, 8)));
+    }
+
+    private LinearLayout modelOptionRow(Context ctx, ModelConfig model, boolean selected) {
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(LineTheme.dp(ctx, LineTheme.MD), 0, LineTheme.dp(ctx, LineTheme.MD), 0);
+        row.setBackground(LineTheme.rounded(ctx, selected ? LineTheme.ACCENT : android.graphics.Color.TRANSPARENT, 11));
+        row.setClickable(true);
+        row.setOnClickListener(v -> {
+            if (modelPopup != null) modelPopup.dismiss();
+            final String mid = model.getId();
+            post(() -> {
+                if (!mid.equals(selectedModelId) && listener != null) {
+                    listener.onModelQuickSwitch(mid);
+                }
+            });
+        });
+        View dot = new View(ctx);
+        dot.setBackground(LineTheme.rounded(ctx, selected ? LineTheme.TEXT_ON_COLOR : LineTheme.BORDER, 4));
+        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(LineTheme.dp(ctx, 7), LineTheme.dp(ctx, 7));
+        dotParams.rightMargin = LineTheme.dp(ctx, LineTheme.SM);
+        row.addView(dot, dotParams);
+        String displayName = model.getName().length() > 0 ? model.getName() : model.getModelId();
+        TextView name = LineTheme.textMedium(ctx, displayName, LineTheme.FONT_SM, selected ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_SECONDARY);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        row.addView(name, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        TextView provider = LineTheme.text(ctx, model.getProviderLabel(), LineTheme.FONT_XS, selected ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        pp.leftMargin = LineTheme.dp(ctx, LineTheme.SM);
+        row.addView(provider, pp);
+        return row;
     }
 
     private void showModePopup(View anchor) {

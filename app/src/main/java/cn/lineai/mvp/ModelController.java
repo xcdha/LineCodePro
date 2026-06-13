@@ -15,4 +15,6 @@ public interface ModelController {
     void onModelSaved(ModelConfig model);
 
     void onModelsDeleted(List<String> ids);
+
+    void onModelQuickSwitch(String modelId);
 }

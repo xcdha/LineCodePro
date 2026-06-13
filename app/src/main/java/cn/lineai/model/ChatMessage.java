@@ -46,6 +46,7 @@ public final class ChatMessage {
     private final String compactStatus;
     private final String responseInputItemJson;
     private final List<InputAttachment> attachments;
+    private final String modelSwitchNotification;
 
     public ChatMessage(String id, Role role, String content, boolean streaming) {
         this(id, role, content, "", streaming, false, false);
@@ -137,24 +138,28 @@ public final class ChatMessage {
     }
 
     public ChatMessage(
-            String id,
-            Role role,
-            String content,
-            String reasoningContent,
-            boolean streaming,
-            boolean hidden,
-            boolean excludeFromContext,
-            List<ToolCall> toolCalls,
-            List<ToolResult> toolResults,
-            String toolCallId,
-            String toolName,
-            boolean error,
-            String diffId,
-            String reviewState,
-            String reviewMessage,
-            String compactStatus,
-            String responseInputItemJson,
+            String id, Role role, String content, String reasoningContent,
+            boolean streaming, boolean hidden, boolean excludeFromContext,
+            List<ToolCall> toolCalls, List<ToolResult> toolResults,
+            String toolCallId, String toolName, boolean error,
+            String diffId, String reviewState, String reviewMessage,
+            String compactStatus, String responseInputItemJson,
             List<InputAttachment> attachments
+    ) {
+        this(id, role, content, reasoningContent, streaming, hidden, excludeFromContext,
+                toolCalls, toolResults, toolCallId, toolName, error, diffId, reviewState, reviewMessage,
+                compactStatus, responseInputItemJson, attachments, "");
+    }
+
+    public ChatMessage(
+            String id, Role role, String content, String reasoningContent,
+            boolean streaming, boolean hidden, boolean excludeFromContext,
+            List<ToolCall> toolCalls, List<ToolResult> toolResults,
+            String toolCallId, String toolName, boolean error,
+            String diffId, String reviewState, String reviewMessage,
+            String compactStatus, String responseInputItemJson,
+            List<InputAttachment> attachments,
+            String modelSwitchNotification
     ) {
         this.id = id;
         this.role = role == null ? Role.USER : role;
@@ -176,6 +181,7 @@ public final class ChatMessage {
         this.attachments = attachments == null
                 ? Collections.emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(attachments));
+        this.modelSwitchNotification = modelSwitchNotification == null ? "" : modelSwitchNotification;
     }
 
     public String getId() {
@@ -274,6 +280,14 @@ public final class ChatMessage {
         return !attachments.isEmpty();
     }
 
+    public String getModelSwitchNotification() {
+        return modelSwitchNotification;
+    }
+
+    public boolean isModelSwitchNotification() {
+        return modelSwitchNotification.length() > 0;
+    }
+
     public String getProtocolRole() {
         return role.getProtocolName();
     }
@@ -343,6 +357,13 @@ public final class ChatMessage {
         return new ChatMessage(id, Role.ASSISTANT, "", "", COMPACT_STATUS_RUNNING.equals(status),
                 false, true, Collections.emptyList(), Collections.emptyList(), "", "", false,
                 "", "", "", status, "");
+    }
+
+    public static ChatMessage modelSwitchNotice(String id, String fromModel, String toModel) {
+        String content = "\u6a21\u578b\u5df2\u4ece " + fromModel + " \u66f4\u6539\u4e3a " + toModel + "\u3002";
+        return new ChatMessage(id, Role.ASSISTANT, "", "", false, false, true,
+                Collections.emptyList(), Collections.emptyList(), "", "", false,
+                "", "", "", "", "", Collections.emptyList(), content);
     }
 
     private String normalizeCompactStatus(String value) {

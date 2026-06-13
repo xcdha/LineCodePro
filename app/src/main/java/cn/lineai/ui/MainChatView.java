@@ -216,6 +216,16 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             public void onStop() {
                 MainChatView.this.presenter.onStopGeneration();
             }
+
+            @Override
+            public void onModelQuickSwitch(String modelId) {
+                MainChatView.this.presenter.onModelQuickSwitch(modelId);
+            }
+
+            @Override
+            public void onModelManageClick() {
+                MainChatView.this.presenter.showModelManagement();
+            }
         });
         contentView.addView(composerView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
