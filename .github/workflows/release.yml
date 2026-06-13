@@ -95,7 +95,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           {
-            printf 'storeFile=signing/linecode-release.keystore\n'
+            printf 'storeFile=%s/signing/linecode-release.keystore\n' "$GITHUB_WORKSPACE"
             printf 'storePassword=%s\n' "$STORE_PASSWORD"
             printf 'keyAlias=%s\n' "$KEY_ALIAS"
             printf 'keyPassword=%s\n' "$KEY_PASSWORD"
