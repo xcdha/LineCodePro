@@ -3475,6 +3475,8 @@ public final class MainCoordinator implements MainUiController {
         String prompt = input.optString("prompt").trim();
         ArrayList<String> readScope = scopeList(input.optJSONArray("read_scope"));
         ArrayList<String> writeScope = scopeList(input.optJSONArray("write_scope"));
+        Set<String> customToolNames = scopeSet(input.optJSONArray("custom_tool_names"));
+        Set<String> customMcpIds = scopeSet(input.optJSONArray("custom_mcp_ids"));
         String homePath = parentContext == null ? projectPath : parentContext.getHomePath();
         AgentProgressSession progress = new AgentProgressSession(
                 generationId,
@@ -3492,7 +3494,9 @@ public final class MainCoordinator implements MainUiController {
                 homePath,
                 selectedModel,
                 cancellationToken,
-                progress
+                progress,
+                customToolNames,
+                customMcpIds
         );
         StringBuilder builder = new StringBuilder();
         builder.append("Agent 完成: ").append(description).append('\n')
@@ -3560,7 +3564,9 @@ public final class MainCoordinator implements MainUiController {
                         parentContext == null ? projectPath : parentContext.getHomePath(),
                         selectedModel,
                         cancellationToken,
-                        agentProgress
+                        agentProgress,
+                        Collections.emptySet(),
+                        Collections.emptySet()
                 );
                 pipelineProgress.finishAgent(agent, result);
                 results.put(agent.id, result);
@@ -3586,9 +3592,11 @@ public final class MainCoordinator implements MainUiController {
             String homePath,
             ModelConfig selectedModel,
             ModelCancellationToken cancellationToken,
-            AgentProgressSession progress
+            AgentProgressSession progress,
+            Set<String> customToolNames,
+            Set<String> customMcpIds
     ) {
-        ArrayList<BaseTool> agentTools = agentTools(type);
+        ArrayList<BaseTool> agentTools = agentTools(type, customToolNames, customMcpIds);
         Set<String> allowedToolNames = toolNames(agentTools);
         ArrayList<ModelMessage> agentMessages = new ArrayList<>();
         agentMessages.add(new SystemModelMessage(agentSystemPrompt(type, description, readScope, writeScope, homePath, selectedModel, agentTools)));
@@ -3697,12 +3705,13 @@ public final class MainCoordinator implements MainUiController {
         return new AgentRunResult("Agent 达到最大轮次 " + AGENT_MAX_TURNS + "，最后输出：\n" + lastOutput, toolCallCount, true);
     }
 
-    private ArrayList<BaseTool> agentTools(String type) {
+    private ArrayList<BaseTool> agentTools(String type, Set<String> customToolNames, Set<String> customMcpIds) {
         syncModePermission();
         ArrayList<BaseTool> tools = new ArrayList<>();
         Set<String> enabled = toolSettingsRepository.getEnabledToolNames();
+        Set<String> allowedMcpToolNames = toolRegistry.mcpToolNamesForIds(new ArrayList<>(customMcpIds));
         for (BaseTool tool : toolRegistry.getByNameSet(enabled)) {
-            if (tool == null || !isAgentToolAllowed(tool, type)) {
+            if (tool == null || !isAgentToolAllowed(tool, type, customToolNames, allowedMcpToolNames)) {
                 continue;
             }
             tools.add(tool);
@@ -3710,9 +3719,15 @@ public final class MainCoordinator implements MainUiController {
         return tools;
     }
 
-    private boolean isAgentToolAllowed(BaseTool tool, String type) {
+    private boolean isAgentToolAllowed(BaseTool tool, String type, Set<String> customToolNames, Set<String> allowedMcpToolNames) {
         String name = tool.getName();
         if ("agent".equals(name) || "agent_pipeline".equals(name) || "shell_execute".equals(name) || "file_delete".equals(name)) {
+            return false;
+        }
+        if (!allowedMcpToolNames.isEmpty() && allowedMcpToolNames.contains(name)) {
+            return true;
+        }
+        if (!customToolNames.isEmpty() && !customToolNames.contains(name)) {
             return false;
         }
         if (AgentTool.TYPE_EXPLORE.equals(type)) {
@@ -3932,6 +3947,20 @@ public final class MainCoordinator implements MainUiController {
 
     private ArrayList<String> scopeList(JSONArray array) {
         ArrayList<String> values = new ArrayList<>();
+        if (array == null) {
+            return values;
+        }
+        for (int i = 0; i < array.length(); i++) {
+            String value = array.optString(i).trim();
+            if (value.length() > 0) {
+                values.add(value);
+            }
+        }
+        return values;
+    }
+
+    private HashSet<String> scopeSet(JSONArray array) {
+        HashSet<String> values = new HashSet<>();
         if (array == null) {
             return values;
         }

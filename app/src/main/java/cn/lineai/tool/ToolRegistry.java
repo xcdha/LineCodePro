@@ -24,6 +24,7 @@ import cn.lineai.tool.builtin.WebFetchTool;
 import cn.lineai.tool.builtin.WebSearchTool;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -142,6 +143,25 @@ public final class ToolRegistry {
         String hash = shortHash(mcp == null ? "" : mcp.getId());
         String value = CUSTOM_MCP_PREFIX + hash + "_" + toolPart;
         return value.length() > 64 ? value.substring(0, 64) : value;
+    }
+
+    public Set<String> mcpToolNamesForIds(List<String> mcpIds) {
+        HashSet<String> names = new HashSet<>();
+        if (mcpIds == null || mcpIds.isEmpty() || context == null) {
+            return names;
+        }
+        ExtensionRepository repository = new ExtensionRepository(context);
+        for (ExtensionMcpConfig mcp : repository.getMcpExtensions()) {
+            if (!mcpIds.contains(mcp.getId())) {
+                continue;
+            }
+            for (McpToolSummary tool : mcp.getTools()) {
+                if (tool.isEnabled()) {
+                    names.add(customMcpToolName(mcp, tool));
+                }
+            }
+        }
+        return names;
     }
 
     private void removeExtensionTools() {

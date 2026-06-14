@@ -81,6 +81,12 @@ public final class CustomAgentExtensionTool extends BaseTool {
             if (writeScope != null) {
                 delegated.put("write_scope", writeScope);
             }
+            if (!agent.getToolNames().isEmpty()) {
+                delegated.put("custom_tool_names", new JSONArray(agent.getToolNames()));
+            }
+            if (!agent.getMcpIds().isEmpty()) {
+                delegated.put("custom_mcp_ids", new JSONArray(agent.getMcpIds()));
+            }
             return context.getAgentRunner().runAgent(delegated, context);
         } catch (Exception e) {
             return error("自定义 Agent 执行失败: " + e.getMessage());
