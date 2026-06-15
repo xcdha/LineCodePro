@@ -228,11 +228,17 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
             Toast.makeText(getContext(), "请填写名称和有效 MCP 地址", Toast.LENGTH_SHORT).show();
             return;
         }
+        String trimmedUrl = trimTrailingSlash(url);
+        boolean urlChanged = editingMcp != null && !trimmedUrl.equals(editingMcp.getUrl());
+        if (!queried || queriedTools.isEmpty() || urlChanged) {
+            Toast.makeText(getContext(), "请先点击「查询 MCP 列表」获取 tools 后再保存", Toast.LENGTH_SHORT).show();
+            return;
+        }
         listener.onSave(new ExtensionMcpConfig(
                 editingMcp == null ? "" : editingMcp.getId(),
                 editingMcp == null || editingMcp.isEnabled(),
                 name,
-                trimTrailingSlash(url),
+                trimmedUrl,
                 headers(),
                 queriedTools,
                 editingMcp == null ? 0 : editingMcp.getCreatedAt(),

@@ -33,6 +33,11 @@ public final class SettingsSectionView extends LinearLayout {
     }
 
     public void addRow(View row, boolean divider, int dividerInsetDp) {
+        if (row != null) {
+            if (row.getParent() instanceof android.view.ViewGroup) {
+                ((android.view.ViewGroup) row.getParent()).removeView(row);
+            }
+        }
         if (!divider) {
             group.addView(row, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             return;

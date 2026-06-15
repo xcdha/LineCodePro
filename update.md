@@ -1,5 +1,13 @@
 # 更新日志
 
+## v1.0.8
+
+### Bug 修复
+
+- **添加自定义 MCP** - 修复 `SettingsSectionView.addRow` 中 view parent 状态泄漏导致的 `IllegalStateException`，连续添加 3 个及以上自定义请求头不再闪退；`McpExtensionEditScreenView.save()` 在未查询 tools 或 URL 变更时拒绝保存，避免保存无效 MCP
+
+---
+
 ## v1.0.7
 
 ### Bug 修复
