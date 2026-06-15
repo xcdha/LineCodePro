@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
-val releaseVersionName = "1.0.7"
+val releaseVersionName = "1.0.8"
 val releaseApkName = "LineCode Pro $releaseVersionName.APK"
 val releaseIdsigName = "$releaseApkName.idsig"
 val releaseSigningProperties = Properties()
@@ -108,7 +108,7 @@ android {
         applicationId = "cn.lineai"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10
+        versionCode = 11
         versionName = releaseVersionName
     }
 
