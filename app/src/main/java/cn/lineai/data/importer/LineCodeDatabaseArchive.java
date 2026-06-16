@@ -4,6 +4,7 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.util.Base64;
+import android.util.Log;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.db.LineCodeSchema;
 import java.io.File;
@@ -13,6 +14,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class LineCodeDatabaseArchive {
+    private static final String TAG = "LineCodeDatabaseArchive";
     private static final String[] TABLES = new String[] {
             LineCodeSchema.TABLE_SETTINGS,
             LineCodeSchema.TABLE_PROJECTS,
@@ -59,6 +61,16 @@ public final class LineCodeDatabaseArchive {
     public void importSnapshot(LineCodeDatabase database, JSONObject snapshot) throws Exception {
         if (snapshot == null || !"linecode-database".equals(snapshot.optString("format"))) {
             throw new IllegalArgumentException(".linecode 数据库快照无效。");
+        }
+        int snapshotVersion = snapshot.optInt("schemaVersion", 0);
+        if (snapshotVersion > LineCodeSchema.VERSION) {
+            throw new IllegalStateException(
+                    ".linecode 归档由更高版本生成（schemaVersion=" + snapshotVersion
+                            + "），请先升级 App。");
+        }
+        if (snapshotVersion > 0 && snapshotVersion < LineCodeSchema.VERSION) {
+            Log.w(TAG, "Importing older schema snapshot: " + snapshotVersion
+                    + " -> " + LineCodeSchema.VERSION);
         }
         JSONObject tables = snapshot.optJSONObject("tables");
         if (tables == null) {

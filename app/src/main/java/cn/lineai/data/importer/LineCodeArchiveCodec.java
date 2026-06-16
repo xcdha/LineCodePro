@@ -1,5 +1,6 @@
 package cn.lineai.data.importer;
 
+import cn.lineai.data.db.LineCodeSchema;
 import cn.lineai.data.repository.ConversationRecord;
 import cn.lineai.data.repository.MessageRecord;
 import cn.lineai.model.ModelConfig;
@@ -157,7 +158,7 @@ public final class LineCodeArchiveCodec {
                     LineCodeImportMapper.KEY_CONVERSATION_PREFIX + conversation.getId(),
                     new JSONObject()
                             .put("storage", "file")
-                            .put("schemaVersion", 2)
+                            .put("schemaVersion", LineCodeSchema.VERSION)
                             .put("id", conversation.getId())
                             .put("fileName", fileName)
                             .put("size", bytes.length)

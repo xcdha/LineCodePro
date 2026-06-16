@@ -1,9 +1,12 @@
 package cn.lineai.data.db;
 
+import android.content.ContentValues;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Log;
+import cn.lineai.data.db.migration.DatabaseMigration;
+import cn.lineai.data.db.migration.Migrations;
 
 public final class LineCodeDatabase extends SQLiteOpenHelper {
     private static final String TAG = "LineCodeDatabase";
@@ -33,6 +36,7 @@ public final class LineCodeDatabase extends SQLiteOpenHelper {
     @Override
     public void onCreate(SQLiteDatabase db) {
         executeAll(db, LineCodeSchema.CREATE_SQL);
+        executeAll(db, LineCodeSchema.MIGRATIONS_SQL);
         for (String sql : LineCodeSchema.OPTIONAL_FTS_SQL) {
             try {
                 db.execSQL(sql);
@@ -40,8 +44,7 @@ public final class LineCodeDatabase extends SQLiteOpenHelper {
                 Log.w(TAG, "FTS schema unavailable, continuing without it: " + sql, e);
             }
         }
-        db.execSQL("INSERT OR REPLACE INTO metadata(key, value, updated_at) VALUES('schema_version', ?, ?)",
-                new Object[] {String.valueOf(LineCodeSchema.VERSION), System.currentTimeMillis()});
+        writeSchemaVersionMetadata(db, LineCodeSchema.VERSION);
     }
 
     @Override
@@ -62,8 +65,26 @@ public final class LineCodeDatabase extends SQLiteOpenHelper {
         if (oldVersion == newVersion) {
             return;
         }
-        executeAll(db, LineCodeSchema.DROP_SQL);
-        onCreate(db);
+        applyMigrations(db, oldVersion, newVersion);
+        writeSchemaVersionMetadata(db, newVersion);
+    }
+
+    private void applyMigrations(SQLiteDatabase db, int fromVersion, int toVersion) {
+        for (DatabaseMigration migration : Migrations.all()) {
+            int target = migration.getTargetVersion();
+            if (target > fromVersion && target <= toVersion) {
+                migration.apply(db);
+                ContentValues values = new ContentValues();
+                values.put("version", target);
+                values.put("applied_at", System.currentTimeMillis());
+                db.insertWithOnConflict("schema_migrations", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+            }
+        }
+    }
+
+    private void writeSchemaVersionMetadata(SQLiteDatabase db, int version) {
+        db.execSQL("INSERT OR REPLACE INTO metadata(key, value, updated_at) VALUES('schema_version', ?, ?)",
+                new Object[] {String.valueOf(version), System.currentTimeMillis()});
     }
 
     private void executeAll(SQLiteDatabase db, String[] statements) {

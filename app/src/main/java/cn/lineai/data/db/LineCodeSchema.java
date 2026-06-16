@@ -2,7 +2,7 @@ package cn.lineai.data.db;
 
 public final class LineCodeSchema {
     public static final String DATABASE_NAME = "linecode.db";
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     public static final String TABLE_METADATA = "metadata";
     public static final String TABLE_SETTINGS = "settings";
@@ -105,6 +105,8 @@ public final class LineCodeSchema {
                     + "name TEXT NOT NULL,"
                     + "arguments TEXT NOT NULL,"
                     + "created_at INTEGER NOT NULL,"
+                    + "duration_ms INTEGER NOT NULL DEFAULT 0,"
+                    + "error_message TEXT,"
                     + "raw_json TEXT"
                     + ")",
             "CREATE TABLE IF NOT EXISTS tool_results ("
@@ -245,7 +247,20 @@ public final class LineCodeSchema {
                     + ")"
     };
 
+    public static final String[] MIGRATIONS_SQL = new String[] {
+            "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                    + "version INTEGER PRIMARY KEY,"
+                    + "applied_at INTEGER NOT NULL"
+                    + ")"
+    };
+
+    public static final String[] ADD_COLUMNS_SQL = new String[] {
+            "ALTER TABLE tool_calls ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE tool_calls ADD COLUMN error_message TEXT"
+    };
+
     public static final String[] DROP_SQL = new String[] {
+            "DROP TABLE IF EXISTS schema_migrations",
             "DROP TABLE IF EXISTS working_memory_fts",
             "DROP TABLE IF EXISTS conversation_index_fts",
             "DROP TABLE IF EXISTS memories_fts",
