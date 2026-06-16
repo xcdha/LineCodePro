@@ -1212,7 +1212,6 @@ public final class MainCoordinator implements MainUiController {
             return;
         }
         ensureCurrentConversation();
-        resetTodoState();
         String userContent = composeUserContent(trimmed, safeAttachments);
         messages.add(new ChatMessage(nextId(), ChatMessage.Role.USER, userContent, false, safeAttachments));
         persistCurrentConversation();

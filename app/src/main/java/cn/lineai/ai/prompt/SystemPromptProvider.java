@@ -84,7 +84,7 @@ public final class SystemPromptProvider {
     private String renderTodoStateContext(String todoListText) {
         String safeList = todoListText == null ? "" : todoListText.trim();
         if (safeList.length() == 0) {
-            return "";
+            return new StringTemplate(promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_TODO_USAGE)).render(new HashMap<>());
         }
         HashMap<String, String> values = new HashMap<>();
         values.put("TODO_LIST", safeList);

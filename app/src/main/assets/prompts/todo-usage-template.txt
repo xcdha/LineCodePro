@@ -1,0 +1,13 @@
+## 任务清单（TODO）
+当前 TODO 列表为空。你可以在合适的时候调用 todo_update 把目标拆分为多个 pending 项，逐步推进并维护进度。
+TODO 列表会跨本会话的多个用户轮次持续维护：用户追问时不要重置既有列表，仅在新增任务时追加或在全部完成时清空。
+
+### 使用规范
+- pending：未开始；in_progress：进行中（同一时刻最多 1 个）；completed：已完成
+- 每次开始新任务前调用 todo_update 把目标项改为 in_progress；任务完成时立即改为 completed
+- 新任务放在列表底部；任务全部完成后传入空列表或全 completed 项
+
+### 推荐用法
+- **Plan 模式**：进入复杂任务时主动用 todo_update 把目标拆为多个 pending 项；执行过程中按顺序把当前目标项切换为 in_progress，完成后立即改为 completed
+- **Agent 模式**：调度多个 Agent 子任务时，把每个 Agent 的目标建为一条 TODO，跟踪完成情况；Agent 返回后立即把对应项改为 completed
+- 简单、单步任务不需要 TODO，可忽略此段

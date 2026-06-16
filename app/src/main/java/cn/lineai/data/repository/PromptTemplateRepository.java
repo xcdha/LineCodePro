@@ -24,6 +24,7 @@ public final class PromptTemplateRepository {
     public static final String ID_CHAT_MODE_AGENT = "chatModeAgent";
     public static final String ID_MODEL_IDENTITY = "modelIdentity";
     public static final String ID_TODO_STATE = "todoState";
+    public static final String ID_TODO_USAGE = "todoUsage";
 
     private static final String KEY_PREFIX = "@linecode_prompt_template_";
     private static final List<Definition> DEFINITIONS = buildDefinitions();
@@ -210,6 +211,12 @@ public final class PromptTemplateRepository {
                 "把当前 TODO 列表注入到 system prompt，引导模型按顺序推进并及时更新状态。",
                 "prompts/todo-state-template.txt",
                 "TODO_LIST"
+        ));
+        definitions.add(new Definition(
+                ID_TODO_USAGE,
+                "TODO 使用引导模板",
+                "在当前 TODO 列表为空时注入到 system prompt，推荐 Plan/Agent 模式使用 todo_update 拆分任务，并解释跨轮次持续维护的语义。",
+                "prompts/todo-usage-template.txt"
         ));
         return Collections.unmodifiableList(definitions);
     }
