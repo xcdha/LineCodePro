@@ -23,6 +23,7 @@ public final class PromptTemplateRepository {
     public static final String ID_CHAT_MODE_PLAN = "chatModePlan";
     public static final String ID_CHAT_MODE_AGENT = "chatModeAgent";
     public static final String ID_MODEL_IDENTITY = "modelIdentity";
+    public static final String ID_TODO_STATE = "todoState";
 
     private static final String KEY_PREFIX = "@linecode_prompt_template_";
     private static final List<Definition> DEFINITIONS = buildDefinitions();
@@ -202,6 +203,13 @@ public final class PromptTemplateRepository {
                 "把当前模型的 modelId、名称、提供方和协议注入到 system prompt，让模型在回答自身能力相关问题时以模型标识为依据。",
                 "prompts/model-identity-template.txt",
                 "MODEL_ID", "MODEL_NAME", "MODEL_PROVIDER", "MODEL_PROTOCOL"
+        ));
+        definitions.add(new Definition(
+                ID_TODO_STATE,
+                "TODO 状态模板",
+                "把当前 TODO 列表注入到 system prompt，引导模型按顺序推进并及时更新状态。",
+                "prompts/todo-state-template.txt",
+                "TODO_LIST"
         ));
         return Collections.unmodifiableList(definitions);
     }

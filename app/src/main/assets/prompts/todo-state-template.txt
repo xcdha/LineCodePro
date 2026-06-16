@@ -1,0 +1,8 @@
+## 当前 TODO 列表
+{{TODO_LIST}}
+
+- pending：未开始；in_progress：进行中（同一时刻最多 1 个）；completed：已完成
+- 每次开始新任务前必须调用 todo_update 把目标项改为 in_progress
+- 任务完成时立即调用 todo_update 把对应项改为 completed，不要保留中间状态
+- 新任务放在列表底部；任务全部完成后再调用一次 todo_update 传入空列表或全 completed 项
+- 当用户给出新目标时，先调用 todo_update 重新建立列表，再开始执行

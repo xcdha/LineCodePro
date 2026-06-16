@@ -47,7 +47,7 @@ public final class SystemPromptProvider {
             String learningContext,
             String toolsContext
     ) {
-        return build(homePath, toneMode, chatModeContext, learningContext, toolsContext, null);
+        return build(homePath, toneMode, chatModeContext, learningContext, toolsContext, null, "");
     }
 
     public String build(
@@ -58,6 +58,18 @@ public final class SystemPromptProvider {
             String toolsContext,
             ModelConfig model
     ) {
+        return build(homePath, toneMode, chatModeContext, learningContext, toolsContext, model, "");
+    }
+
+    public String build(
+            String homePath,
+            String toneMode,
+            String chatModeContext,
+            String learningContext,
+            String toolsContext,
+            ModelConfig model,
+            String todoStateContext
+    ) {
         HashMap<String, String> values = new HashMap<>();
         values.put("TONE_CONTEXT", toneContext(toneMode));
         values.put("CHAT_MODE_CONTEXT", chatModeContext == null ? "" : chatModeContext.trim());
@@ -65,7 +77,18 @@ public final class SystemPromptProvider {
         values.put("LEARNING_CONTEXT", learningContext == null ? "" : learningContext.trim());
         values.put("TOOLS_CONTEXT", toolsContext == null ? "" : toolsContext.trim());
         values.put("MODEL_IDENTITY", modelIdentityContext(model));
+        values.put("TODO_STATE", renderTodoStateContext(todoStateContext));
         return template().render(values);
+    }
+
+    private String renderTodoStateContext(String todoListText) {
+        String safeList = todoListText == null ? "" : todoListText.trim();
+        if (safeList.length() == 0) {
+            return "";
+        }
+        HashMap<String, String> values = new HashMap<>();
+        values.put("TODO_LIST", safeList);
+        return new StringTemplate(promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_TODO_STATE)).render(values);
     }
 
     private StringTemplate template() {

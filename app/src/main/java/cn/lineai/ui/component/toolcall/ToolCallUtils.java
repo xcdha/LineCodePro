@@ -128,6 +128,10 @@ final class ToolCallUtils {
         return "agent_pipeline".equals(name);
     }
 
+    static boolean isTodoTool(String name) {
+        return "todo_update".equals(name);
+    }
+
     private static String normalizePath(String path) {
         if (path == null || path.trim().length() == 0) {
             return "";

@@ -150,6 +150,7 @@ public final class MainCoordinator implements MainUiController {
     private final StoragePermissionManager storagePermissionManager;
     private final SafPathResolver safPathResolver;
     private final LineCodeArchiveController lineCodeArchiveController;
+    private final cn.lineai.state.TodoStateStore todoStateStore;
     private MainContract.View view;
     private final ScreenNavigationController.Host navigationHost = new ScreenNavigationController.Host() {
         @Override
@@ -932,6 +933,7 @@ public final class MainCoordinator implements MainUiController {
                 backgroundTasks::execute,
                 mainThread::post
         );
+        todoStateStore = dependencies.todoStateStore;
         chatUiStateAssembler = new ChatUiStateAssembler(
                 modelRepository,
                 aiBehaviorSettingsRepository,
@@ -1027,6 +1029,7 @@ public final class MainCoordinator implements MainUiController {
         }
         loadConversation(id);
         clearSessionAutoToolConfirmations();
+        resetTodoState();
         if (view != null) {
             view.hideOverlays();
             view.showChatScreen();
@@ -1045,6 +1048,7 @@ public final class MainCoordinator implements MainUiController {
             chatSessionStore.setStreaming(false);
             chatSessionStore.clearCurrentConversation();
             clearSessionAutoToolConfirmations();
+            resetTodoState();
         }
         render();
     }
@@ -1059,6 +1063,7 @@ public final class MainCoordinator implements MainUiController {
         boolean deleted = projectRepository.deleteProject(selected.getId(), executionMode);
         if (deleted) {
             applyProject(projectRepository.ensureSelectedProjectPath(executionMode));
+            resetTodoState();
             render();
         }
     }
@@ -1207,6 +1212,7 @@ public final class MainCoordinator implements MainUiController {
             return;
         }
         ensureCurrentConversation();
+        resetTodoState();
         String userContent = composeUserContent(trimmed, safeAttachments);
         messages.add(new ChatMessage(nextId(), ChatMessage.Role.USER, userContent, false, safeAttachments));
         persistCurrentConversation();
@@ -2879,7 +2885,9 @@ public final class MainCoordinator implements MainUiController {
                 aiSettings.getToneMode(),
                 chatModePromptContext(activeChatMode),
                 systemContext,
-                buildToolPrompt(selectedModel, usedToolCallCount)
+                buildToolPrompt(selectedModel, usedToolCallCount),
+                selectedModel,
+                renderTodoStateForPrompt()
         );
         modelMessages.add(new SystemModelMessage(systemPrompt));
         int contextTokens = selectedModel == null
@@ -2892,6 +2900,35 @@ public final class MainCoordinator implements MainUiController {
             modelMessages.add(toModelMessage(message, includeReasoning));
         }
         return modelMessages;
+    }
+
+    private String renderTodoStateForPrompt() {
+        if (todoStateStore == null || todoStateStore.isEmpty()) {
+            return "";
+        }
+        java.util.List<cn.lineai.model.TodoItem> snapshot = todoStateStore.snapshot();
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < snapshot.size(); i++) {
+            cn.lineai.model.TodoItem item = snapshot.get(i);
+            if (item == null) {
+                continue;
+            }
+            builder.append(i + 1)
+                    .append(". [")
+                    .append(item.getStatus())
+                    .append("] ")
+                    .append(item.getContent());
+            if (i < snapshot.size() - 1) {
+                builder.append('\n');
+            }
+        }
+        return builder.toString();
+    }
+
+    private void resetTodoState() {
+        if (todoStateStore != null) {
+            todoStateStore.clear();
+        }
     }
 
     private String chatModePromptContext(String mode) {
@@ -3426,7 +3463,8 @@ public final class MainCoordinator implements MainUiController {
                 return runAgentPipelineTool(input, context, selectedModel, cancellationToken, generationId);
             }
         }, "", (toolCallId, toolName, content, error) ->
-                postToolProgress(generationId, cancellationToken, toolCallId, toolName, content, error));
+                postToolProgress(generationId, cancellationToken, toolCallId, toolName, content, error),
+                todoStateStore);
     }
 
     private void postToolProgress(

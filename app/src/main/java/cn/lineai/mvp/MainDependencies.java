@@ -23,6 +23,7 @@ import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.model.ModelRepository;
 import cn.lineai.ssh.SshService;
+import cn.lineai.state.TodoStateStore;
 import cn.lineai.tool.ToolExecutionCoordinator;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolRegistry;
@@ -60,6 +61,7 @@ public final class MainDependencies {
     final MainThreadDispatcher mainThreadDispatcher;
     final BackgroundTaskRunner backgroundTaskRunner;
     final LineCodeArchiveService lineCodeArchiveService;
+    final TodoStateStore todoStateStore;
 
     public MainDependencies(Context context) {
         this.context = context;
@@ -93,6 +95,7 @@ public final class MainDependencies {
         mainThreadDispatcher = new MainThreadDispatcher();
         backgroundTaskRunner = new BackgroundTaskRunner();
         lineCodeArchiveService = new LineCodeArchiveService(context);
+        todoStateStore = new TodoStateStore();
         chatModeRepository.initialize(toolSettingsRepository);
     }
 }

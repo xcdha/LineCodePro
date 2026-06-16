@@ -35,6 +35,18 @@ public final class ToolCallBlockView extends LinearLayout {
             view.bind(toolCall, result);
             return;
         }
+        if (ToolCallUtils.isTodoTool(name)) {
+            ToolCallTodoView view;
+            if (getChildCount() > 0 && getChildAt(0) instanceof ToolCallTodoView) {
+                view = (ToolCallTodoView) getChildAt(0);
+            } else {
+                removeAllViews();
+                view = new ToolCallTodoView(getContext());
+                addView(view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            }
+            view.bind(toolCall, result);
+            return;
+        }
         removeAllViews();
         if (ToolCallUtils.isAgentTool(name)) {
             ToolCallAgentView view = new ToolCallAgentView(getContext());

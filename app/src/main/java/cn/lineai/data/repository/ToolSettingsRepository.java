@@ -36,6 +36,8 @@ public final class ToolSettingsRepository {
                     new String[] {"http_server"}),
             new McpToolConfig("agent", "Agent", "分派 Agent 处理任务", true,
                     new String[] {"agent", "agent_pipeline"}),
+            new McpToolConfig("todo", "任务清单", "维护当前会话的 TODO 列表，状态会注入到 system prompt", true,
+                    new String[] {"todo_update"}),
             new McpToolConfig("image_understanding", "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,
                     new String[] {"image_understanding"}),
             new McpToolConfig("image_generation", "图片生成", "调用已选择的生图模型生成图片，并以内联 Markdown 图片返回", false,
@@ -135,12 +137,15 @@ public final class ToolSettingsRepository {
                     && !"shell".equals(config.getId())
                     && !"web_search".equals(config.getId())
                     && !"image_understanding".equals(config.getId())
-                    && !"image_generation".equals(config.getId())) {
+                    && !"image_generation".equals(config.getId())
+                    && !"todo".equals(config.getId())
+                    && !"agent".equals(config.getId())) {
                 continue;
             }
             for (String tool : config.getTools()) {
                 ToolCategory category = getToolCategory(tool);
-                if (PERMISSION_READONLY.equals(permissionMode) && !isReadonlyAllowed(category)) {
+                if (PERMISSION_READONLY.equals(permissionMode) && !isReadonlyAllowed(category)
+                        && !isReadonlyAlwaysAllowed(tool)) {
                     continue;
                 }
                 enabled.add(tool);
@@ -178,7 +183,9 @@ public final class ToolSettingsRepository {
                 return PermissionResult.denied("工具未启用或当前执行目标不可用: " + toolName);
             }
         }
-        if (PERMISSION_READONLY.equals(getPermissionMode()) && !isReadonlyAllowed(category)) {
+        if (PERMISSION_READONLY.equals(getPermissionMode())
+                && !isReadonlyAllowed(category)
+                && !isReadonlyAlwaysAllowed(toolName)) {
             return PermissionResult.denied("只读模式下不允许执行 " + toolName + "。请在权限设置中切换到自动或确认模式。");
         }
         return PermissionResult.allowed();
@@ -331,7 +338,8 @@ public final class ToolSettingsRepository {
     ) {
         StringBuilder builder = new StringBuilder();
         builder.append("## 可用工具\n")
-                .append("当前执行目标是 SSH Shell。本地文件读写、文件搜索、Agent、Agent Pipeline 和 HTTP 服务器已禁用。\n")
+                .append("当前执行目标是 SSH Shell。本地文件读写、文件搜索和 HTTP 服务器已禁用。\n")
+                .append("Agent、Agent Pipeline、任务清单仍可用，子 Agent 只能通过 shell_execute 在 SSH 环境内完成文件操作。\n")
                 .append("图片理解会通过 SFTP 读取 SSH 工作区图片；网页搜索、图片生成和应用侧自定义 HTTP MCP 可用时仍会作为工具提供。\n")
                 .append("不要引用应用私有 home 工作目录；如果系统提示提供了 SSH 项目目录，必须在该目录内操作。\n")
                 .append("如需读取、写入、列目录或搜索文件，请通过 shell 命令在 SSH 环境内完成。\n\n");
@@ -341,7 +349,9 @@ public final class ToolSettingsRepository {
             if (!"shell".equals(config.getId())
                     && !"web_search".equals(config.getId())
                     && !"image_understanding".equals(config.getId())
-                    && !"image_generation".equals(config.getId())) {
+                    && !"image_generation".equals(config.getId())
+                    && !"todo".equals(config.getId())
+                    && !"agent".equals(config.getId())) {
                 continue;
             }
             ArrayList<String> tools = new ArrayList<>();
@@ -440,6 +450,10 @@ public final class ToolSettingsRepository {
 
     private static boolean isReadonlyAllowed(ToolCategory category) {
         return category == ToolCategory.READ || category == ToolCategory.GENERATE;
+    }
+
+    static boolean isReadonlyAlwaysAllowed(String toolName) {
+        return "todo_update".equals(toolName);
     }
 
     private boolean isEnabledExtensionTool(String toolName, ToolCategory category) {

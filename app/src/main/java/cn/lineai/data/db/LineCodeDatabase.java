@@ -70,6 +70,7 @@ public final class LineCodeDatabase extends SQLiteOpenHelper {
     }
 
     private void applyMigrations(SQLiteDatabase db, int fromVersion, int toVersion) {
+        executeAll(db, LineCodeSchema.MIGRATIONS_SQL);
         for (DatabaseMigration migration : Migrations.all()) {
             int target = migration.getTargetVersion();
             if (target > fromVersion && target <= toVersion) {
