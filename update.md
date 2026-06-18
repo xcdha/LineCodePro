@@ -1,5 +1,26 @@
 # 更新日志
 
+## v1.1.1
+
+### 优化与重构
+
+- **IPC 架构模块化** - 新增 `ipc` 独立 Gradle 模块（`ipc/`），将原 `app` 内的 IPC 服务端/客户端抽象（`IpcProviderManager`、`IpcProviderRegistry`、`IpcProviderScanner`、`IpcProviderConnectionState`、`IpcProviderStateListener`、`IpcProviderFactory`、`BaseIpcProvider`、`AbstractIpcProviderService`、`IpcServerExecutors`、`IpcServerPermission` 等）抽离到独立模块；`terminal-provider` 模块新增 `TerminalIpcProvider` / `TerminalProviderServiceFactory` 接入新抽象；`cn.lineai.ipc.terminal` 模块继续作为终端提供者实现，整体 IPC 拓扑从「app 内混合」改为「core 抽象 + provider 实现」分层
+- **Provider 管理器重构** - `IpcProviderManager` 改为支持工厂注册扩展（`IpcProviderRegistry`），新增全局观察者模式与连接状态机（`IpcProviderConnectionState`），供 UI 订阅 provider 连接生命周期
+- **MainCoordinator 内部类外提** - 8 个内联内部类（`AgentRunResult`、`PipelineAgent`、`AgentProgressMirror`、`AgentProgressSession`、`PipelineProgressSession`、`PipelineAgentState`、`ToolExecutionBatch`、`PendingToolExecution`）抽取为 `cn.lineai.mvp.agent` 包下的独立顶层类；`MainCoordinator` 由 561 行 → 180 行；统一以 getter 替换直接字段访问，简化 `Collections.singletonList` 调用
+- **AgentExecutionController 抽取** - 将 `MainCoordinator` 内联 Agent 与 Pipeline Agent 执行相关代码（590 行）抽离到独立 `AgentExecutionController`；`MainCoordinator` 由 639 行 → 49 行，职责简化为协调调度
+- **实验性功能与插件页清理** - 移除 `ExperimentalSettingsScreenView`、`PluginPageScreenView` 页面与 `ScreenFactories` 中的注册；清理 `SettingsScreenView`、`ScreenNavigationController`、`MainChatView`、`SimpleScreenContent` 中的实验性入口与冗余资源；`values/strings.xml` 与 `values-zh/strings.xml` 同步删除对应文案
+- **教程页重构** - 新增 `app/src/main/assets/tutorials/simple.md`（78 行）与 `pro.md`（217 行）两套内置教程源；`TutorialScreenView` 支持从 assets 读取 Markdown 渲染，新增简单模式与专业模式分类
+- **Markdown 渲染** - `MarkdownView` 扩展 36 行，支持教程页与错误状态文本渲染
+- **AssistantMessageView 错误态** - 新增错误状态纯文本渲染支持
+- **附件选择器** - `AttachmentPickerCoordinator` 调整 73 行以适配新 IPC 抽象
+
+### 文档
+
+- **README 社交预览** - `README.md` 与 `README_CN.md` 顶部新增动态社交预览横幅
+- **ipc 模块文档** - 新增 `ipc/README.md`（741 行）与 `ipc/README_CN.md`（739 行），介绍 IPC 抽象、Provider 注册、连接状态机、权限模型与扩展方式
+
+---
+
 ## v1.1.0
 
 ### 新功能
