@@ -83,8 +83,6 @@
     <string name="settings_row_theme_desc">主题模式、自定义颜色和高对比外观</string>
     <string name="settings_row_output_title">输出与浏览</string>
     <string name="settings_row_output_desc">代码换行、网页打开方式和内置浏览器 JS</string>
-    <string name="settings_row_experimental_title">实验性渲染</string>
-    <string name="settings_row_experimental_desc">仍在验证的消息渲染能力</string>
     <string name="settings_row_storage_title">存储管理</string>
     <string name="settings_row_storage_desc">聊天、配置、diff 和工作区占用</string>
     <string name="settings_row_memory_title">记忆</string>
@@ -150,8 +148,6 @@
     <string name="screen_output_browser_js_label">内置浏览器 JavaScript</string>
     <string name="screen_output_section_preview">预览</string>
     <string name="screen_output_preview_markdown">### Markdown 预览\n- 列表、粗体、链接会按消息样式渲染\n- 代码换行开关会立即影响下面的代码块\n\n| 类型 | 状态 |\n| --- | --- |\n| 表格 | 已启用 |\n| 链接 | [LineCode](https://line.local) |\n\n```java\nString path = "/storage/emulated/0/.linecode/home/very/long/workspace/path/that/needs/wrap/Main.java";\nSystem.out.println("code wrap preview: " + path);\n```</string>
-
-    <string name="screen_plugin_page_default_title">插件页面</string>
 
     <string name="screen_settings_title">设置</string>
     <string name="screen_settings_section_ai">AI 与模型</string>
@@ -247,8 +243,6 @@
     <string name="screen_output_browser_external_desc">使用系统浏览器打开</string>
     <string name="screen_output_browser_js_desc">关闭后应用内网页不会执行脚本</string>
 
-    <string name="screen_plugin_page_opening">正在打开插件页面…</string>
-    <string name="screen_plugin_page_desc">Java 原生版本保留 LineML 插件页面容器；后续接入插件运行时后在此渲染 document。</string>
 
     <string name="screen_tools_title">工具设置</string>
     <string name="screen_tools_section_images">图片操作</string>
@@ -404,10 +398,6 @@
     <string name="screen_about_default_label">LineCode Pro</string>
     <string name="screen_about_unknown_version">unknown</string>
 
-    <string name="screen_tutorial_pro_desc">协议、执行环境、MCP 与安全细节</string>
-    <string name="screen_tutorial_subtitle">从项目、模型、权限和工具调用开始，快速完成 LineCode 的基础配置。</string>
-
-    <string name="screen_licenses_title">开源许可</string>
     <string name="screen_licenses_commonmark_core_desc">Markdown 块级与行内语法解析。POM 声明许可为 BSD-2-Clause。</string>
     <string name="screen_licenses_commonmark_gfm_desc">GitHub Flavored Markdown 表格扩展，继承 commonmark-java 的 BSD-2-Clause 许可。</string>
     <string name="screen_licenses_jsch_desc">SSH2 Java 实现。POM 声明 JSch 与 JZlib 为 Revised BSD，jBCrypt 部分为 ISC。</string>
@@ -585,19 +575,15 @@
     <string name="screen_about_open_source_licenses">开源许可列表</string>
 
     <string name="screen_tutorial_title">使用教程</string>
-    <string name="screen_tutorial_variant_beginner">新手版</string>
-    <string name="screen_tutorial_variant_pro">专业版</string>
-    <string name="screen_tutorial_section_workspace">1. 选择工作区</string>
-    <string name="screen_tutorial_workspace_p1">点击顶部项目名，可以切换当前项目、打开已有目录或创建新项目。所有文件操作都会以当前项目作为上下文。</string>
-    <string name="screen_tutorial_section_model">2. 添加模型</string>
-    <string name="screen_tutorial_model_p1">进入设置 → 模型管理 → 添加模型，选择预置提供商或自定义 OpenAI 兼容地址。手机本地模型使用 GGUF 文件入口。</string>
-    <string name="screen_tutorial_section_tools">3. 配置工具</string>
-    <string name="screen_tutorial_tools_p1">在工具与执行里选择本地工作区或 SSH Shell，按需启用文件、Shell、HTTP 服务和网页搜索工具。</string>
-    <string name="screen_tutorial_section_extensions">4. 添加扩展</string>
-    <string name="screen_tutorial_extensions_p1">扩展页用于添加 Agent、MCP、Skills 和 .lip 包。每类扩展都有独立详情页和编辑页。</string>
-    <string name="screen_tutorial_code">Base URL: https://api.example.com/v1\nModel ID: qwen/qwen3-coder\nPermission: 每次询问</string>
-    <string name="screen_tutorial_desc_beginner">零基础、一步一步照做</string>
+    <string name="screen_tutorial_subtitle_brief">开始使用前请先完成项目、模型、权限与工具的基础设置。</string>
+    <string name="screen_tutorial_simple_label">简单模式</string>
+    <string name="screen_tutorial_simple_desc">面向首次使用者，按步骤走完一遍基础配置</string>
+    <string name="screen_tutorial_pro_label">专业模式</string>
+    <string name="screen_tutorial_pro_desc">面向有经验的开发者，覆盖架构、协议、扩展与安全细节</string>
+    <string name="screen_tutorial_fallback">教程内容加载失败，请重新安装 LineCode Pro 后再试。</string>
+    <string name="screen_tutorial_loading_error">无法读取教程文件</string>
 
+    <string name="screen_licenses_title">开源许可</string>
     <string name="screen_licenses_commonmark_core">commonmark-java core</string>
     <string name="screen_licenses_commonmark_gfm">commonmark-java GFM tables</string>
     <string name="screen_licenses_jsch">JSch</string>
@@ -668,16 +654,6 @@
     <string name="screen_storage_desc_chat">聊天、消息和索引摘要</string>
     <string name="screen_storage_desc_config">模型、主题、MCP 和系统设置</string>
 
-    <string name="screen_experimental_title">实验性功能</string>
-    <string name="screen_experimental_section_chat">对话</string>
-    <string name="screen_experimental_resume_label">启动时进入上一次对话</string>
-    <string name="screen_experimental_resume_desc">默认关闭。关闭时每次打开应用进入新对话，可从侧边栏手动选择历史对话</string>
-    <string name="screen_experimental_section_compat">系统兼容</string>
-    <string name="screen_experimental_keyboard_label">实验性键盘避让</string>
-    <string name="screen_experimental_keyboard_desc">默认关闭，优先使用系统输入法避让。开启后使用旧版自定义键盘测量方案</string>
-    <string name="screen_experimental_section_render">渲染</string>
-    <string name="screen_experimental_math_label">数学公式渲染</string>
-    <string name="screen_experimental_math_desc">默认关闭，开启后解析 LaTeX 公式</string>
 
     <string name="screen_theme_section_preview">主题预览</string>
     <string name="screen_theme_section_preview_desc">保存后会应用到自定义主题。</string>
@@ -790,7 +766,6 @@
     <string name="sheet_title_extensions">扩展</string>
     <string name="sheet_title_theme">主题设置</string>
     <string name="sheet_title_advanced">高级设置</string>
-    <string name="sheet_title_experimental">实验性功能</string>
     <string name="sheet_title_developer">开发者</string>
     <string name="sheet_title_about">关于</string>
     <string name="sheet_title_keep_alive">保活设置</string>
@@ -848,7 +823,6 @@
 
     <string name="context_compact_label">压缩</string>
 
-    <string name="plugin_page_title">插件页面</string>
     <string name="provider_mimo_token_plan">Mimo Token 计划</string>
 
     <string name="fallback_screen_about_subtitle">LineCode Java 原生 View 版本。当前页面用于对齐 LineAI 的 Android UI 结构。</string>
@@ -861,9 +835,6 @@
     <string name="fallback_row_extension_installed">已安装列表</string>
     <string name="fallback_row_extension_enabled">启用状态</string>
     <string name="fallback_row_extension_manage">长按管理</string>
-    <string name="fallback_row_tutorial_beginner">初学者教程</string>
-    <string name="fallback_row_tutorial_pro">专业模式教程</string>
-    <string name="fallback_row_tutorial_tools">工具调用说明</string>
     <string name="fallback_row_model_add_custom_api">自定义 API 模型</string>
     <string name="fallback_row_model_add_local_gguf">本地 GGUF 模型</string>
     <string name="fallback_row_model_add_openai_provider">OpenAI 兼容供应商</string>
@@ -892,8 +863,6 @@
     <string name="fallback_row_storage_config">配置文件</string>
     <string name="fallback_row_storage_diff_cache">Diff 缓存</string>
     <string name="fallback_row_storage_workspace">工作区占用</string>
-    <string name="fallback_row_experimental_keyboard">实验性键盘避让</string>
-    <string name="fallback_row_experimental_rendering">实验性消息渲染</string>
     <string name="fallback_row_output_code_wrap">代码自动换行</string>
     <string name="fallback_row_output_open_mode">网页打开方式</string>
     <string name="fallback_row_output_browser_js">内置浏览器 JavaScript</string>
@@ -922,7 +891,6 @@
     <string name="fallback_screen_about_title_alt">关于 LineCode</string>
     <string name="fallback_screen_keep_alive_title_alt">后台保活</string>
     <string name="fallback_screen_licenses_title">开源许可</string>
-    <string name="fallback_screen_tutorial_title_alt">教程</string>
     <string name="sheet_attachment_selected_count">已选择 %1$d 个文件</string>
 
     <string name="tool_call_shell_full">完整</string>

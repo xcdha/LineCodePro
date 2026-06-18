@@ -49,7 +49,6 @@ public final class SettingsScreenView extends LinearLayout {
                 new RowSpec("input", context.getString(R.string.screen_input_title), context.getString(R.string.settings_row_input_desc), IconButtonView.MESSAGE_SQUARE_TEXT),
                 new RowSpec("theme", context.getString(R.string.settings_row_theme_title), context.getString(R.string.settings_row_theme_desc), IconButtonView.PALETTE),
                 new RowSpec("output", context.getString(R.string.settings_row_output_title), context.getString(R.string.settings_row_output_desc), IconButtonView.MONITOR),
-                new RowSpec("experimental", context.getString(R.string.settings_row_experimental_title), context.getString(R.string.settings_row_experimental_desc), IconButtonView.FLASK_CONICAL),
         });
         addSection(content, context.getString(R.string.screen_settings_section_data), new RowSpec[] {
                 new RowSpec("storage", context.getString(R.string.settings_row_storage_title), context.getString(R.string.settings_row_storage_desc), IconButtonView.DATABASE),

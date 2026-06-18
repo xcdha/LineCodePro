@@ -347,18 +347,6 @@ public final class ScreenFactories {
         }
     }
 
-    public static final class ExperimentalSettingsScreenFactory implements ScreenFactory {
-        @Override
-        public View createScreen(MainChatView view, MainUiController controller, Context context) {
-            return new ExperimentalSettingsScreenView(context, view::handleScreenBack);
-        }
-
-        @Override
-        public String screenId() {
-            return "experimental";
-        }
-    }
-
     public static final class DataSettingsScreenFactory implements ScreenFactory {
         @Override
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
@@ -544,18 +532,6 @@ public final class ScreenFactories {
         @Override
         public String screenId() {
             return "tutorial";
-        }
-    }
-
-    public static final class PluginPageScreenFactory implements ScreenFactory {
-        @Override
-        public View createScreen(MainChatView view, MainUiController controller, Context context) {
-            return new PluginPageScreenView(context, context.getString(R.string.plugin_page_title), view::handleScreenBack);
-        }
-
-        @Override
-        public String screenId() {
-            return "pluginPage";
         }
     }
 

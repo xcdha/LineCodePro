@@ -965,7 +965,7 @@ public final class MainCoordinator implements MainUiController {
         }
         ArrayList<SheetOption> options = new ArrayList<>();
         options.add(new SheetOption("tutorial", "教程", "打开初学者教程", false));
-        options.add(new SheetOption("settings", context.getString(R.string.screen_settings_title), "模型、主题、数据与实验功能", false));
+        options.add(new SheetOption("settings", context.getString(R.string.screen_settings_title), "模型、主题、数据管理", false));
         options.add(new SheetOption("compact", "压缩上下文", "将早期上下文总结为隐藏摘要", false));
         options.add(new SheetOption("clear", "清空对话", "清空当前对话消息", false));
         view.showSheet("更多", options);

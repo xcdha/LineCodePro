@@ -116,7 +116,6 @@ public final class ScreenNavigationController {
                 || "toolSettings".equals(safeScreenId)
                 || "output".equals(safeScreenId)
                 || "theme".equals(safeScreenId)
-                || "experimental".equals(safeScreenId)
                 || "data".equals(safeScreenId)
                 || "storage".equals(safeScreenId)
                 || "memory".equals(safeScreenId)

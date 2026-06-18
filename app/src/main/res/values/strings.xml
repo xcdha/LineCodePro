@@ -83,8 +83,6 @@
     <string name="settings_row_theme_desc">Theme mode, custom colors and high-contrast appearance</string>
     <string name="settings_row_output_title">Output &amp; browser</string>
     <string name="settings_row_output_desc">Code wrap, page opening method and built-in browser JS</string>
-    <string name="settings_row_experimental_title">Experimental rendering</string>
-    <string name="settings_row_experimental_desc">Message rendering capabilities still under verification</string>
     <string name="settings_row_storage_title">Storage management</string>
     <string name="settings_row_storage_desc">Chats, config, diff and workspace usage</string>
     <string name="settings_row_memory_title">Memory</string>
@@ -150,8 +148,6 @@
     <string name="screen_output_browser_js_label">Built-in browser JavaScript</string>
     <string name="screen_output_section_preview">Preview</string>
     <string name="screen_output_preview_markdown">### Markdown preview\n- Lists, bold and links render with message styling\n- Code wrap toggle immediately affects the code block below\n\n| Type | Status |\n| --- | --- |\n| Table | Enabled |\n| Link | [LineCode](https://line.local) |\n\n```java\nString path = "/storage/emulated/0/.linecode/home/very/long/workspace/path/that/needs/wrap/Main.java";\nSystem.out.println("code wrap preview: " + path);\n```</string>
-
-    <string name="screen_plugin_page_default_title">Plugin page</string>
 
     <string name="screen_settings_title">Settings</string>
     <string name="screen_settings_section_ai">AI &amp; Models</string>
@@ -246,9 +242,6 @@
     <string name="screen_output_browser_internal_desc">Open pages in-app</string>
     <string name="screen_output_browser_external_desc">Open pages in the system browser</string>
     <string name="screen_output_browser_js_desc">When off, in-app pages will not run scripts</string>
-
-    <string name="screen_plugin_page_opening">Opening plugin page…</string>
-    <string name="screen_plugin_page_desc">The Java native version keeps the LineML plugin page container; the document will be rendered here once the plugin runtime is integrated.</string>
 
     <string name="screen_tools_title">Tool settings</string>
     <string name="screen_tools_section_images">Image actions</string>
@@ -403,9 +396,6 @@
     <string name="screen_about_copyright">Copyright 2025 LangLang. All rights reserved.</string>
     <string name="screen_about_default_label">LineCode Pro</string>
     <string name="screen_about_unknown_version">unknown</string>
-
-    <string name="screen_tutorial_pro_desc">Protocols, execution environments, MCP and security details</string>
-    <string name="screen_tutorial_subtitle">Start with project, model, permission and tool calls to complete the basic LineCode configuration.</string>
 
     <string name="screen_licenses_title">Open source licenses</string>
     <string name="screen_licenses_commonmark_core_desc">Markdown block and inline grammar parser. The POM declares the license as BSD-2-Clause.</string>
@@ -586,18 +576,13 @@
     <string name="screen_about_open_source_licenses">Open source licenses</string>
 
     <string name="screen_tutorial_title">Tutorial</string>
-    <string name="screen_tutorial_variant_beginner">Beginner</string>
-    <string name="screen_tutorial_variant_pro">Pro</string>
-    <string name="screen_tutorial_section_workspace">1. Choose a workspace</string>
-    <string name="screen_tutorial_workspace_p1">Tap the project name at the top to switch projects, open an existing directory or create a new one. All file operations use the current project as context.</string>
-    <string name="screen_tutorial_section_model">2. Add a model</string>
-    <string name="screen_tutorial_model_p1">Go to Settings → Model management → Add model. Choose a preset provider or set a custom OpenAI compatible URL. Use the GGUF entry for on-device models.</string>
-    <string name="screen_tutorial_section_tools">3. Configure tools</string>
-    <string name="screen_tutorial_tools_p1">In Tools &amp; execution, choose local workspace or SSH shell, and enable file, shell, HTTP server and web search tools as needed.</string>
-    <string name="screen_tutorial_section_extensions">4. Add extensions</string>
-    <string name="screen_tutorial_extensions_p1">The Extensions page adds Agent, MCP, Skills and .lip packages. Each type has its own detail and edit page.</string>
-    <string name="screen_tutorial_code">Base URL: https://api.example.com/v1\nModel ID: qwen/qwen3-coder\nPermission: Ask every time</string>
-    <string name="screen_tutorial_desc_beginner">Step-by-step, zero experience needed</string>
+    <string name="screen_tutorial_subtitle_brief">开始使用前请先完成项目、模型、权限与工具的基础设置。</string>
+    <string name="screen_tutorial_simple_label">简单模式</string>
+    <string name="screen_tutorial_simple_desc">面向首次使用者，按步骤走完一遍基础配置</string>
+    <string name="screen_tutorial_pro_label">专业模式</string>
+    <string name="screen_tutorial_pro_desc">面向有经验的开发者，覆盖架构、协议、扩展与安全细节</string>
+    <string name="screen_tutorial_fallback">教程内容加载失败，请重新安装 LineCode Pro 后再试。</string>
+    <string name="screen_tutorial_loading_error">无法读取教程文件</string>
 
     <string name="screen_licenses_commonmark_core">commonmark-java core</string>
     <string name="screen_licenses_commonmark_gfm">commonmark-java GFM tables</string>
@@ -668,17 +653,6 @@
     <string name="screen_storage_desc_diff">Patches and comparison results generated by tool calls</string>
     <string name="screen_storage_desc_chat">Chats, messages and index summaries</string>
     <string name="screen_storage_desc_config">Models, theme, MCP and system settings</string>
-
-    <string name="screen_experimental_title">Experimental</string>
-    <string name="screen_experimental_section_chat">Chat</string>
-    <string name="screen_experimental_resume_label">Resume last chat on launch</string>
-    <string name="screen_experimental_resume_desc">Off by default. When off, a new chat is opened each time; pick a previous one from the side drawer.</string>
-    <string name="screen_experimental_section_compat">System compatibility</string>
-    <string name="screen_experimental_keyboard_label">Experimental keyboard avoidance</string>
-    <string name="screen_experimental_keyboard_desc">Off by default. Prefers the system input method; on enables the legacy custom keyboard measurement.</string>
-    <string name="screen_experimental_section_render">Rendering</string>
-    <string name="screen_experimental_math_label">Math formula rendering</string>
-    <string name="screen_experimental_math_desc">Off by default. When on, parses LaTeX formulas.</string>
 
     <string name="screen_theme_section_preview">Theme preview</string>
     <string name="screen_theme_section_preview_desc">The saved theme is applied as the custom theme.</string>
@@ -791,7 +765,6 @@
     <string name="sheet_title_extensions">Extensions</string>
     <string name="sheet_title_theme">Theme</string>
     <string name="sheet_title_advanced">Advanced</string>
-    <string name="sheet_title_experimental">Experimental</string>
     <string name="sheet_title_developer">Developer</string>
     <string name="sheet_title_about">About</string>
     <string name="sheet_title_keep_alive">Keep-alive</string>
@@ -849,7 +822,6 @@
 
     <string name="context_compact_label">Compacting</string>
 
-    <string name="plugin_page_title">Plugin page</string>
     <string name="provider_mimo_token_plan">Mimo Token Plan</string>
 
     <string name="fallback_screen_about_subtitle">LineCode native Java View version. This page mirrors LineAI\'s Android UI structure.</string>
@@ -862,9 +834,6 @@
     <string name="fallback_row_extension_installed">Installed list</string>
     <string name="fallback_row_extension_enabled">Enabled state</string>
     <string name="fallback_row_extension_manage">Long-press to manage</string>
-    <string name="fallback_row_tutorial_beginner">Beginner tutorial</string>
-    <string name="fallback_row_tutorial_pro">Pro mode tutorial</string>
-    <string name="fallback_row_tutorial_tools">Tool calling notes</string>
     <string name="fallback_row_model_add_custom_api">Custom API model</string>
     <string name="fallback_row_model_add_local_gguf">Local GGUF model</string>
     <string name="fallback_row_model_add_openai_provider">OpenAI compatible provider</string>
@@ -893,8 +862,6 @@
     <string name="fallback_row_storage_config">Config files</string>
     <string name="fallback_row_storage_diff_cache">Diff cache</string>
     <string name="fallback_row_storage_workspace">Workspace usage</string>
-    <string name="fallback_row_experimental_keyboard">Experimental keyboard avoidance</string>
-    <string name="fallback_row_experimental_rendering">Experimental message rendering</string>
     <string name="fallback_row_output_code_wrap">Code auto wrap</string>
     <string name="fallback_row_output_open_mode">Page open mode</string>
     <string name="fallback_row_output_browser_js">In-app browser JavaScript</string>
@@ -923,7 +890,6 @@
     <string name="fallback_screen_about_title_alt">About LineCode</string>
     <string name="fallback_screen_keep_alive_title_alt">Background keep-alive</string>
     <string name="fallback_screen_licenses_title">Open source licenses</string>
-    <string name="fallback_screen_tutorial_title_alt">Tutorial</string>
     <string name="sheet_attachment_selected_count">Selected %1$d file(s)</string>
 
     <string name="tool_call_shell_full">Full</string>

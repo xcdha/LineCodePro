@@ -27,7 +27,6 @@ public final class SimpleScreenContent {
         if ("toolSettings".equals(screenId)) return context.getString(R.string.screen_tools_title);
         if ("theme".equals(screenId)) return context.getString(R.string.fallback_screen_theme_title);
         if ("output".equals(screenId)) return context.getString(R.string.fallback_screen_output_title);
-        if ("experimental".equals(screenId)) return context.getString(R.string.screen_experimental_title);
         if ("storage".equals(screenId)) return context.getString(R.string.screen_storage_title);
         if ("memory".equals(screenId)) return context.getString(R.string.screen_memory_title);
         if ("data".equals(screenId)) return context.getString(R.string.fallback_screen_data_title);
@@ -37,7 +36,6 @@ public final class SimpleScreenContent {
         if ("about".equals(screenId)) return context.getString(R.string.fallback_screen_about_title_alt);
         if ("modelAddOptions".equals(screenId)) return context.getString(R.string.screen_model_add_options_title);
         if ("licenses".equals(screenId)) return context.getString(R.string.fallback_screen_licenses_title);
-        if ("tutorial".equals(screenId)) return context.getString(R.string.fallback_screen_tutorial_title_alt);
         if (screenId != null && screenId.startsWith("extension:")) return context.getString(R.string.fallback_screen_extension_title);
         return context.getString(R.string.header_project_default);
     }
@@ -89,10 +87,6 @@ public final class SimpleScreenContent {
                 context.getString(R.string.fallback_row_output_browser_js),
                 context.getString(R.string.fallback_row_output_markdown_preview)
         };
-        if ("experimental".equals(screenId)) return new String[] {
-                context.getString(R.string.fallback_row_experimental_keyboard),
-                context.getString(R.string.fallback_row_experimental_rendering)
-        };
         if ("storage".equals(screenId)) return new String[] {
                 context.getString(R.string.fallback_row_storage_chat),
                 context.getString(R.string.fallback_row_storage_config),
@@ -137,11 +131,6 @@ public final class SimpleScreenContent {
                 context.getString(R.string.fallback_row_model_add_local_gguf),
                 context.getString(R.string.fallback_row_model_add_openai_provider),
                 context.getString(R.string.fallback_row_model_add_codex_preset)
-        };
-        if ("tutorial".equals(screenId)) return new String[] {
-                context.getString(R.string.fallback_row_tutorial_beginner),
-                context.getString(R.string.fallback_row_tutorial_pro),
-                context.getString(R.string.fallback_row_tutorial_tools)
         };
         if (screenId != null && screenId.startsWith("extension:")) return new String[] {
                 context.getString(R.string.fallback_row_extension_add),

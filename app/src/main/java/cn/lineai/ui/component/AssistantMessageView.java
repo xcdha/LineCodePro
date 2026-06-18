@@ -23,6 +23,7 @@ public final class AssistantMessageView extends LinearLayout {
     private String lastReasoning = "";
     private String lastContent = "";
     private boolean lastStreaming;
+    private boolean lastError;
     private boolean lastThinkingAutoExpand;
     private boolean lastThinkingScrollable = true;
     private String lastCompactStatus = "";
@@ -103,6 +104,7 @@ public final class AssistantMessageView extends LinearLayout {
             lastReasoning = safeReasoning;
             lastContent = "";
             lastStreaming = message.isStreaming();
+            lastError = message.isError();
             lastCompactStatus = message.getCompactStatus();
             lastToolSignature = "";
             return;
@@ -129,8 +131,12 @@ public final class AssistantMessageView extends LinearLayout {
         } else {
             contentView.setVisibility(VISIBLE);
         }
-        if (!lastContent.equals(content)) {
-            contentView.setMarkdown(content);
+        if (!lastContent.equals(content) || message.isError() != lastError) {
+            if (message.isError()) {
+                contentView.setPlainText(content);
+            } else {
+                contentView.setMarkdown(content);
+            }
         }
         bindToolCalls(message);
         actionBar.setVisibility(message.isStreaming() || message.getContent().trim().isEmpty() ? GONE : VISIBLE);
@@ -138,6 +144,7 @@ public final class AssistantMessageView extends LinearLayout {
         lastReasoning = safeReasoning;
         lastContent = content;
         lastStreaming = message.isStreaming();
+        lastError = message.isError();
         lastThinkingAutoExpand = thinkingAutoExpand;
         lastThinkingScrollable = thinkingScrollable;
         lastCompactStatus = "";
