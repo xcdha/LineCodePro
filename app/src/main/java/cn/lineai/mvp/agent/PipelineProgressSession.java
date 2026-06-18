@@ -1,7 +1,6 @@
 package cn.lineai.mvp.agent;
 
 import cn.lineai.tool.ToolContext;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import org.json.JSONArray;
@@ -9,6 +8,7 @@ import org.json.JSONObject;
 
 public final class PipelineProgressSession {
     private static final String AGENT_TERMINATED_MESSAGE = "Agent 已终止。";
+    private static final String AGENT_PIPELINE_RUNNING_MESSAGE = "Agent 流水线运行中。";
 
     private final ToolContext parentContext;
     private final ArrayList<PipelineAgent> agents;
@@ -105,7 +105,7 @@ public final class PipelineProgressSession {
             object.put("agents", array);
             return object.toString();
         } catch (Exception e) {
-            return "Agent 流水线运行中。";
+            return AGENT_PIPELINE_RUNNING_MESSAGE;
         }
     }
 

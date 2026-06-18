@@ -4,6 +4,7 @@ import android.os.SystemClock;
 import cn.lineai.ai.ToolCallTextParser;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolResult;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -115,7 +116,7 @@ public final class AgentProgressSession {
         }
         String displayId = displayIdByOriginalId.get(originalCall.getId());
         if (displayId == null || displayId.length() == 0) {
-            addToolCalls(java.util.Collections.singletonList(originalCall));
+            addToolCalls(Collections.singletonList(originalCall));
             displayId = displayIdByOriginalId.get(originalCall.getId());
         }
         if (displayId == null || displayId.length() == 0) {

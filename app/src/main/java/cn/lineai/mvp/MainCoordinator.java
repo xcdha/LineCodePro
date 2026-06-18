@@ -44,6 +44,14 @@ import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsStore;
 import cn.lineai.model.AiBehaviorSettings;
+import cn.lineai.mvp.agent.AgentProgressMirror;
+import cn.lineai.mvp.agent.AgentProgressSession;
+import cn.lineai.mvp.agent.AgentRunResult;
+import cn.lineai.mvp.agent.PendingToolExecution;
+import cn.lineai.mvp.agent.PipelineAgent;
+import cn.lineai.mvp.agent.PipelineAgentState;
+import cn.lineai.mvp.agent.PipelineProgressSession;
+import cn.lineai.mvp.agent.ToolExecutionBatch;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.ChatMode;
 import cn.lineai.model.ExtensionAgentConfig;
@@ -212,421 +220,6 @@ public final class MainCoordinator implements MainUiController {
     private String directoryPickerMessage = "";
     private final AttachmentPickerCoordinator attachmentPickerController;
     private boolean startupProjectAvailabilityChecked;
-
-    private static final class ToolExecutionBatch {
-        private final ArrayList<ToolResult> completedResults;
-        private final ToolCall pendingCall;
-        private final ArrayList<ToolCall> remainingCalls;
-
-        ToolExecutionBatch(ArrayList<ToolResult> completedResults, ToolCall pendingCall, ArrayList<ToolCall> remainingCalls) {
-            this.completedResults = completedResults == null ? new ArrayList<>() : completedResults;
-            this.pendingCall = pendingCall;
-            this.remainingCalls = remainingCalls == null ? new ArrayList<>() : remainingCalls;
-        }
-    }
-
-    private static final class PendingToolExecution {
-        private final int generationId;
-        private final ModelConfig selectedModel;
-        private final ToolCall toolCall;
-        private final ArrayList<ToolCall> remainingCalls;
-        private final int usedToolCallCount;
-        private final String homePath;
-        private final ModelCancellationToken cancellationToken;
-
-        PendingToolExecution(
-                int generationId,
-                ModelConfig selectedModel,
-                ToolCall toolCall,
-                ArrayList<ToolCall> remainingCalls,
-                int usedToolCallCount,
-                String homePath,
-                ModelCancellationToken cancellationToken
-        ) {
-            this.generationId = generationId;
-            this.selectedModel = selectedModel;
-            this.toolCall = toolCall;
-            this.remainingCalls = remainingCalls == null ? new ArrayList<>() : new ArrayList<>(remainingCalls);
-            this.usedToolCallCount = usedToolCallCount;
-            this.homePath = homePath == null ? "" : homePath;
-            this.cancellationToken = cancellationToken;
-        }
-    }
-
-    private static final class AgentRunResult {
-        private final String output;
-        private final int toolCallCount;
-        private final boolean error;
-
-        AgentRunResult(String output, int toolCallCount, boolean error) {
-            this.output = output == null ? "" : output;
-            this.toolCallCount = toolCallCount;
-            this.error = error;
-        }
-    }
-
-    private interface AgentProgressMirror {
-        void onAgentProgress(String payload, boolean error);
-    }
-
-    private static final class PipelineAgent {
-        private final String id;
-        private final String type;
-        private final String description;
-        private final String prompt;
-        private final ArrayList<String> readScope;
-        private final ArrayList<String> writeScope;
-        private final ArrayList<String> dependencies;
-
-        PipelineAgent(
-                String id,
-                String type,
-                String description,
-                String prompt,
-                ArrayList<String> readScope,
-                ArrayList<String> writeScope,
-                ArrayList<String> dependencies
-        ) {
-            this.id = id == null ? "" : id;
-            this.type = type == null ? "" : type;
-            this.description = description == null ? "" : description;
-            this.prompt = prompt == null ? "" : prompt;
-            this.readScope = readScope == null ? new ArrayList<>() : readScope;
-            this.writeScope = writeScope == null ? new ArrayList<>() : writeScope;
-            this.dependencies = dependencies == null ? new ArrayList<>() : dependencies;
-        }
-    }
-
-    private final class AgentProgressSession {
-        private final int generationId;
-        private final String toolCallId;
-        private final String toolName;
-        private final String type;
-        private final String description;
-        private final LinkedHashMap<String, ToolCall> displayToolCalls = new LinkedHashMap<>();
-        private final LinkedHashMap<String, ToolResult> displayToolResults = new LinkedHashMap<>();
-        private final HashMap<String, String> displayIdByOriginalId = new HashMap<>();
-        private String output = "";
-        private String thinking = "";
-        private String status = "running";
-        private String modelContent = "";
-        private boolean error;
-        private boolean renderScheduled;
-        private long lastRenderAt;
-        private final AgentProgressMirror mirror;
-
-        AgentProgressSession(int generationId, String toolCallId, String toolName, String type, String description) {
-            this(generationId, toolCallId, toolName, type, description, null);
-        }
-
-        AgentProgressSession(
-                int generationId,
-                String toolCallId,
-                String toolName,
-                String type,
-                String description,
-                AgentProgressMirror mirror
-        ) {
-            this.generationId = generationId;
-            this.toolCallId = toolCallId == null ? "" : toolCallId;
-            this.toolName = toolName == null ? "" : toolName;
-            this.type = type == null ? "" : type;
-            this.description = description == null ? "" : description;
-            this.mirror = mirror;
-        }
-
-        synchronized boolean canRender() {
-            return toolCallId.length() > 0;
-        }
-
-        synchronized boolean canMirror() {
-            return mirror != null;
-        }
-
-        synchronized void beginTurn() {
-            output = "";
-            status = "running";
-            error = false;
-        }
-
-        synchronized void appendText(String delta) {
-            if (delta != null && delta.length() > 0) {
-                output += delta;
-                addToolCalls(ToolCallTextParser.parseStreamingPreview(output).getToolCalls());
-            }
-        }
-
-        synchronized void appendThinking(String delta) {
-            if (delta != null && delta.length() > 0) {
-                thinking += delta;
-            }
-        }
-
-        synchronized void setTurnResult(String nextOutput, String nextThinking) {
-            output = nextOutput == null ? "" : nextOutput;
-            if (nextThinking != null && nextThinking.trim().length() > 0) {
-                thinking = nextThinking;
-            }
-        }
-
-        synchronized void addToolCalls(List<ToolCall> calls) {
-            if (calls == null) {
-                return;
-            }
-            for (ToolCall call : calls) {
-                if (call == null || call.getId().length() == 0 || call.getName().length() == 0) {
-                    continue;
-                }
-                if (displayIdByOriginalId.containsKey(call.getId())) {
-                    continue;
-                }
-                String displayId = toolCallId + "_agent_" + displayToolCalls.size();
-                displayIdByOriginalId.put(call.getId(), displayId);
-                displayToolCalls.put(displayId, new ToolCall(displayId, call.getName(), call.getArguments()));
-            }
-        }
-
-        synchronized void putToolResult(ToolCall originalCall, ToolResult result) {
-            if (originalCall == null || result == null) {
-                return;
-            }
-            String displayId = displayIdByOriginalId.get(originalCall.getId());
-            if (displayId == null || displayId.length() == 0) {
-                addToolCalls(java.util.Collections.singletonList(originalCall));
-                displayId = displayIdByOriginalId.get(originalCall.getId());
-            }
-            if (displayId == null || displayId.length() == 0) {
-                return;
-            }
-            displayToolResults.put(displayId, result.withCall(displayId, originalCall.getName()));
-        }
-
-        synchronized void setFinished(String nextStatus, boolean nextError, String nextModelContent) {
-            status = nextStatus == null || nextStatus.length() == 0 ? "done" : nextStatus;
-            error = nextError;
-            modelContent = nextModelContent == null ? "" : nextModelContent;
-        }
-
-        synchronized boolean shouldScheduleRender() {
-            if ((!canRender() && !canMirror()) || renderScheduled) {
-                return false;
-            }
-            renderScheduled = true;
-            return true;
-        }
-
-        synchronized long renderDelayMs() {
-            long now = SystemClock.uptimeMillis();
-            return Math.max(0L, AGENT_PROGRESS_RENDER_INTERVAL_MS - (now - lastRenderAt));
-        }
-
-        synchronized ToolResult snapshotResult() {
-            renderScheduled = false;
-            lastRenderAt = SystemClock.uptimeMillis();
-            return new ToolResult(toolCallId, toolName, payload(), error);
-        }
-
-        synchronized void notifyMirror() {
-            if (mirror != null) {
-                renderScheduled = false;
-                lastRenderAt = SystemClock.uptimeMillis();
-                mirror.onAgentProgress(payload(), error);
-            }
-        }
-
-        private String payload() {
-            try {
-                JSONObject object = new JSONObject();
-                object.put("linecode_agent_progress", true);
-                object.put("kind", toolName);
-                object.put("status", status);
-                object.put("type", type);
-                object.put("description", description);
-                object.put("output", visibleOutput(output));
-                object.put("thinking", thinking);
-                object.put("tool_call_count", displayToolCalls.size());
-                object.put("model_content", modelContent);
-                JSONArray tools = new JSONArray();
-                for (ToolCall call : displayToolCalls.values()) {
-                    JSONObject item = new JSONObject()
-                            .put("id", call.getId())
-                            .put("name", call.getName())
-                            .put("arguments", call.getArguments());
-                    ToolResult result = displayToolResults.get(call.getId());
-                    if (result != null) {
-                        item.put("result", new JSONObject()
-                                .put("content", result.getContent())
-                                .put("is_error", result.isError())
-                                .put("diff_id", result.getDiffId())
-                                .put("review_state", result.getReviewState())
-                                .put("review_message", result.getReviewMessage()));
-                    }
-                    tools.put(item);
-                }
-                object.put("tool_calls", tools);
-                return object.toString();
-            } catch (Exception e) {
-                return modelContent.length() > 0 ? modelContent : visibleOutput(output);
-            }
-        }
-
-        private String visibleOutput(String rawOutput) {
-            ToolCallTextParser.Result parsed = ToolCallTextParser.parse(rawOutput);
-            return parsed.hasToolMarkup() ? parsed.getText() : rawOutput == null ? "" : rawOutput;
-        }
-    }
-
-    private final class PipelineProgressSession {
-        private final ToolContext parentContext;
-        private final ArrayList<PipelineAgent> agents;
-        private final LinkedHashMap<String, PipelineAgentState> stateById = new LinkedHashMap<>();
-        private String status = "running";
-        private boolean error;
-
-        PipelineProgressSession(ToolContext parentContext, ArrayList<PipelineAgent> agents) {
-            this.parentContext = parentContext;
-            this.agents = agents == null ? new ArrayList<>() : agents;
-            for (PipelineAgent agent : this.agents) {
-                stateById.put(agent.id, new PipelineAgentState(agent));
-            }
-        }
-
-        void beginAgent(PipelineAgent agent) {
-            PipelineAgentState state = stateById.get(agent.id);
-            if (state != null) {
-                state.status = "running";
-            }
-            publish(false);
-        }
-
-        void updateAgent(PipelineAgent agent, String agentProgressPayload, boolean agentError) {
-            PipelineAgentState state = stateById.get(agent.id);
-            if (state == null) {
-                return;
-            }
-            try {
-                JSONObject object = new JSONObject(agentProgressPayload);
-                state.status = object.optString("status", state.status);
-                state.output = object.optString("output", state.output);
-                state.thinking = object.optString("thinking", state.thinking);
-                state.toolCallCount = object.optInt("tool_call_count", state.toolCallCount);
-                JSONArray toolCalls = object.optJSONArray("tool_calls");
-                if (toolCalls != null) {
-                    state.toolCalls = new JSONArray(toolCalls.toString());
-                }
-                state.error = agentError || object.optBoolean("error", false) || "error".equals(state.status);
-            } catch (Exception ignored) {
-                state.output = agentProgressPayload == null ? state.output : agentProgressPayload;
-                state.error = agentError;
-            }
-            error = error || state.error;
-            publish(error);
-        }
-
-        void finishAgent(PipelineAgent agent, AgentRunResult result) {
-            PipelineAgentState state = stateById.get(agent.id);
-            if (state != null) {
-                state.status = result.error ? "error" : "done";
-                state.output = result.output;
-                state.toolCallCount = result.toolCallCount;
-                state.error = result.error;
-            }
-            error = error || result.error;
-            publish(error);
-        }
-
-        void terminate() {
-            status = "error";
-            error = true;
-            for (PipelineAgentState state : stateById.values()) {
-                if ("running".equals(state.status) || "waiting".equals(state.status)) {
-                    state.status = "error";
-                    state.error = true;
-                    state.output = agentTerminatedMessage();
-                }
-            }
-            publish(true);
-        }
-
-        private void publish(boolean nextError) {
-            if (parentContext == null || parentContext.getToolCallId().length() == 0) {
-                return;
-            }
-            parentContext.reportToolProgress("agent_pipeline", payload(), nextError);
-        }
-
-        private String payload() {
-            try {
-                JSONObject object = new JSONObject();
-                object.put("linecode_agent_pipeline_progress", true);
-                object.put("kind", "agent_pipeline");
-                object.put("status", status);
-                object.put("total", agents.size());
-                object.put("completed", countStatus("done"));
-                object.put("running", countStatus("running"));
-                object.put("failed", countFailed());
-                JSONArray array = new JSONArray();
-                for (PipelineAgentState state : stateById.values()) {
-                    array.put(state.toJson());
-                }
-                object.put("agents", array);
-                return object.toString();
-            } catch (Exception e) {
-                return context.getString(R.string.message_agent_pipeline_running);
-            }
-        }
-
-        private int countStatus(String value) {
-            int count = 0;
-            for (PipelineAgentState state : stateById.values()) {
-                if (value.equals(state.status)) {
-                    count++;
-                }
-            }
-            return count;
-        }
-
-        private int countFailed() {
-            int count = 0;
-            for (PipelineAgentState state : stateById.values()) {
-                if (state.error || "error".equals(state.status)) {
-                    count++;
-                }
-            }
-            return count;
-        }
-    }
-
-    private static final class PipelineAgentState {
-        private final String id;
-        private final String type;
-        private final String description;
-        private String status = "waiting";
-        private String output = "";
-        private String thinking = "";
-        private int toolCallCount;
-        private boolean error;
-        private JSONArray toolCalls = new JSONArray();
-
-        PipelineAgentState(PipelineAgent agent) {
-            this.id = agent == null ? "" : agent.id;
-            this.type = agent == null ? "" : agent.type;
-            this.description = agent == null ? "" : agent.description;
-        }
-
-        JSONObject toJson() throws Exception {
-            return new JSONObject()
-                    .put("id", id)
-                    .put("type", type)
-                    .put("description", description)
-                    .put("status", status)
-                    .put("output", output)
-                    .put("thinking", thinking)
-                    .put("tool_call_count", toolCallCount)
-                    .put("error", error)
-                    .put("tool_calls", toolCalls);
-        }
-    }
 
     public MainCoordinator(Context context) {
         this(new MainDependencies(context));
@@ -1789,7 +1382,7 @@ public final class MainCoordinator implements MainUiController {
         if (toolCallId == null || toolCallId.length() == 0) {
             return;
         }
-        if (pendingToolExecution != null && toolCallId.equals(pendingToolExecution.toolCall.getId())) {
+        if (pendingToolExecution != null && toolCallId.equals(pendingToolExecution.getToolCall().getId())) {
             handlePendingToolReview(state);
             return;
         }
@@ -3182,7 +2775,7 @@ public final class MainCoordinator implements MainUiController {
             }
             return;
         }
-        if (!chatSessionStore.isActiveGeneration(session.generationId)) {
+        if (!chatSessionStore.isActiveGeneration(session.getGenerationId())) {
             return;
         }
         session.notifyMirror();
@@ -3408,11 +3001,11 @@ public final class MainCoordinator implements MainUiController {
             ModelCancellationToken cancellationToken,
             ToolExecutionBatch batch
     ) {
-        addOrReplaceToolResults(batch.completedResults);
-        if (batch.pendingCall != null) {
+        addOrReplaceToolResults(batch.getCompletedResults());
+        if (batch.getPendingCall() != null) {
             ToolResult pendingResult = new ToolResult(
-                    batch.pendingCall.getId(),
-                    batch.pendingCall.getName(),
+                    batch.getPendingCall().getId(),
+                    batch.getPendingCall().getName(),
                     "",
                     false,
                     "",
@@ -3423,8 +3016,8 @@ public final class MainCoordinator implements MainUiController {
             pendingToolExecution = new PendingToolExecution(
                     generationId,
                     selectedModel,
-                    batch.pendingCall,
-                    batch.remainingCalls,
+                    batch.getPendingCall(),
+                    batch.getRemainingCalls(),
                     usedToolCallCount,
                     homePath,
                     cancellationToken
@@ -3637,12 +3230,12 @@ public final class MainCoordinator implements MainUiController {
         StringBuilder builder = new StringBuilder();
         builder.append("Agent 完成: ").append(description).append('\n')
                 .append("类型: ").append(type).append('\n')
-                .append("工具调用: ").append(result.toolCallCount).append('\n')
-                .append("输出:\n").append(result.output);
-        progress.setTurnResult(result.output, "");
-        progress.setFinished(result.error ? "error" : "done", result.error, builder.toString().trim());
+                .append("工具调用: ").append(result.getToolCallCount()).append('\n')
+                .append("输出:\n").append(result.getOutput());
+        progress.setTurnResult(result.getOutput(), "");
+        progress.setFinished(result.isError() ? "error" : "done", result.isError(), builder.toString().trim());
         flushAgentProgress(progress);
-        return new ToolResult("", "agent", progress.snapshotResult().getContent(), result.error);
+        return new ToolResult("", "agent", progress.snapshotResult().getContent(), result.isError());
     }
 
     private ToolResult runAgentPipelineTool(
@@ -3681,22 +3274,22 @@ public final class MainCoordinator implements MainUiController {
                 return new ToolResult("", "agent_pipeline", context.getString(R.string.message_agent_pipeline_terminated), true);
             }
             for (PipelineAgent agent : level) {
-                String prompt = agent.prompt + dependencyOutputContext(agent, results);
+                String prompt = agent.getPrompt() + dependencyOutputContext(agent, results);
                 pipelineProgress.beginAgent(agent);
                 AgentProgressSession agentProgress = new AgentProgressSession(
                         generationId,
                         "",
                         "agent",
-                        agent.type,
-                        agent.description,
+                        agent.getType(),
+                        agent.getDescription(),
                         (payload, progressError) -> pipelineProgress.updateAgent(agent, payload, progressError)
                 );
                 AgentRunResult result = runAgentLoop(
-                        agent.type,
-                        agent.description,
+                        agent.getType(),
+                        agent.getDescription(),
                         prompt,
-                        agent.readScope,
-                        agent.writeScope,
+                        agent.getReadScope(),
+                        agent.getWriteScope(),
                         parentContext == null ? projectPath : parentContext.getHomePath(),
                         selectedModel,
                         cancellationToken,
@@ -3705,14 +3298,14 @@ public final class MainCoordinator implements MainUiController {
                         Collections.emptySet()
                 );
                 pipelineProgress.finishAgent(agent, result);
-                results.put(agent.id, result);
-                totalToolCalls += result.toolCallCount;
-                hasError = hasError || result.error;
-                summary.append("\n\n## ").append(agent.id).append(" · ").append(agent.description)
-                        .append('\n').append("类型: ").append(agent.type)
-                        .append('\n').append("状态: ").append(result.error ? "error" : "done")
-                        .append('\n').append("工具调用: ").append(result.toolCallCount)
-                        .append('\n').append(result.output);
+                results.put(agent.getId(), result);
+                totalToolCalls += result.getToolCallCount();
+                hasError = hasError || result.isError();
+                summary.append("\n\n## ").append(agent.getId()).append(" · ").append(agent.getDescription())
+                        .append('\n').append("类型: ").append(agent.getType())
+                        .append('\n').append("状态: ").append(result.isError() ? "error" : "done")
+                        .append('\n').append("工具调用: ").append(result.getToolCallCount())
+                        .append('\n').append(result.getOutput());
             }
         }
         summary.append("\n\n总工具调用: ").append(totalToolCalls);
@@ -4072,9 +3665,9 @@ public final class MainCoordinator implements MainUiController {
             return context.getString(R.string.message_agent_pipeline_agents_empty);
         }
         for (PipelineAgent agent : agents) {
-            for (String dependency : agent.dependencies) {
-                if (agent.id.equals(dependency)) {
-                    return context.getString(R.string.message_agent_pipeline_self_dependency, agent.id);
+            for (String dependency : agent.getDependencies()) {
+                if (agent.getId().equals(dependency)) {
+                    return context.getString(R.string.message_agent_pipeline_self_dependency, agent.getId());
                 }
             }
         }
@@ -4127,10 +3720,10 @@ public final class MainCoordinator implements MainUiController {
         ArrayList<ArrayList<PipelineAgent>> levels = new ArrayList<>();
         HashSet<String> allIds = new HashSet<>();
         for (PipelineAgent agent : agents) {
-            allIds.add(agent.id);
+            allIds.add(agent.getId());
         }
         for (PipelineAgent agent : agents) {
-            for (String dependency : agent.dependencies) {
+            for (String dependency : agent.getDependencies()) {
                 if (!allIds.contains(dependency)) {
                     return new ArrayList<>();
                 }
@@ -4141,10 +3734,10 @@ public final class MainCoordinator implements MainUiController {
         while (completed.size() < agents.size()) {
             ArrayList<PipelineAgent> level = new ArrayList<>();
             for (PipelineAgent agent : agents) {
-                if (completed.contains(agent.id)) {
+                if (completed.contains(agent.getId())) {
                     continue;
                 }
-                if (completed.containsAll(agent.dependencies)) {
+                if (completed.containsAll(agent.getDependencies())) {
                     level.add(agent);
                 }
             }
@@ -4152,7 +3745,7 @@ public final class MainCoordinator implements MainUiController {
                 return new ArrayList<>();
             }
             for (PipelineAgent agent : level) {
-                completed.add(agent.id);
+                completed.add(agent.getId());
             }
             levels.add(level);
         }
@@ -4160,17 +3753,17 @@ public final class MainCoordinator implements MainUiController {
     }
 
     private String dependencyOutputContext(PipelineAgent agent, LinkedHashMap<String, AgentRunResult> results) {
-        if (agent.dependencies.isEmpty()) {
+        if (agent.getDependencies().isEmpty()) {
             return "";
         }
         StringBuilder builder = new StringBuilder();
         builder.append("\n\n## 上游 Agent 输出\n");
-        for (String dependency : agent.dependencies) {
+        for (String dependency : agent.getDependencies()) {
             AgentRunResult result = results.get(dependency);
             if (result == null) {
                 continue;
             }
-            builder.append("\n### ").append(dependency).append('\n').append(result.output).append('\n');
+            builder.append("\n### ").append(dependency).append('\n').append(result.getOutput()).append('\n');
         }
         builder.append("\n请基于以上结果继续你的任务。");
         return builder.toString();
@@ -4235,21 +3828,21 @@ public final class MainCoordinator implements MainUiController {
 
     private void handlePendingToolReview(String state) {
         PendingToolExecution pending = pendingToolExecution;
-        if (pending == null || pending.toolCall == null) {
+        if (pending == null || pending.getToolCall() == null) {
             return;
         }
-        if (!chatSessionStore.isActiveGeneration(pending.generationId)) {
+        if (!chatSessionStore.isActiveGeneration(pending.getGenerationId())) {
             pendingToolExecution = null;
             return;
         }
-        boolean sessionAutoAccepted = isSessionAutoReview(state, pending.toolCall);
+        boolean sessionAutoAccepted = isSessionAutoReview(state, pending.getToolCall());
         String normalizedState = "rejected".equals(state) ? "rejected" : "accepted";
         pendingToolExecution = null;
         if ("rejected".equals(normalizedState)) {
             ToolResult rejected = new ToolResult(
-                    pending.toolCall.getId(),
-                    pending.toolCall.getName(),
-                    rejectedToolMessage(pending.toolCall),
+                    pending.getToolCall().getId(),
+                    pending.getToolCall().getName(),
+                    rejectedToolMessage(pending.getToolCall()),
                     true,
                     "",
                     "rejected",
@@ -4259,22 +3852,22 @@ public final class MainCoordinator implements MainUiController {
             persistCurrentConversation();
             render();
             continueToolExecution(
-                    pending.generationId,
-                    pending.selectedModel,
-                    pending.remainingCalls,
-                    pending.usedToolCallCount,
-                    pending.homePath,
-                    pending.cancellationToken
+                    pending.getGenerationId(),
+                    pending.getSelectedModel(),
+                    pending.getRemainingCalls(),
+                    pending.getUsedToolCallCount(),
+                    pending.getHomePath(),
+                    pending.getCancellationToken()
             );
             return;
         }
         if (sessionAutoAccepted) {
-            rememberSessionAutoConfirmation(pending.toolCall);
+            rememberSessionAutoConfirmation(pending.getToolCall());
         }
 
         ToolResult accepted = new ToolResult(
-                pending.toolCall.getId(),
-                pending.toolCall.getName(),
+                pending.getToolCall().getId(),
+                pending.getToolCall().getName(),
                 "",
                 false,
                 "",
@@ -4294,17 +3887,17 @@ public final class MainCoordinator implements MainUiController {
                 syncModePermission();
                 toolRegistry.reloadExtensions();
                 result = toolExecutor
-                        .executeConfirmed(pending.toolCall, toolContext(
-                                pending.homePath,
-                                pending.selectedModel,
-                                pending.cancellationToken,
-                                pending.generationId
+                        .executeConfirmed(pending.getToolCall(), toolContext(
+                                pending.getHomePath(),
+                                pending.getSelectedModel(),
+                                pending.getCancellationToken(),
+                                pending.getGenerationId()
                         ))
                         .withReview("accepted", "");
             } catch (Exception e) {
                 result = new ToolResult(
-                        pending.toolCall.getId(),
-                        pending.toolCall.getName(),
+                        pending.getToolCall().getId(),
+                        pending.getToolCall().getName(),
                         "执行失败: " + e.getMessage(),
                         true,
                         "",
@@ -4313,23 +3906,23 @@ public final class MainCoordinator implements MainUiController {
                 );
             }
             ToolResult finalResult = result;
-            if (pending.cancellationToken != null && pending.cancellationToken.isCancelled()) {
+            if (pending.getCancellationToken() != null && pending.getCancellationToken().isCancelled()) {
                 return;
             }
             mainThread.post(() -> {
-                if (!chatSessionStore.isActiveGeneration(pending.generationId)) {
+                if (!chatSessionStore.isActiveGeneration(pending.getGenerationId())) {
                     return;
                 }
                 addOrReplaceToolResult(finalResult);
                 persistCurrentConversation();
                 render();
                 continueToolExecution(
-                        pending.generationId,
-                        pending.selectedModel,
-                        pending.remainingCalls,
-                        pending.usedToolCallCount,
-                        pending.homePath,
-                        pending.cancellationToken
+                        pending.getGenerationId(),
+                        pending.getSelectedModel(),
+                        pending.getRemainingCalls(),
+                        pending.getUsedToolCallCount(),
+                        pending.getHomePath(),
+                        pending.getCancellationToken()
                 );
             });
         });

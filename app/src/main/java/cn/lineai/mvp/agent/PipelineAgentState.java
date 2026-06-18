@@ -1,7 +1,6 @@
 package cn.lineai.mvp.agent;
 
 import org.json.JSONArray;
-import org.json.JSONObject;
 
 public final class PipelineAgentState {
     private final String id;
@@ -80,8 +79,8 @@ public final class PipelineAgentState {
         this.toolCalls = toolCalls;
     }
 
-    public JSONObject toJson() throws Exception {
-        return new JSONObject()
+    public org.json.JSONObject toJson() throws Exception {
+        return new org.json.JSONObject()
                 .put("id", id)
                 .put("type", type)
                 .put("description", description)
