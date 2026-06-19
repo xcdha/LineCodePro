@@ -360,7 +360,7 @@ public final class AgentExecutionController {
 
     public boolean isAgentToolAllowed(BaseTool tool, String type, Set<String> customToolNames, Set<String> allowedMcpToolNames) {
         String name = tool.getName();
-        if ("agent".equals(name) || "agent_pipeline".equals(name) || "shell_execute".equals(name) || "file_delete".equals(name)) {
+        if ("agent".equals(name) || "agent_pipeline".equals(name) || "file_delete".equals(name)) {
             return false;
         }
         if (!allowedMcpToolNames.isEmpty() && allowedMcpToolNames.contains(name)) {
@@ -371,6 +371,9 @@ public final class AgentExecutionController {
         }
         if (AgentTool.TYPE_EXPLORE.equals(type)) {
             return tool.getCategory() == ToolCategory.READ;
+        }
+        if ("shell_execute".equals(name)) {
+            return true;
         }
         return tool.getCategory() == ToolCategory.READ
                 || tool.getCategory() == ToolCategory.WRITE
@@ -444,6 +447,8 @@ public final class AgentExecutionController {
                 + "规则：\n"
                 + "- 只负责用户明确分派给你的任务区域，不要修改无关文件。\n"
                 + "- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件，只能汇报需要主模型重新分配。\n"
+                + "- 使用 shell_execute 时，命令的写入、修改、副作用同样视为对 write_scope 内文件操作；禁止读取、修改、删除或影响 write_scope 外的文件、目录、环境变量、依赖、服务和进程。\n"
+                + "- 优先使用 file_read / file_write / file_edit / glob / list_dir 完成工作；只有 file 类工具确实无法满足时（如 SSH 环境、运行构建或验证脚本）才使用 shell_execute。\n"
                 + "- 如果发现必须修改 write_scope 外的文件，停止写入并在输出中说明需要扩大或重新分配范围。\n"
                 + "- 修改前先读取目标文件，完成后做最小可行验证。\n"
                 + "- 如果工具失败，先重新读取和分析，不要盲目重复。\n"

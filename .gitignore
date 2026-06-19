@@ -18,3 +18,4 @@ signing.properties
 *.keystore
 问题.txt
 .trae/
+terminal-provider/release/*
