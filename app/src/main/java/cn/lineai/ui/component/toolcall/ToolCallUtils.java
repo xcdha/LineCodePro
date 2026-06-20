@@ -76,4 +76,8 @@ final class ToolCallUtils {
     static boolean isTodoTool(String name) {
         return ToolCategory.isTodoType(name);
     }
+
+    static boolean isPhoneControlTool(String name) {
+        return ToolCategory.isPhoneControlType(name);
+    }
 }

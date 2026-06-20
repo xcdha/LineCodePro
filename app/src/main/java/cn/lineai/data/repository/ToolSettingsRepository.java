@@ -30,6 +30,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
         map.put("phone_long_press", PhoneControlRepository.PERMISSION_LONG_PRESS);
         map.put("phone_view_hierarchy", PhoneControlRepository.PERMISSION_VIEW_HIERARCHY);
         map.put("phone_click_view", PhoneControlRepository.PERMISSION_VIEW_ACTION);
+        map.put("phone_global_action", PhoneControlRepository.PERMISSION_GLOBAL_ACTION);
         PHONE_CONTROL_TOOL_PERMISSION_MAP = java.util.Collections.unmodifiableMap(map);
     }
 
@@ -41,7 +42,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
             new McpToolConfig("agent", "Agent", "分派 Agent 处理任务", true,
                     new String[] {"agent", "agent_pipeline"}),
             new McpToolConfig("phone_control", "手机控制", "通过无障碍服务控制本机操作", true,
-                    new String[] {"phone_screenshot", "phone_click", "phone_swipe", "phone_long_press", "phone_view_hierarchy", "phone_click_view"}),
+                    new String[] {"phone_screenshot", "phone_click", "phone_swipe", "phone_long_press", "phone_view_hierarchy", "phone_click_view", "phone_global_action"}),
             new McpToolConfig("todo", "任务清单", "维护当前会话的 TODO 列表，状态会注入到 system prompt", true,
                     new String[] {"todo_update"}),
             new McpToolConfig("image_understanding", "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,

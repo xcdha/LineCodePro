@@ -62,6 +62,9 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
             addPermissionSwitch(context, list, R.string.screen_phone_control_permission_view_action,
                     R.string.screen_phone_control_permission_view_action_desc, IconButtonView.WRENCH,
                     PhoneControlRepository.PERMISSION_VIEW_ACTION, false);
+            addPermissionSwitch(context, list, R.string.screen_phone_control_permission_global_action,
+                    R.string.screen_phone_control_permission_global_action_desc, IconButtonView.SMARTPHONE,
+                    PhoneControlRepository.PERMISSION_GLOBAL_ACTION, false);
             content.addView(list, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
     }

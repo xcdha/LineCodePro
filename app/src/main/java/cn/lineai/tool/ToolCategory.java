@@ -59,6 +59,10 @@ public enum ToolCategory {
         return "image_generation".equals(name);
     }
 
+    public static boolean isPhoneControlType(String name) {
+        return name != null && name.startsWith("phone_");
+    }
+
     public static boolean isCustomMcpType(String name) {
         return name != null && name.startsWith("mcpx_");
     }

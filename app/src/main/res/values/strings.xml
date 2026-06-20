@@ -119,7 +119,9 @@
     <string name="screen_phone_control_permission_long_press">Long press</string>
     <string name="screen_phone_control_permission_view_hierarchy">View hierarchy</string>
     <string name="screen_phone_control_permission_view_action">View action</string>
+    <string name="screen_phone_control_permission_global_action">System actions</string>
     <string name="screen_phone_control_permission_view_action_desc">Click View by id, text or coordinates</string>
+    <string name="screen_phone_control_permission_global_action_desc">Allow Back, Home, Recents, notifications and exit app</string>
     <string name="screen_phone_control_permission_screenshot_desc">Allow taking screenshots via accessibility</string>
     <string name="screen_phone_control_permission_click_desc">Allow tapping on screen coordinates</string>
     <string name="screen_phone_control_permission_swipe_desc">Allow swiping on screen coordinates</string>

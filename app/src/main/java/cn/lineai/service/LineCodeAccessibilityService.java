@@ -2,17 +2,20 @@ package cn.lineai.service;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.annotation.TargetApi;
+import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.ColorSpace;
 import android.graphics.Path;
 import android.graphics.Rect;
+import android.hardware.HardwareBuffer;
 import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.view.Display;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityEvent;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
+import android.view.accessibility.AccessibilityManager;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -21,9 +24,15 @@ import java.util.concurrent.TimeUnit;
 
 public final class LineCodeAccessibilityService extends AccessibilityService {
 
-    private static LineCodeAccessibilityService instance;
+    private static volatile LineCodeAccessibilityService instance;
 
     private final Executor screenshotExecutor = Executors.newSingleThreadExecutor();
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        instance = this;
+    }
 
     @Override
     protected void onServiceConnected() {
@@ -49,6 +58,52 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
 
     public static LineCodeAccessibilityService getInstance() {
         return instance;
+    }
+
+    public static LineCodeAccessibilityService getReadyInstance(Context context) {
+        LineCodeAccessibilityService service = instance;
+        if (service != null) {
+            return service;
+        }
+        if (context != null && isServiceEnabled(context)) {
+            long deadline = System.currentTimeMillis() + 800;
+            while (System.currentTimeMillis() < deadline) {
+                service = instance;
+                if (service != null) {
+                    return service;
+                }
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    public static boolean isServiceEnabled(Context context) {
+        if (context == null) {
+            return false;
+        }
+        AccessibilityManager manager = (AccessibilityManager) context.getApplicationContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+        if (manager == null) {
+            return false;
+        }
+        List<AccessibilityServiceInfo> services = manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+        if (services == null) {
+            return false;
+        }
+        String target = LineCodeAccessibilityService.class.getName();
+        for (AccessibilityServiceInfo info : services) {
+            if (info.getResolveInfo() != null
+                    && info.getResolveInfo().serviceInfo != null
+                    && target.equals(info.getResolveInfo().serviceInfo.name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public boolean click(int x, int y) {
@@ -107,6 +162,31 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
         return click(x, y);
     }
 
+    public boolean performPhoneAction(String action) {
+        if ("back".equals(action)) {
+            return performGlobalAction(GLOBAL_ACTION_BACK);
+        }
+        if ("home".equals(action) || "exit_app".equals(action)) {
+            return performGlobalAction(GLOBAL_ACTION_HOME);
+        }
+        if ("recents".equals(action)) {
+            return performGlobalAction(GLOBAL_ACTION_RECENTS);
+        }
+        if ("notifications".equals(action)) {
+            return performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS);
+        }
+        if ("quick_settings".equals(action)) {
+            return performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS);
+        }
+        if ("power_dialog".equals(action)) {
+            return performGlobalAction(GLOBAL_ACTION_POWER_DIALOG);
+        }
+        if ("lock_screen".equals(action) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+        }
+        return false;
+    }
+
     private boolean clickFirstClickableNode(List<AccessibilityNodeInfo> nodes) {
         if (nodes == null) {
             return false;
@@ -126,8 +206,6 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
             return null;
         }
         try {
-            Class<?> callbackClass = Class.forName("android.accessibilityservice.AccessibilityService$TakeScreenshotCallback");
-            Method takeScreenshotMethod = AccessibilityService.class.getMethod("takeScreenshot", int.class, Executor.class, callbackClass);
             DisplayManager displayManager = (DisplayManager) getSystemService(DISPLAY_SERVICE);
             Display display = displayManager != null ? displayManager.getDisplay(Display.DEFAULT_DISPLAY) : null;
             if (display == null) {
@@ -135,29 +213,56 @@ public final class LineCodeAccessibilityService extends AccessibilityService {
             }
             final Bitmap[] result = new Bitmap[1];
             final CountDownLatch latch = new CountDownLatch(1);
-            Object callback = Proxy.newProxyInstance(
-                    callbackClass.getClassLoader(),
-                    new Class<?>[]{callbackClass},
-                    new InvocationHandler() {
-                        @Override
-                        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                            if ("onSuccess".equals(method.getName()) && args != null && args.length > 0) {
-                                Object screenshotResult = args[0];
-                                Method getBitmap = screenshotResult.getClass().getMethod("getBitmap");
-                                result[0] = (Bitmap) getBitmap.invoke(screenshotResult);
-                            }
-                            latch.countDown();
-                            return null;
-                        }
+            takeScreenshot(display.getDisplayId(), screenshotExecutor, new TakeScreenshotCallback() {
+                @Override
+                public void onSuccess(ScreenshotResult screenshotResult) {
+                    try {
+                        result[0] = bitmapFromScreenshotResult(screenshotResult);
+                    } finally {
+                        latch.countDown();
                     }
-            );
-            takeScreenshotMethod.invoke(this, display.getDisplayId(), screenshotExecutor, callback);
+                }
+
+                @Override
+                public void onFailure(int errorCode) {
+                    latch.countDown();
+                }
+            });
             if (!latch.await(5, TimeUnit.SECONDS)) {
                 return null;
             }
             return result[0];
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.R)
+    private Bitmap bitmapFromScreenshotResult(ScreenshotResult screenshotResult) {
+        if (screenshotResult == null) {
+            return null;
+        }
+        HardwareBuffer buffer = screenshotResult.getHardwareBuffer();
+        if (buffer == null) {
+            return null;
+        }
+        try {
+            ColorSpace colorSpace = screenshotResult.getColorSpace();
+            Bitmap hardwareBitmap = Bitmap.wrapHardwareBuffer(buffer, colorSpace);
+            if (hardwareBitmap == null) {
+                return null;
+            }
+            try {
+                return hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false);
+            } finally {
+                hardwareBitmap.recycle();
+            }
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                buffer.close();
+            }
         }
     }
 

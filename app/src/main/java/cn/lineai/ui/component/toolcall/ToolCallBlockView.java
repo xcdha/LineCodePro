@@ -78,6 +78,13 @@ public final class ToolCallBlockView extends LinearLayout {
             addView(view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             return;
         }
+        if (ToolCallUtils.isPhoneControlTool(name)) {
+            ToolCallReadView view = new ToolCallReadView(getContext());
+            view.setProjectPath(projectPath);
+            view.bind(toolCall, result);
+            addView(view, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            return;
+        }
         if (ToolCallUtils.isReadTool(name)) {
             ToolCallReadView view = new ToolCallReadView(getContext());
             view.setProjectPath(projectPath);

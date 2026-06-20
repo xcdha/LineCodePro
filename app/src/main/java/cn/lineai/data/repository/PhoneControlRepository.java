@@ -1,10 +1,7 @@
 package cn.lineai.data.repository;
 
 import android.content.Context;
-import android.accessibilityservice.AccessibilityServiceInfo;
-import android.view.accessibility.AccessibilityManager;
 import cn.lineai.service.LineCodeAccessibilityService;
-import java.util.List;
 
 public final class PhoneControlRepository {
 
@@ -18,6 +15,7 @@ public final class PhoneControlRepository {
     public static final String PERMISSION_LONG_PRESS = "longPress";
     public static final String PERMISSION_VIEW_HIERARCHY = "viewHierarchy";
     public static final String PERMISSION_VIEW_ACTION = "viewAction";
+    public static final String PERMISSION_GLOBAL_ACTION = "globalAction";
 
     private static final String[] PERMISSION_IDS = new String[] {
             PERMISSION_SCREENSHOT,
@@ -25,7 +23,8 @@ public final class PhoneControlRepository {
             PERMISSION_SWIPE,
             PERMISSION_LONG_PRESS,
             PERMISSION_VIEW_HIERARCHY,
-            PERMISSION_VIEW_ACTION
+            PERMISSION_VIEW_ACTION,
+            PERMISSION_GLOBAL_ACTION
     };
 
     private final Context context;
@@ -49,23 +48,7 @@ public final class PhoneControlRepository {
     }
 
     public boolean isAccessibilityEnabled() {
-        AccessibilityManager manager = (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
-        if (manager == null) {
-            return false;
-        }
-        List<AccessibilityServiceInfo> services = manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC);
-        if (services == null) {
-            return false;
-        }
-        String target = LineCodeAccessibilityService.class.getName();
-        for (AccessibilityServiceInfo info : services) {
-            if (info.getResolveInfo() != null
-                    && info.getResolveInfo().serviceInfo != null
-                    && target.equals(info.getResolveInfo().serviceInfo.name)) {
-                return true;
-            }
-        }
-        return false;
+        return LineCodeAccessibilityService.isServiceEnabled(context);
     }
 
     public boolean isExplicitlyEnabled() {

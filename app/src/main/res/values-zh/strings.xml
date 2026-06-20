@@ -119,7 +119,9 @@
     <string name="screen_phone_control_permission_long_press">长按</string>
     <string name="screen_phone_control_permission_view_hierarchy">查看 View 层级</string>
     <string name="screen_phone_control_permission_view_action">View 操作</string>
+    <string name="screen_phone_control_permission_global_action">系统动作</string>
     <string name="screen_phone_control_permission_view_action_desc">按 id、文本或坐标点击 View</string>
+    <string name="screen_phone_control_permission_global_action_desc">允许返回、主页、最近任务、通知栏和退出应用</string>
     <string name="screen_phone_control_permission_screenshot_desc">允许通过无障碍服务截图</string>
     <string name="screen_phone_control_permission_click_desc">允许点击屏幕坐标</string>
     <string name="screen_phone_control_permission_swipe_desc">允许滑动屏幕坐标</string>

@@ -49,9 +49,9 @@ public final class PhoneScreenshotTool extends BaseTool {
         if (this.context == null) {
             return error("截图工具未接入应用上下文");
         }
-        LineCodeAccessibilityService service = LineCodeAccessibilityService.getInstance();
+        LineCodeAccessibilityService service = PhoneControlToolSupport.service(this.context);
         if (service == null) {
-            return error("无障碍服务未开启");
+            return PhoneControlToolSupport.unavailable(this, this.context);
         }
         Bitmap bitmap = service.takeScreenshot();
         if (bitmap == null) {

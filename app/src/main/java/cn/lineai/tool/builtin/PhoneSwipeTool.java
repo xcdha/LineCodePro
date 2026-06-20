@@ -1,5 +1,6 @@
 package cn.lineai.tool.builtin;
 
+import android.content.Context;
 import cn.lineai.service.LineCodeAccessibilityService;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCategory;
@@ -10,6 +11,12 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class PhoneSwipeTool extends BaseTool {
+    private final Context context;
+
+    public PhoneSwipeTool(Context context) {
+        this.context = context == null ? null : context.getApplicationContext();
+    }
+
     @Override
     public String getName() {
         return "phone_swipe";
@@ -40,9 +47,9 @@ public final class PhoneSwipeTool extends BaseTool {
 
     @Override
     public ToolResult execute(JSONObject input, ToolContext context) {
-        LineCodeAccessibilityService service = LineCodeAccessibilityService.getInstance();
+        LineCodeAccessibilityService service = PhoneControlToolSupport.service(this.context);
         if (service == null) {
-            return error("无障碍服务未开启");
+            return PhoneControlToolSupport.unavailable(this, this.context);
         }
         int x1 = input.optInt("x1");
         int y1 = input.optInt("y1");

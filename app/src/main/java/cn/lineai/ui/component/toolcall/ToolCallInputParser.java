@@ -1,6 +1,7 @@
 package cn.lineai.ui.component.toolcall;
 
 import cn.lineai.tool.ToolCall;
+import cn.lineai.tool.ToolCategory;
 import org.json.JSONObject;
 
 /**
@@ -39,6 +40,9 @@ final class ToolCallInputParser {
         if (input == null) {
             return name == null ? "" : name;
         }
+        if (ToolCategory.isPhoneControlType(name)) {
+            return phoneControlLabel(name, input);
+        }
         if ("file_read".equals(name)) {
             String filePath = input.optString("file_path");
             if (filePath.length() > 0) {
@@ -52,5 +56,36 @@ final class ToolCallInputParser {
             }
         }
         return inputLabel(name, input);
+    }
+
+    private static String phoneControlLabel(String name, JSONObject input) {
+        if ("phone_screenshot".equals(name)) {
+            return "screenshot";
+        }
+        if ("phone_view_hierarchy".equals(name)) {
+            return "view hierarchy";
+        }
+        if ("phone_global_action".equals(name)) {
+            String action = input.optString("action");
+            return action.length() == 0 ? "system action" : "system action: " + action;
+        }
+        if ("phone_click_view".equals(name)) {
+            String resourceId = input.optString("resource_id");
+            if (resourceId.length() > 0) {
+                return "view: " + resourceId;
+            }
+            String text = input.optString("text");
+            if (text.length() > 0) {
+                return "text: " + text;
+            }
+        }
+        if ("phone_swipe".equals(name)) {
+            return "swipe (" + input.optInt("x1") + ", " + input.optInt("y1") + ") -> ("
+                    + input.optInt("x2") + ", " + input.optInt("y2") + ")";
+        }
+        if ("phone_click".equals(name) || "phone_long_press".equals(name) || "phone_click_view".equals(name)) {
+            return "point (" + input.optInt("x") + ", " + input.optInt("y") + ")";
+        }
+        return name == null ? "" : name;
     }
 }
