@@ -4,6 +4,7 @@ public final class ChatMode {
     public static final String CHAT = "chat";
     public static final String PLAN = "plan";
     public static final String AGENT = "agent";
+    public static final String CONTROL = "control";
     public static final String DEFAULT = AGENT;
 
     private ChatMode() {
@@ -15,6 +16,9 @@ public final class ChatMode {
         }
         if (PLAN.equals(mode)) {
             return PLAN;
+        }
+        if (CONTROL.equals(mode)) {
+            return CONTROL;
         }
         return AGENT;
     }
@@ -42,6 +46,10 @@ public final class ChatMode {
                     + "- 禁止修改本地工作区、SSH 远端、Skills 目录、配置、数据库、依赖、权限、进程或网络服务；也不要创建临时文件。\n"
                     + "- 如果完成任务需要写文件、运行测试、构建、安装、启动服务、调用 Agent 或确认真实环境状态，必须停止在计划阶段，明确告诉用户切换到 Agent 后再执行。\n"
                     + "- 输出应是可执行计划：先给结论，然后列步骤、涉及文件、需要的工具、验证命令、风险和需要用户确认的问题。";
+        }
+        if (CONTROL.equals(normalized)) {
+            return "## 当前会话模式\n"
+                    + "当前模式：Control。仅允许使用手机控制工具（phone_screenshot, phone_click, phone_swipe, phone_long_press, phone_view_hierarchy, phone_click_view_by_id）。需要图像理解模型和无障碍权限。禁止文件操作、shell、agent 等其他工具。";
         }
         return "## 当前会话模式\n"
                 + "当前模式：Agent。\n"

@@ -1,6 +1,7 @@
 package cn.lineai.data.repository;
 
 import android.content.Context;
+import cn.lineai.model.ChatMode;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.McpToolConfig;
 import cn.lineai.model.WebSearchConfig;
@@ -27,6 +28,8 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
                     new String[] {"http_server"}),
             new McpToolConfig("agent", "Agent", "分派 Agent 处理任务", true,
                     new String[] {"agent", "agent_pipeline"}),
+            new McpToolConfig("phone_control", "手机控制", "通过无障碍服务控制本机操作", true,
+                    new String[] {"phone_screenshot", "phone_click", "phone_swipe", "phone_long_press", "phone_view_hierarchy", "phone_click_view_by_id"}),
             new McpToolConfig("todo", "任务清单", "维护当前会话的 TODO 列表，状态会注入到 system prompt", true,
                     new String[] {"todo_update"}),
             new McpToolConfig("image_understanding", "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,
@@ -163,6 +166,16 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
                     continue;
                 }
                 enabled.add(tool);
+            }
+        }
+        String chatMode = settingsRepository.getString("@linecode_chat_mode", ChatMode.DEFAULT);
+        if (!ChatMode.CONTROL.equals(chatMode)) {
+            java.util.Iterator<String> iterator = enabled.iterator();
+            while (iterator.hasNext()) {
+                String tool = iterator.next();
+                if (tool != null && tool.startsWith("phone_")) {
+                    iterator.remove();
+                }
             }
         }
         return enabled;

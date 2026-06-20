@@ -14,6 +14,12 @@ import cn.lineai.tool.builtin.HttpServerTool;
 import cn.lineai.tool.builtin.ImageGenerationTool;
 import cn.lineai.tool.builtin.ImageUnderstandingTool;
 import cn.lineai.tool.builtin.ListDirectoryTool;
+import cn.lineai.tool.builtin.PhoneClickTool;
+import cn.lineai.tool.builtin.PhoneClickViewByIdTool;
+import cn.lineai.tool.builtin.PhoneLongPressTool;
+import cn.lineai.tool.builtin.PhoneScreenshotTool;
+import cn.lineai.tool.builtin.PhoneSwipeTool;
+import cn.lineai.tool.builtin.PhoneViewHierarchyTool;
 import cn.lineai.tool.builtin.ShellExecuteTool;
 import cn.lineai.tool.builtin.TodoUpdateTool;
 import cn.lineai.tool.builtin.WebFetchTool;
@@ -43,6 +49,13 @@ public final class BuiltInToolProviders {
         list.add((context, ipc) -> new AgentPipelineTool());
         list.add((context, ipc) -> new TodoUpdateTool());
         list.add((context, ipc) -> new WebFetchTool());
+        // Phone control tools need the accessibility service.
+        list.add((context, ipc) -> new PhoneScreenshotTool());
+        list.add((context, ipc) -> new PhoneClickTool());
+        list.add((context, ipc) -> new PhoneSwipeTool());
+        list.add((context, ipc) -> new PhoneLongPressTool());
+        list.add((context, ipc) -> new PhoneViewHierarchyTool());
+        list.add((context, ipc) -> new PhoneClickViewByIdTool());
         // Tools that need the application context.
         list.add((context, ipc) -> new ShellExecuteTool(context, ipc));
         list.add((context, ipc) -> new ImageUnderstandingTool(context, ipc));

@@ -10,10 +10,12 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import cn.lineai.data.repository.ThemeSettingsRepository;
+import cn.lineai.data.repository.UserAgreementRepository;
 import cn.lineai.mvp.MainCoordinator;
 import cn.lineai.ui.MainChatView;
 import cn.lineai.ui.component.PermissionUiHelper;
 import cn.lineai.ui.component.SafPickerDelegate;
+import cn.lineai.ui.component.UserAgreementDialog;
 import cn.lineai.ui.theme.LineTheme;
 
 @SuppressWarnings("deprecation")
@@ -44,6 +46,17 @@ public final class MainActivity extends Activity implements MainChatView.Workspa
         setContentView(mainView);
         presenter.attachView(mainView);
         registerBackCallback();
+
+        UserAgreementRepository agreement = new UserAgreementRepository(this);
+        if (agreement.shouldShow()) {
+            UserAgreementDialog.show(this, () -> {
+                agreement.setAccepted(true);
+                agreement.setVersion(UserAgreementRepository.CURRENT_VERSION);
+            }, () -> {
+                finishAffinity();
+            });
+            return;
+        }
     }
 
     @Override

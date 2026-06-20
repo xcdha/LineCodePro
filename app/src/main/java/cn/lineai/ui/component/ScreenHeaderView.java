@@ -37,6 +37,8 @@ public final class ScreenHeaderView extends LinearLayout {
         if (rightAction instanceof TextView) {
             right.setMinimumWidth(LineTheme.dp(context, 36));
             rightParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LineTheme.dp(context, 36));
+        } else if (rightAction instanceof LinearLayout) {
+            rightParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
         } else {
             rightParams = new LayoutParams(LineTheme.dp(context, 36), LineTheme.dp(context, 36));
         }

@@ -11,4 +11,6 @@ public interface MainUiController extends ChatController,
     void detachView();
 
     void destroy();
+
+    void onPhoneControlPermissionAction(String id);
 }

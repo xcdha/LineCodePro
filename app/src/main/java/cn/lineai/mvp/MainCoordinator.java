@@ -2,6 +2,7 @@ package cn.lineai.mvp;
 
 import android.content.Context;
 import android.os.SystemClock;
+import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.ai.ModelClient;
@@ -1950,6 +1951,11 @@ public final class MainCoordinator implements MainUiController {
         render();
     }
 
+    @Override
+    public void onPhoneControlPermissionAction(String id) {
+        Toast.makeText(context, "TODO: " + (id == null ? "" : id), Toast.LENGTH_SHORT).show();
+    }
+
     private cn.lineai.ipc.IpcProviderConfig findIpcProvider(String id) {
         if (id == null || id.length() == 0) {
             return null;
@@ -2164,6 +2170,32 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onModelSaved(ModelConfig model) {
         modelManagementController.saveModel(model);
+    }
+
+    @Override
+    public void onModelTest(ModelConfig model) {
+        backgroundTasks.execute("linecode-model-test", () -> {
+            try {
+                ModelCompletionResponse response = modelClient.complete(model,
+                        Collections.singletonList(new UserModelMessage("1+1等于多少？请只回答数字结果")));
+                String result = response.getText() == null ? "" : response.getText().trim();
+                mainThread.post(() -> {
+                    if (view != null) {
+                        view.showConfirmationDialog(
+                                context.getString(R.string.screen_model_add_test_result_title),
+                                result,
+                                context.getString(R.string.screen_model_add_test_result_confirm),
+                                false,
+                                "modelTestResult");
+                    }
+                });
+            } catch (Exception e) {
+                String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                mainThread.post(() -> Toast.makeText(context,
+                        context.getString(R.string.screen_model_add_test_error, message),
+                        Toast.LENGTH_LONG).show());
+            }
+        });
     }
 
     @Override
@@ -2748,6 +2780,9 @@ public final class MainCoordinator implements MainUiController {
         }
         if (ChatMode.PLAN.equals(normalized)) {
             return promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_CHAT_MODE_PLAN);
+        }
+        if (ChatMode.CONTROL.equals(normalized)) {
+            return ChatMode.promptContext(ChatMode.CONTROL);
         }
         return promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_CHAT_MODE_AGENT);
     }

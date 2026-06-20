@@ -572,7 +572,7 @@ public final class ComposerView extends LinearLayout {
         Context context = getContext();
         int popupWidth = LineTheme.dp(context, 112);
         int rowHeight = LineTheme.dp(context, 38);
-        int popupHeight = rowHeight * 3 + LineTheme.dp(context, 6);
+        int popupHeight = rowHeight * 4 + LineTheme.dp(context, 6);
         LinearLayout content = new LinearLayout(context);
         content.setOrientation(VERTICAL);
         content.setBackground(LineTheme.roundedStroke(context, LineTheme.INPUT_BG, 14, LineTheme.BORDER_LIGHT));
@@ -580,6 +580,7 @@ public final class ComposerView extends LinearLayout {
         content.addView(modeOption(context, "Chat", ChatMode.CHAT), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
         content.addView(modeOption(context, "Plan", ChatMode.PLAN), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
         content.addView(modeOption(context, "Agent", ChatMode.AGENT), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
+        content.addView(modeOption(context, "\u63a7\u5236", ChatMode.CONTROL), new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, rowHeight));
         modePopup = new PopupWindow(content, popupWidth, popupHeight, true);
         modePopup.setOutsideTouchable(true);
         modePopup.setBackgroundDrawable(new ColorDrawable(android.graphics.Color.TRANSPARENT));
@@ -618,6 +619,9 @@ public final class ComposerView extends LinearLayout {
         }
         if (ChatMode.PLAN.equals(mode)) {
             return "Plan";
+        }
+        if (ChatMode.CONTROL.equals(mode)) {
+            return "\u63a7\u5236";
         }
         return "Agent";
     }

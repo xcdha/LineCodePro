@@ -39,11 +39,14 @@ public final class ModelAddScreenView extends LinearLayout {
         void onBack();
 
         void onSave(ModelConfig model);
+
+        void onTest(ModelConfig model);
     }
 
     private final String[] providerLabels = new String[4];
 
     private final TextView saveAction;
+    private final TextView testAction;
     private final TextView providerLabelView;
     private final EditText nameInput;
     private final ModelProviderPreset preset;
@@ -107,7 +110,21 @@ public final class ModelAddScreenView extends LinearLayout {
         saveAction = LineTheme.textMedium(context, context.getString(R.string.common_save), LineTheme.FONT_MD, LineTheme.TEXT_TERTIARY);
         saveAction.setGravity(Gravity.CENTER);
         LineTheme.padding(saveAction, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
-        addView(new ScreenHeaderView(context, context.getString(editing ? R.string.screen_model_add_title_edit : R.string.screen_model_add_title_add), listener::onBack, saveAction), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        testAction = LineTheme.textMedium(context, context.getString(R.string.screen_model_add_test_button), LineTheme.FONT_MD, LineTheme.ACCENT);
+        testAction.setGravity(Gravity.CENTER);
+        testAction.setVisibility(local ? GONE : VISIBLE);
+        LineTheme.padding(testAction, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
+
+        LinearLayout headerActions = new LinearLayout(context);
+        headerActions.setOrientation(HORIZONTAL);
+        headerActions.setGravity(Gravity.CENTER_VERTICAL);
+        headerActions.addView(testAction, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        saveParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
+        headerActions.addView(saveAction, saveParams);
+
+        addView(new ScreenHeaderView(context, context.getString(editing ? R.string.screen_model_add_title_edit : R.string.screen_model_add_title_add), listener::onBack, headerActions), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         ScrollView scrollView = new ScrollView(context);
         LinearLayout content = new LinearLayout(context);
@@ -306,6 +323,12 @@ public final class ModelAddScreenView extends LinearLayout {
             ModelConfig model = buildModelConfig(context);
             if (model != null) {
                 listener.onSave(model);
+            }
+        });
+        testAction.setOnClickListener(v -> {
+            ModelConfig model = buildTestModelConfig();
+            if (model != null) {
+                listener.onTest(model);
             }
         });
         updateBaseUrlHint();
@@ -793,6 +816,49 @@ public final class ModelAddScreenView extends LinearLayout {
         }
         if (compressionEnabled && !compressionAuto && compressionModelId.length() == 0) {
             Toast.makeText(context, R.string.screen_model_add_require_compaction_id, Toast.LENGTH_SHORT).show();
+            return null;
+        }
+        String label = providerLabel != null ? providerLabel : protocolType[0].getLabel();
+        return new ModelConfig(
+                editingModel == null ? "" : editingModel.getId(),
+                name,
+                protocolType[0],
+                label,
+                baseUrl,
+                apiKey,
+                modelId,
+                toolCallLimit,
+                compressionEnabled,
+                compressionAuto,
+                compressionModelId
+        );
+    }
+
+    private ModelConfig buildTestModelConfig() {
+        if (local) {
+            return null;
+        }
+        Context context = getContext();
+        String baseUrl = effectiveBaseUrl();
+        String apiKey = value(apiKeyInput);
+        String modelId = customIdSwitch.isChecked() ? value(modelIdInput) : selectedModelId[0];
+        Integer toolCallLimit = parseToolCallLimit();
+        if (toolCallLimit == null) {
+            toolCallLimit = ModelConfig.DEFAULT_TOOL_CALL_LIMIT;
+        }
+        boolean compressionEnabled = compressionEnabledSwitch != null
+                && compressionEnabledSwitch.isChecked()
+                && ModelConfig.supportsDedicatedCompression(protocolType[0]);
+        boolean compressionAuto = compressionAutoSwitch == null || compressionAutoSwitch.isChecked();
+        String compressionModelId = compressionCustomIdSwitch != null && compressionCustomIdSwitch.isChecked()
+                ? value(compressionModelIdInput)
+                : selectedCompressionModelId[0];
+        String name = value(nameInput);
+        if (name.length() == 0) {
+            name = modelId;
+        }
+        if (baseUrl.length() == 0 || apiKey.length() == 0 || modelId.length() == 0) {
+            Toast.makeText(context, R.string.screen_model_add_test_missing, Toast.LENGTH_SHORT).show();
             return null;
         }
         String label = providerLabel != null ? providerLabel : protocolType[0].getLabel();

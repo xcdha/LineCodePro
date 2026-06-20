@@ -5,4 +5,7 @@
 
     <!-- Launcher and round launcher icons intentionally share the same bitmap asset. -->
     <issue id="IconDuplicates" severity="ignore" />
+
+    <!-- Accessibility services legitimately require BIND_ACCESSIBILITY_SERVICE. -->
+    <issue id="ProtectedPermissions" severity="ignore" />
 </lint>

@@ -1,0 +1,55 @@
+package cn.lineai.tool.builtin;
+
+import cn.lineai.service.LineCodeAccessibilityService;
+import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.ToolCategory;
+import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolResult;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+public final class PhoneSwipeTool extends BaseTool {
+    @Override
+    public String getName() {
+        return "phone_swipe";
+    }
+
+    @Override
+    public String getDescription() {
+        return "从起始坐标滑动到结束坐标。参数 x1、y1 为起点，x2、y2 为终点，duration_ms 为滑动时长（可选，默认 300）。";
+    }
+
+    @Override
+    public ToolCategory getCategory() {
+        return ToolCategory.SYSTEM;
+    }
+
+    @Override
+    public JSONObject getParameters() throws JSONException {
+        return new JSONObject()
+                .put("type", "object")
+                .put("properties", new JSONObject()
+                        .put("x1", new JSONObject().put("type", "number").put("description", "起点 X 坐标"))
+                        .put("y1", new JSONObject().put("type", "number").put("description", "起点 Y 坐标"))
+                        .put("x2", new JSONObject().put("type", "number").put("description", "终点 X 坐标"))
+                        .put("y2", new JSONObject().put("type", "number").put("description", "终点 Y 坐标"))
+                        .put("duration_ms", new JSONObject().put("type", "number").put("description", "滑动时长（毫秒），默认 300")))
+                .put("required", new JSONArray().put("x1").put("y1").put("x2").put("y2"));
+    }
+
+    @Override
+    public ToolResult execute(JSONObject input, ToolContext context) {
+        LineCodeAccessibilityService service = LineCodeAccessibilityService.getInstance();
+        if (service == null) {
+            return error("无障碍服务未开启");
+        }
+        int x1 = input.optInt("x1");
+        int y1 = input.optInt("y1");
+        int x2 = input.optInt("x2");
+        int y2 = input.optInt("y2");
+        int durationMs = input.optInt("duration_ms", 300);
+        boolean success = service.swipe(x1, y1, x2, y2, durationMs);
+        return success ? ok("滑动成功: (" + x1 + ", " + y1 + ") -> (" + x2 + ", " + y2 + ")") : error("滑动失败");
+    }
+}

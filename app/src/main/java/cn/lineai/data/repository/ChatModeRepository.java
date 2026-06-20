@@ -49,6 +49,14 @@ public final class ChatModeRepository {
             }
             return;
         }
+        if (ChatMode.CONTROL.equals(normalized)) {
+            if (ToolSettingsRepository.PERMISSION_READONLY.equals(currentPermission)) {
+                toolSettingsRepository.setPermissionMode(ToolSettingsRepository.PERMISSION_AUTO);
+            } else {
+                rememberRestorablePermission(currentPermission);
+            }
+            return;
+        }
         if (ToolSettingsRepository.PERMISSION_READONLY.equals(currentPermission)) {
             toolSettingsRepository.setPermissionMode(getRestorablePermissionMode());
         } else {

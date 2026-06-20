@@ -49,6 +49,7 @@
     <string name="composer_hint_default">Type a message…</string>
     <string name="composer_hint_no_model">Please configure a model first in Settings → Model management</string>
     <string name="composer_attachment_remove_desc">Remove attachment</string>
+    <string name="chat_mode_control_label">Control</string>
 
     <string name="message_user_attached_files">Attached files</string>
     <string name="message_assistant_generating">Generating…</string>
@@ -93,6 +94,33 @@
     <string name="settings_row_keep_alive_desc">Wake Lock, foreground service and battery whitelist</string>
     <string name="settings_row_about_title">About LineCode</string>
     <string name="settings_row_about_desc">Version, diagnostics and open source licenses</string>
+    <string name="settings_row_advanced_title">Advanced features</string>
+    <string name="settings_row_advanced_desc">Experimental features such as accessibility phone control</string>
+
+    <string name="screen_advanced_title">Advanced features</string>
+    <string name="screen_advanced_section_features">Features</string>
+    <string name="screen_advanced_phone_control_title">Phone control</string>
+    <string name="screen_advanced_phone_control_desc">Control this device via accessibility service</string>
+    <string name="screen_advanced_phone_control_badge">Experimental</string>
+
+    <string name="screen_phone_control_title">Phone control</string>
+    <string name="screen_phone_control_accessibility_label">Permission request (Accessibility)</string>
+    <string name="screen_phone_control_accessibility_desc">Accessibility service is required to control the phone</string>
+    <string name="screen_phone_control_accessibility_status_enabled">Enabled</string>
+    <string name="screen_phone_control_accessibility_status_disabled">Disabled</string>
+    <string name="screen_phone_control_disclaimer_title">Disclaimer</string>
+    <string name="screen_phone_control_disclaimer_text">The phone control feature is implemented through the Android Accessibility Service and can perform automated operations such as tapping, swiping, screenshots, and viewing UI hierarchy. Please read the following carefully before enabling: This feature is experimental and is intended only to assist developers with automated testing and debugging on this device; all actions are actively authorized and decided by you, and the app will not control the system without your consent; automated control may cause accidental touches, data modification, or other unexpected behavior, and you assume the related risks; please save important data before operating and avoid using it in scenarios involving payments, privacy, or critical systems; this app is not liable for any direct or indirect losses caused by using this feature; this feature is provided without any warranty, and the developer reserves the right to adjust, restrict, or disable it at any time. If you do not agree with the above, please do not enable or use this feature.</string>
+    <string name="screen_phone_control_disclaimer_agree">Agree and enable</string>
+    <string name="screen_phone_control_disclaimer_disagree">Cancel</string>
+    <string name="screen_phone_control_permission_management">Permission management</string>
+    <string name="screen_phone_control_permission_screenshot">Screenshot</string>
+    <string name="screen_phone_control_permission_click">Click</string>
+    <string name="screen_phone_control_permission_swipe">Swipe</string>
+    <string name="screen_phone_control_permission_long_press">Long press</string>
+    <string name="screen_phone_control_permission_view_hierarchy">View hierarchy</string>
+    <string name="screen_phone_control_permission_view_action">View action (click by id)</string>
+    <string name="screen_phone_control_no_image_model">Please set an image understanding model in tool settings</string>
+    <string name="screen_phone_control_image_model_required">Phone control requires an image understanding model</string>
 
     <string name="screen_llm_thinking_off_label">Off</string>
     <string name="screen_llm_thinking_off_desc">Disable thinking mode, faster response</string>
@@ -133,6 +161,11 @@
     <string name="screen_model_add_query_button">Query</string>
     <string name="screen_model_add_query_button_loading">Querying</string>
     <string name="screen_model_add_picker_title">Pick model</string>
+    <string name="screen_model_add_test_button">Test</string>
+    <string name="screen_model_add_test_result_title">Test result</string>
+    <string name="screen_model_add_test_result_confirm">OK</string>
+    <string name="screen_model_add_test_error">Test failed: %1$s</string>
+    <string name="screen_model_add_test_missing">Please fill in Base URL, API Key and Model ID before testing</string>
 
     <string name="screen_data_title">Data management</string>
     <string name="screen_data_section_all">All data</string>
@@ -576,13 +609,13 @@
     <string name="screen_about_open_source_licenses">Open source licenses</string>
 
     <string name="screen_tutorial_title">Tutorial</string>
-    <string name="screen_tutorial_subtitle_brief">开始使用前请先完成项目、模型、权限与工具的基础设置。</string>
-    <string name="screen_tutorial_simple_label">简单模式</string>
-    <string name="screen_tutorial_simple_desc">面向首次使用者，按步骤走完一遍基础配置</string>
-    <string name="screen_tutorial_pro_label">专业模式</string>
-    <string name="screen_tutorial_pro_desc">面向有经验的开发者，覆盖架构、协议、扩展与安全细节</string>
-    <string name="screen_tutorial_fallback">教程内容加载失败，请重新安装 LineCode Pro 后再试。</string>
-    <string name="screen_tutorial_loading_error">无法读取教程文件</string>
+    <string name="screen_tutorial_subtitle_brief">Please complete the basic setup for project, model, permissions and tools before starting.</string>
+    <string name="screen_tutorial_simple_label">Simple mode</string>
+    <string name="screen_tutorial_simple_desc">For first-time users, walk through the basic configuration step by step</string>
+    <string name="screen_tutorial_pro_label">Pro mode</string>
+    <string name="screen_tutorial_pro_desc">For experienced developers, covering architecture, protocols, extensions and security details</string>
+    <string name="screen_tutorial_fallback">Tutorial content failed to load. Please reinstall LineCode Pro and try again.</string>
+    <string name="screen_tutorial_loading_error">Unable to read tutorial file</string>
 
     <string name="screen_licenses_commonmark_core">commonmark-java core</string>
     <string name="screen_licenses_commonmark_gfm">commonmark-java GFM tables</string>
@@ -804,6 +837,12 @@
 
     <string name="toast_open_link_failed">Failed to open link: %1$s</string>
     <string name="toast_copied">Copied</string>
+
+    <string name="user_agreement_title">User Agreement</string>
+    <string name="user_agreement_text">Welcome to LineCode Pro. This application is an on-device AI coding workspace that provides code conversation, file operations, tool calls, and optional SSH/Termux integration through large language models. By using this service, you indicate that you have read and understood the entire content of this agreement and voluntarily assume the responsibilities associated with using this service. You should independently review any code, commands, or suggestions generated by this application, and must not use automated outputs directly in production environments or critical systems, nor use this application for illegal, infringing, or network security-harming activities. This application may access local project directories you select, execute shell commands, or connect to remote servers you configure; related operations are actively authorized and controlled by you. Please keep sensitive information such as API keys, SSH private keys, and passwords safe. We will not collect, upload, or share your code, chat records, or personally identifiable information without your permission; however, network requests you actively initiate (such as model API calls, web searches, MCP services) will be processed according to the terms of the corresponding third-party services. Content generated by the application is for reference only and does not constitute professional legal, medical, financial, or technical advice. This application is provided "as is," and the developer is not liable for any direct, indirect, incidental, or punitive damages arising from the use or inability to use this service. The developer reserves the right to modify this agreement at any time, and the revised agreement will be published within the application; if you continue to use this application, it is deemed that you accept the revised agreement. If you do not agree with this agreement, please stop using and uninstall this application immediately.</string>
+    <string name="user_agreement_agree">Agree</string>
+    <string name="user_agreement_disagree">Disagree</string>
+    <string name="user_agreement_required">Please agree to the user agreement before continuing to use LineCode Pro.</string>
 
     <string name="header_menu_desc">Menu</string>
     <string name="header_permission_desc">Permission</string>

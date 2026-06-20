@@ -1,9 +1,12 @@
 package cn.lineai.ui.component;
 
 import android.content.Context;
+import android.content.Intent;
+import android.provider.Settings;
 import android.view.View;
 import android.widget.Toast;
 import cn.lineai.R;
+import cn.lineai.data.repository.PhoneControlRepository;
 import cn.lineai.ipc.IpcProviderConfig;
 import cn.lineai.ipc.ScannedProvider;
 import cn.lineai.model.ExtensionAgentConfig;
@@ -88,6 +91,11 @@ public final class ScreenFactories {
             @Override
             public void onSave(ModelConfig model) {
                 controller.onModelSaved(model);
+            }
+
+            @Override
+            public void onTest(ModelConfig model) {
+                controller.onModelTest(model);
             }
         });
     }
@@ -452,6 +460,67 @@ public final class ScreenFactories {
         @Override
         public String screenId() {
             return "keepAlive";
+        }
+    }
+
+    public static final class AdvancedFeaturesScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new AdvancedFeaturesScreenView(context, new AdvancedFeaturesScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public void onOpen(String id) {
+                    if ("phoneControl".equals(id)) {
+                        controller.onSettingsItemSelected("phoneControl");
+                    }
+                }
+            });
+        }
+
+        @Override
+        public String screenId() {
+            return "advancedFeatures";
+        }
+    }
+
+    public static final class PhoneControlScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            PhoneControlRepository repository = new PhoneControlRepository(context);
+            boolean imageModelSet = controller.getImageUnderstandingModelId().length() > 0;
+            boolean accessibilityEnabled = repository.isAccessibilityEnabled();
+            boolean disclaimerAccepted = repository.isDisclaimerAccepted();
+            return new PhoneControlScreenView(context, imageModelSet, accessibilityEnabled, disclaimerAccepted,
+                    new PhoneControlScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public void onOpenAccessibilitySettings() {
+                    Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        context.startActivity(intent);
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+
+                @Override
+                public void onPermissionAction(String permissionId) {
+                    controller.onPhoneControlPermissionAction(permissionId);
+                }
+            });
+        }
+
+        @Override
+        public String screenId() {
+            return "phoneControl";
         }
     }
 

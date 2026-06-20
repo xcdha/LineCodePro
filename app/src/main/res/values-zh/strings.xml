@@ -49,6 +49,7 @@
     <string name="composer_hint_default">输入消息…</string>
     <string name="composer_hint_no_model">请先到设置 → 模型管理配置模型</string>
     <string name="composer_attachment_remove_desc">移除附件</string>
+    <string name="chat_mode_control_label">控制</string>
 
     <string name="message_user_attached_files">已附加文件</string>
     <string name="message_assistant_generating">正在生成…</string>
@@ -93,6 +94,33 @@
     <string name="settings_row_keep_alive_desc">Wake Lock、前台服务和电池白名单</string>
     <string name="settings_row_about_title">关于 LineCode</string>
     <string name="settings_row_about_desc">版本、诊断和开源许可</string>
+    <string name="settings_row_advanced_title">高级功能</string>
+    <string name="settings_row_advanced_desc">无障碍控制手机等实验性功能</string>
+
+    <string name="screen_advanced_title">高级功能</string>
+    <string name="screen_advanced_section_features">功能</string>
+    <string name="screen_advanced_phone_control_title">控制手机</string>
+    <string name="screen_advanced_phone_control_desc">通过无障碍服务控制本机操作</string>
+    <string name="screen_advanced_phone_control_badge">实验</string>
+
+    <string name="screen_phone_control_title">控制手机</string>
+    <string name="screen_phone_control_accessibility_label">权限申请（无障碍）</string>
+    <string name="screen_phone_control_accessibility_desc">需要开启无障碍服务才能控制手机</string>
+    <string name="screen_phone_control_accessibility_status_enabled">已开启</string>
+    <string name="screen_phone_control_accessibility_status_disabled">未开启</string>
+    <string name="screen_phone_control_disclaimer_title">免责声明</string>
+    <string name="screen_phone_control_disclaimer_text">控制手机功能通过 Android 无障碍服务实现，可执行点击、滑动、截图、查看界面层级等自动化操作。开启前请仔细阅读以下说明：本功能属于实验性特性，仅用于辅助开发者在本机进行自动化测试与调试；所有操作均由您主动授权并自行决定，应用不会未经您同意擅自控制系统；自动化控制可能导致应用误触、数据修改或其他不可预期行为，相关风险由您自行承担；请在操作前保存重要数据，并避免在涉及支付、隐私或关键系统的场景使用；本应用不对因使用该功能导致的任何直接或间接损失承担责任；本功能不提供任何形式的担保，开发者保留随时调整、限制或关闭该功能的权利。若您不同意上述说明，请勿开启并使用该功能。</string>
+    <string name="screen_phone_control_disclaimer_agree">同意并开启</string>
+    <string name="screen_phone_control_disclaimer_disagree">取消</string>
+    <string name="screen_phone_control_permission_management">权限管理</string>
+    <string name="screen_phone_control_permission_screenshot">截图</string>
+    <string name="screen_phone_control_permission_click">点击</string>
+    <string name="screen_phone_control_permission_swipe">滑动</string>
+    <string name="screen_phone_control_permission_long_press">长按</string>
+    <string name="screen_phone_control_permission_view_hierarchy">查看 View 层级</string>
+    <string name="screen_phone_control_permission_view_action">View 操作（按 id 点击）</string>
+    <string name="screen_phone_control_no_image_model">请在工具设置中设置图像理解模型</string>
+    <string name="screen_phone_control_image_model_required">控制手机功能需要图像理解模型</string>
 
     <string name="screen_llm_thinking_off_label">关闭</string>
     <string name="screen_llm_thinking_off_desc">不启用思考模式，响应更快</string>
@@ -133,6 +161,11 @@
     <string name="screen_model_add_query_button">查询</string>
     <string name="screen_model_add_query_button_loading">查询中</string>
     <string name="screen_model_add_picker_title">选择模型</string>
+    <string name="screen_model_add_test_button">测试</string>
+    <string name="screen_model_add_test_result_title">测试结果</string>
+    <string name="screen_model_add_test_result_confirm">确定</string>
+    <string name="screen_model_add_test_error">测试失败：%1$s</string>
+    <string name="screen_model_add_test_missing">请填写 Base URL、API Key 和 Model ID 后再测试</string>
 
     <string name="screen_data_title">数据管理</string>
     <string name="screen_data_section_all">全量数据</string>
@@ -805,6 +838,12 @@
 
     <string name="toast_open_link_failed">无法打开链接：%1$s</string>
     <string name="toast_copied">已复制</string>
+
+    <string name="user_agreement_title">用户协议</string>
+    <string name="user_agreement_text">欢迎使用 LineCode Pro。本应用是一款在设备端运行的 AI 编程工作区，通过大语言模型提供代码对话、文件操作、工具调用及可选的 SSH/Termux 集成功能。使用本服务即表示您已阅读并理解本协议全部内容，且自愿承担因使用本服务而产生的相关责任。您应确保对本应用生成的任何代码、命令或建议进行独立审查，不得将自动输出直接用于生产环境或关键系统，也不得利用本应用从事违法、侵权或危害网络安全的行为。本应用可能会访问您选择的本地项目目录、执行 Shell 命令或连接您配置的远程服务器，相关操作均由您主动授权并控制，请妥善保管 API Key、SSH 私钥及密码等敏感信息。我们不会在未经您许可的情况下收集、上传或分享您的代码、聊天记录或个人身份信息；但由您主动发起的网络请求（如模型 API 调用、网页搜索、MCP 服务）将按照对应第三方服务的条款进行处理。应用生成的内容仅供参考，不构成专业法律、医疗、金融或技术建议。本应用按“现状”提供，开发者不对因使用或无法使用本服务而造成的任何直接、间接、附带或惩罚性损害承担责任。开发者保留随时修改本协议的权利，修改后的协议将在应用内公布；若您继续使用本应用，即视为接受修订后的协议。若您不同意本协议，请立即停止使用并卸载本应用。</string>
+    <string name="user_agreement_agree">同意</string>
+    <string name="user_agreement_disagree">不同意</string>
+    <string name="user_agreement_required">请同意用户协议后方可继续使用 LineCode Pro。</string>
 
     <string name="header_menu_desc">菜单</string>
     <string name="header_permission_desc">权限</string>
