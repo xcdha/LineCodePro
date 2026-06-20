@@ -194,12 +194,12 @@ public final class MainCoordinator implements MainUiController {
 
         @Override
         public void addOrReplaceToolResult(ToolResult result) {
-            MainCoordinator.this.addOrReplaceToolResult(result);
+            mainThread.dispatch(() -> MainCoordinator.this.addOrReplaceToolResult(result));
         }
 
         @Override
         public void render() {
-            MainCoordinator.this.render();
+            mainThread.dispatch(MainCoordinator.this::render);
         }
 
         @Override
