@@ -9,13 +9,14 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
-import android.view.WindowManager;
 import cn.lineai.R;
 
 public final class KeepAliveService extends Service {
     public static final String ACTION_START = "cn.lineai.action.START_KEEP_ALIVE";
     public static final String ACTION_STOP = "cn.lineai.action.STOP_KEEP_ALIVE";
     public static final String ACTION_UPDATE_STATUS = "cn.lineai.action.UPDATE_STATUS";
+    public static final String ACTION_START_GENERATION = "cn.lineai.action.START_GENERATION_KEEP_ALIVE";
+    public static final String ACTION_STOP_GENERATION = "cn.lineai.action.STOP_GENERATION_KEEP_ALIVE";
 
     public static final String EXTRA_WAKE_LOCK = "wake_lock";
     public static final String EXTRA_FOREGROUND = "foreground";
@@ -29,6 +30,9 @@ public final class KeepAliveService extends Service {
     private NotificationManager notificationManager;
     private boolean isForeground = false;
     private String currentStatus;
+    private boolean manualWakeLock;
+    private boolean manualForeground;
+    private boolean generationActive;
 
     @Override
     public void onCreate() {
@@ -45,9 +49,32 @@ public final class KeepAliveService extends Service {
 
         String action = intent.getAction();
         if (ACTION_STOP.equals(action)) {
-            stopKeepAlive();
-            stopSelf();
+            manualWakeLock = false;
+            manualForeground = false;
+            applyKeepAliveState();
+            if (!generationActive) {
+                stopSelf();
+            }
             return START_NOT_STICKY;
+        }
+
+        if (ACTION_STOP_GENERATION.equals(action)) {
+            generationActive = false;
+            applyKeepAliveState();
+            if (!manualWakeLock && !manualForeground) {
+                stopSelf();
+            }
+            return START_NOT_STICKY;
+        }
+
+        if (ACTION_START_GENERATION.equals(action)) {
+            generationActive = true;
+            String status = intent.getStringExtra(EXTRA_STATUS_TEXT);
+            if (status != null && status.length() > 0) {
+                currentStatus = status;
+            }
+            applyKeepAliveState();
+            return START_STICKY;
         }
 
         if (ACTION_UPDATE_STATUS.equals(action)) {
@@ -60,10 +87,13 @@ public final class KeepAliveService extends Service {
         }
 
         if (ACTION_START.equals(action)) {
-            boolean wakeLockEnabled = intent.getBooleanExtra(EXTRA_WAKE_LOCK, false);
-            boolean foregroundEnabled = intent.getBooleanExtra(EXTRA_FOREGROUND, false);
-
-            startKeepAlive(wakeLockEnabled, foregroundEnabled);
+            manualWakeLock = intent.getBooleanExtra(EXTRA_WAKE_LOCK, false);
+            manualForeground = intent.getBooleanExtra(EXTRA_FOREGROUND, false);
+            String status = intent.getStringExtra(EXTRA_STATUS_TEXT);
+            if (status != null && status.length() > 0) {
+                currentStatus = status;
+            }
+            applyKeepAliveState();
             return START_STICKY;
         }
 
@@ -94,18 +124,33 @@ public final class KeepAliveService extends Service {
         }
     }
 
-    private void startKeepAlive(boolean wakeLockEnabled, boolean foregroundEnabled) {
+    private void applyKeepAliveState() {
+        boolean wakeLockEnabled = manualWakeLock || generationActive;
+        boolean foregroundEnabled = manualForeground || generationActive;
+
         if (wakeLockEnabled) {
             acquireWakeLock();
+        } else {
+            releaseWakeLock();
         }
 
         if (foregroundEnabled) {
-            startForeground(NOTIFICATION_ID, buildNotification());
-            isForeground = true;
+            if (!isForeground) {
+                startForeground(NOTIFICATION_ID, buildNotification());
+                isForeground = true;
+            } else {
+                updateNotification();
+            }
+        } else if (isForeground) {
+            stopForeground(true);
+            isForeground = false;
         }
     }
 
     private void stopKeepAlive() {
+        manualWakeLock = false;
+        manualForeground = false;
+        generationActive = false;
         releaseWakeLock();
 
         if (isForeground) {
@@ -166,6 +211,7 @@ public final class KeepAliveService extends Service {
         intent.putExtra(EXTRA_WAKE_LOCK, wakeLock);
         intent.putExtra(EXTRA_FOREGROUND, foreground);
         intent.putExtra(EXTRA_FAKE_AUDIO, fakeAudio);
+        intent.putExtra(EXTRA_STATUS_TEXT, context.getString(R.string.notification_keep_alive_text));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
         } else {
@@ -183,6 +229,23 @@ public final class KeepAliveService extends Service {
         Intent intent = new Intent(context, KeepAliveService.class);
         intent.setAction(ACTION_UPDATE_STATUS);
         intent.putExtra(EXTRA_STATUS_TEXT, status);
+        context.startService(intent);
+    }
+
+    public static void startGeneration(Context context) {
+        Intent intent = new Intent(context, KeepAliveService.class);
+        intent.setAction(ACTION_START_GENERATION);
+        intent.putExtra(EXTRA_STATUS_TEXT, context.getString(R.string.notification_keep_alive_text));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
+        }
+    }
+
+    public static void stopGeneration(Context context) {
+        Intent intent = new Intent(context, KeepAliveService.class);
+        intent.setAction(ACTION_STOP_GENERATION);
         context.startService(intent);
     }
 }

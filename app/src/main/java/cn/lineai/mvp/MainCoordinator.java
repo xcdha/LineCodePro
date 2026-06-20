@@ -79,6 +79,7 @@ import cn.lineai.model.SshConfig;
 import cn.lineai.model.ThemeSettingsState;
 import cn.lineai.model.WebSearchConfig;
 import cn.lineai.security.UrlPolicy;
+import cn.lineai.service.KeepAliveService;
 import cn.lineai.ssh.SshService;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCall;
@@ -159,6 +160,7 @@ public final class MainCoordinator implements MainUiController {
     private boolean ipcProjectPathApplied;
     private java.util.List<cn.lineai.ipc.ScannedProvider> terminalProviderScanResults = java.util.Collections.emptyList();
     private boolean terminalProviderHasScanned = false;
+    private boolean generationKeepAliveActive = false;
     private final DiffStore diffRepository;
     private final FileTreeStore fileTreeRepository;
     private final IpcFileTreeStore ipcFileTreeRepository;
@@ -622,6 +624,7 @@ public final class MainCoordinator implements MainUiController {
                     public void beforeImport() {
                         cancelActiveGeneration();
                         chatSessionStore.setStreaming(false);
+                        stopGenerationKeepAlive();
                     }
 
                     @Override
@@ -727,6 +730,7 @@ public final class MainCoordinator implements MainUiController {
         ipcProviderManager.removeStateListener(ipcStateListener);
         detachView();
         cancelActiveGeneration();
+        stopGenerationKeepAlive();
         HttpServerTool.stopActiveServer();
         backgroundTasks.shutdownNow();
     }
@@ -762,6 +766,7 @@ public final class MainCoordinator implements MainUiController {
             markRunningAgentProgressStopped();
         }
         chatSessionStore.setStreaming(false);
+        stopGenerationKeepAlive();
         persistCurrentConversation();
         chatSessionStore.startNewConversation(System.currentTimeMillis());
         clearSessionAutoToolConfirmations();
@@ -788,6 +793,7 @@ public final class MainCoordinator implements MainUiController {
             markRunningAgentProgressStopped();
         }
         chatSessionStore.setStreaming(false);
+        stopGenerationKeepAlive();
         if (wasStreaming || !id.equals(chatSessionStore.getCurrentConversationId())) {
             persistCurrentConversation();
         }
@@ -810,6 +816,7 @@ public final class MainCoordinator implements MainUiController {
         if (id.equals(chatSessionStore.getCurrentConversationId())) {
             cancelActiveGeneration();
             chatSessionStore.setStreaming(false);
+            stopGenerationKeepAlive();
             chatSessionStore.clearCurrentConversation();
             clearSessionAutoToolConfirmations();
             resetTodoState();
@@ -1009,6 +1016,7 @@ public final class MainCoordinator implements MainUiController {
         ModelCancellationToken cancellationToken = new ModelCancellationToken();
         currentCancellationToken = cancellationToken;
         chatSessionStore.setStreaming(true);
+        startGenerationKeepAlive();
         render();
 
         String activeUserMessageId = messages.get(messages.size() - 1).getId();
@@ -1121,6 +1129,7 @@ public final class MainCoordinator implements MainUiController {
         flushPendingAssistantDelta();
         cancelActiveGeneration();
         chatSessionStore.setStreaming(false);
+        stopGenerationKeepAlive();
         chatSessionStore.invalidateActiveGeneration();
         streamingRawTextByMessageId.clear();
         markStreamingMessagesStopped();
@@ -1218,6 +1227,7 @@ public final class MainCoordinator implements MainUiController {
         ModelCancellationToken cancellationToken = new ModelCancellationToken();
         currentCancellationToken = cancellationToken;
         chatSessionStore.setStreaming(true);
+        startGenerationKeepAlive();
         startContextCompaction(generationId, selectedModel, cancellationToken, false, "", "");
     }
 
@@ -1245,6 +1255,7 @@ public final class MainCoordinator implements MainUiController {
             } else {
                 chatSessionStore.setStreaming(false);
                 currentCancellationToken = null;
+                stopGenerationKeepAlive();
                 render();
             }
             return;
@@ -1337,6 +1348,7 @@ public final class MainCoordinator implements MainUiController {
         }
         chatSessionStore.setStreaming(false);
         currentCancellationToken = null;
+        stopGenerationKeepAlive();
         render();
     }
 
@@ -1365,6 +1377,7 @@ public final class MainCoordinator implements MainUiController {
         }
         chatSessionStore.setStreaming(false);
         currentCancellationToken = null;
+        stopGenerationKeepAlive();
         render();
     }
 
@@ -3020,6 +3033,7 @@ public final class MainCoordinator implements MainUiController {
                             toolLimitMessage(selectedModel, usedToolCallCount, toolCalls.size()), false));
                     chatSessionStore.setStreaming(false);
                     currentCancellationToken = null;
+                    stopGenerationKeepAlive();
                     persistCurrentConversation();
                     render();
                     return;
@@ -3031,6 +3045,7 @@ public final class MainCoordinator implements MainUiController {
             }
             chatSessionStore.setStreaming(false);
             currentCancellationToken = null;
+            stopGenerationKeepAlive();
             persistCurrentConversation();
             scheduleMemoryExtractionIfNeeded(selectedModel);
             render();
@@ -3655,6 +3670,7 @@ public final class MainCoordinator implements MainUiController {
             streamingRawTextByMessageId.remove(assistantId);
             chatSessionStore.setStreaming(false);
             currentCancellationToken = null;
+            stopGenerationKeepAlive();
             persistCurrentConversation();
             render();
         });
@@ -3665,6 +3681,29 @@ public final class MainCoordinator implements MainUiController {
         if (currentCancellationToken != null) {
             currentCancellationToken.cancel();
             currentCancellationToken = null;
+        }
+        stopGenerationKeepAlive();
+    }
+
+    private void startGenerationKeepAlive() {
+        if (generationKeepAliveActive) {
+            return;
+        }
+        generationKeepAliveActive = true;
+        try {
+            KeepAliveService.startGeneration(context);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void stopGenerationKeepAlive() {
+        if (!generationKeepAliveActive) {
+            return;
+        }
+        generationKeepAliveActive = false;
+        try {
+            KeepAliveService.stopGeneration(context);
+        } catch (Exception ignored) {
         }
     }
 
