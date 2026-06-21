@@ -87,10 +87,11 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
 
     @Override
     public synchronized List<McpToolConfig> getConfigs() {
+        String executionMode = getExecutionMode();
         ArrayList<McpToolConfig> configs = new ArrayList<>();
         for (McpToolConfig config : DEFAULT_CONFIGS) {
-            boolean enabled = settingsRepository.getBoolean(KEY_MCP_PREFIX + config.getId(), config.isEnabled());
-            configs.add(new McpToolConfig(config.getId(), config.getName(), config.getDescription(), enabled, config.getTools()));
+            boolean enabled = getMcpEnabled(executionMode, config);
+            configs.add(displayConfigForMode(executionMode, config, enabled));
         }
         return configs;
     }
@@ -141,7 +142,35 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
         if (id == null || id.length() == 0) {
             return;
         }
-        settingsRepository.setBoolean(KEY_MCP_PREFIX + id, enabled);
+        settingsRepository.setBoolean(mcpEnabledKey(getExecutionMode(), id), enabled);
+    }
+
+    private boolean getMcpEnabled(String executionMode, McpToolConfig config) {
+        Map<String, String> settings = settingsRepository.getLineCodeSettings();
+        String key = mcpEnabledKey(executionMode, config.getId());
+        if (settings.containsKey(key)) {
+            return settingsRepository.getBoolean(key, config.isEnabled());
+        }
+        String mode = normalizeExecutionMode(executionMode);
+        if (EXECUTION_SSH.equals(mode) || EXECUTION_TERMINAL_PROVIDER.equals(mode)) {
+            return config.isEnabled();
+        }
+        return settingsRepository.getBoolean(KEY_MCP_PREFIX + config.getId(), config.isEnabled());
+    }
+
+    static String mcpEnabledKey(String executionMode, String id) {
+        String mode = normalizeExecutionMode(executionMode);
+        if (EXECUTION_SSH.equals(mode) || EXECUTION_TERMINAL_PROVIDER.equals(mode)) {
+            return KEY_MCP_PREFIX + mode + "_" + id;
+        }
+        return KEY_MCP_PREFIX + id;
+    }
+
+    static McpToolConfig displayConfigForMode(String executionMode, McpToolConfig config, boolean enabled) {
+        if ("shell".equals(config.getId()) && EXECUTION_TERMINAL_PROVIDER.equals(normalizeExecutionMode(executionMode))) {
+            return new McpToolConfig(config.getId(), "IPC Shell", "通过终端提供者 IPC 执行 shell 命令", enabled, config.getTools());
+        }
+        return new McpToolConfig(config.getId(), config.getName(), config.getDescription(), enabled, config.getTools());
     }
 
     @Override

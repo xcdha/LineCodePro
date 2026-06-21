@@ -23,6 +23,7 @@ import org.json.JSONObject;
 public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
     @Override
     public ModelCompletionResponse complete(ModelConfig config, List<ModelMessage> messages) throws ModelCompletionException {
+        String raw = "";
         try {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config.getModelId()));
@@ -31,7 +32,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
-            String raw = postJson(endpoint(config.getBaseUrl(), "/chat/completions"), body, headers);
+            raw = postJson(endpoint(config.getBaseUrl(), "/chat/completions"), body, headers);
             JSONObject response = new JSONObject(raw);
             String text = response
                     .getJSONArray("choices")
@@ -42,6 +43,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
+            logParseError("parse_openai_complete", raw, e);
             throw new ModelCompletionException("OpenAI 兼容协议解析失败: " + e.getMessage(), e);
         }
     }

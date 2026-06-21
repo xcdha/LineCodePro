@@ -16,6 +16,8 @@ public final class AboutScreenView extends ScreenScaffoldView {
     public interface Listener {
         void onBack();
 
+        void onOpenGithub();
+
         void onOpenLicenses();
     }
 
@@ -55,6 +57,7 @@ public final class AboutScreenView extends ScreenScaffoldView {
         addGroupTitle(content, context.getString(R.string.screen_about_section_developer));
         addItem(content, IconButtonView.USER, context.getString(R.string.screen_about_developer_label), context.getString(R.string.screen_about_developer_value), null);
         addItem(content, IconButtonView.MESSAGE_CIRCLE, context.getString(R.string.screen_about_qq_label), context.getString(R.string.screen_about_qq_value), null);
+        addItem(content, IconButtonView.GIT_BRANCH, context.getString(R.string.screen_about_github_label), context.getString(R.string.screen_about_github_value), listener::onOpenGithub);
 
         addGroupTitle(content, context.getString(R.string.screen_about_section_legal));
         addItem(content, IconButtonView.FILE_TEXT, context.getString(R.string.screen_about_open_source_licenses), context.getString(R.string.screen_about_legal_value), listener::onOpenLicenses);

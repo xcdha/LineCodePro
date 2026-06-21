@@ -436,6 +436,8 @@
     <string name="screen_about_developer_value">LangLang03</string>
     <string name="screen_about_qq_label">QQ</string>
     <string name="screen_about_qq_value">3772548978</string>
+    <string name="screen_about_github_label">GitHub</string>
+    <string name="screen_about_github_value">github.com/LangLang03/LineCodePro</string>
     <string name="screen_about_legal_value"></string>
     <string name="screen_about_copyright">Copyright 2025 LangLang. All rights reserved.</string>
     <string name="screen_about_default_label">LineCode Pro</string>
@@ -1071,6 +1073,15 @@
     <string name="message_agent_pipeline_completed">Agent pipeline completed: %1$d tasks</string>
     <string name="message_agent_pipeline_terminated">Agent pipeline terminated.</string>
     <string name="message_agent_pipeline_self_dependency">Agent cannot depend on itself: %1$s</string>
+
+    <string name="settings_row_error_logs_title">Error logs</string>
+    <string name="settings_row_error_logs_desc">View complete error stacks, HTTP requests, and responses</string>
+    <string name="screen_error_logs_title">Error logs</string>
+    <string name="screen_error_logs_section_title">Logs</string>
+    <string name="screen_error_logs_empty">No error logs</string>
+    <string name="screen_error_logs_cleared">Error logs cleared</string>
+    <string name="screen_error_logs_open_with">Open log with</string>
+    <string name="screen_error_logs_open_failed">Unable to open log</string>
 
     <!-- StoragePermissionManager messages -->
     <string name="permission_denied_manage_all">Missing \"manage all files\" permission, unable to access the external workspace. Please allow LineCode to manage all files in system settings and retry.</string>

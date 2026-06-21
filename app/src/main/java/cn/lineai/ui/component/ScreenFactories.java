@@ -441,6 +441,18 @@ public final class ScreenFactories {
         }
     }
 
+    public static final class ErrorLogsScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new ErrorLogsScreenView(context, view::handleScreenBack);
+        }
+
+        @Override
+        public String screenId() {
+            return "errorLogs";
+        }
+    }
+
     public static final class KeepAliveSettingsScreenFactory implements ScreenFactory {
         @Override
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
@@ -564,6 +576,11 @@ public final class ScreenFactories {
                 @Override
                 public void onBack() {
                     view.handleScreenBack();
+                }
+
+                @Override
+                public void onOpenGithub() {
+                    controller.onOpenUrl("https://github.com/LangLang03/LineCodePro");
                 }
 
                 @Override

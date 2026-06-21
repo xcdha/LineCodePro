@@ -187,6 +187,29 @@ public final class ToolSettingsRepositoryTest {
     }
 
     @Test
+    public void remoteExecutionModesUseSeparateToolSettingKeys() {
+        Assert.assertEquals("@linecode_mcp_enabled_ssh_image_understanding",
+                ToolSettingsRepository.mcpEnabledKey(ToolSettingsRepository.EXECUTION_SSH, "image_understanding"));
+        Assert.assertEquals("@linecode_mcp_enabled_terminal_provider_image_understanding",
+                ToolSettingsRepository.mcpEnabledKey(ToolSettingsRepository.EXECUTION_TERMINAL_PROVIDER, "image_understanding"));
+        Assert.assertEquals("@linecode_mcp_enabled_image_understanding",
+                ToolSettingsRepository.mcpEnabledKey(ToolSettingsRepository.EXECUTION_LOCAL, "image_understanding"));
+    }
+
+    @Test
+    public void terminalProviderShellConfigUsesIpcName() {
+        McpToolConfig config = ToolSettingsRepository.displayConfigForMode(
+                ToolSettingsRepository.EXECUTION_TERMINAL_PROVIDER,
+                new McpToolConfig("shell", "SSH Shell", "通过 SSH 执行 shell 命令", true, new String[] {"shell_execute"}),
+                true
+        );
+
+        Assert.assertEquals("IPC Shell", config.getName());
+        Assert.assertTrue(config.getDescription().contains("IPC"));
+        Assert.assertFalse(config.getName().contains("SSH"));
+    }
+
+    @Test
     public void terminalProviderToolPromptIncludesShellAndImageTools() {
         Map<String, BaseTool> toolByName = new LinkedHashMap<>();
         ToolRegistry registry = new ToolRegistry();
@@ -233,6 +256,7 @@ public final class ToolSettingsRepositoryTest {
         Assert.assertTrue(prompt.contains("image_generation"));
         Assert.assertTrue(prompt.contains("以内联 Markdown 图片返回"));
         Assert.assertTrue(prompt.contains("终端提供者（Terminal Provider）"));
+        Assert.assertTrue(prompt.contains("通过终端提供者 IPC 执行"));
         Assert.assertTrue(prompt.contains("本地文件读写、文件搜索和 HTTP 服务器已禁用"));
         Assert.assertTrue(prompt.contains("Agent、Agent Pipeline、任务清单仍可用"));
     }

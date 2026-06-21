@@ -38,7 +38,7 @@ public final class ShellExecuteTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "通过 SSH 或终端提供者执行 shell 命令。用于 Termux 或远程 Linux 主机，命令会在执行前请求用户确认。";
+        return "通过当前执行目标执行 shell 命令：SSH 模式走 SSH，终端提供者模式走 IPC。命令会在执行前请求用户确认。";
     }
 
     @Override

@@ -22,6 +22,7 @@ public final class OpenAiResponsesCompactionProtocol extends AbstractHttpModelPr
             List<ModelMessage> messages,
             ModelCancellationToken cancellationToken
     ) throws ModelCompletionException {
+        String raw = "";
         try {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config.getEffectiveCompressionModelId()));
@@ -29,7 +30,7 @@ public final class OpenAiResponsesCompactionProtocol extends AbstractHttpModelPr
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
-            String raw = postJson(endpoint(config.getBaseUrl(), "/responses/compact"), body, headers, cancellationToken);
+            raw = postJson(endpoint(config.getBaseUrl(), "/responses/compact"), body, headers, cancellationToken);
             if (cancellationToken != null && cancellationToken.isCancelled()) {
                 return "";
             }
@@ -42,6 +43,7 @@ public final class OpenAiResponsesCompactionProtocol extends AbstractHttpModelPr
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
+            logParseError("parse_openai_compact", raw, e);
             throw new ModelCompletionException("OpenAI 压缩 API 解析失败: " + e.getMessage(), e);
         }
     }

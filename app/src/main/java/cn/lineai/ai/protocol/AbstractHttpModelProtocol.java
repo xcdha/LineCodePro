@@ -2,6 +2,8 @@ package cn.lineai.ai.protocol;
 
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCancellationToken;
+import cn.lineai.log.ErrorLog;
+import cn.lineai.log.ErrorLogRedactor;
 import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.security.UrlPolicy;
 import java.io.BufferedReader;
@@ -53,6 +55,9 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
             ModelCancellationToken cancellationToken
     ) throws ModelCompletionException {
         HttpURLConnection connection = null;
+        String response = "";
+        StringBuilder sseLog = new StringBuilder();
+        int code = -1;
         try {
             connection = openJsonPost(url, body, headers, "application/json");
             HttpURLConnection activeConnection = connection;
@@ -60,13 +65,15 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
                 cancellationToken.onCancel(activeConnection::disconnect);
             }
 
-            int code = connection.getResponseCode();
+            code = connection.getResponseCode();
             if (cancellationToken != null && cancellationToken.isCancelled()) {
                 return "";
             }
-            String response = readAll(code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream());
+            response = readAll(code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream());
             if (code < 200 || code >= 300) {
-                throw new ModelCompletionException("HTTP " + code + ": " + response);
+                ModelCompletionException exception = new ModelCompletionException("HTTP " + code + ": " + response);
+                logHttpError("http", url, headers, body, code, response, exception);
+                throw exception;
             }
             return response;
         } catch (ModelCompletionException e) {
@@ -75,8 +82,10 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
             if (cancellationToken != null && cancellationToken.isCancelled()) {
                 return "";
             }
+            logHttpError("http_io", url, headers, body, code, response, e);
             throw new ModelCompletionException("模型通信失败: " + e.getMessage(), e);
         } catch (Exception e) {
+            logHttpError("http_error", url, headers, body, code, response, e);
             throw new ModelCompletionException("模型通信失败: " + e.getMessage(), e);
         } finally {
             if (connection != null) {
@@ -93,6 +102,9 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
             SseEventHandler handler
     ) throws ModelCompletionException {
         HttpURLConnection connection = null;
+        String response = "";
+        StringBuilder sseLog = new StringBuilder();
+        int code = -1;
         try {
             connection = openJsonPost(url, body, headers, "text/event-stream");
             HttpURLConnection activeConnection = connection;
@@ -100,12 +112,15 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
                 cancellationToken.onCancel(activeConnection::disconnect);
             }
 
-            int code = connection.getResponseCode();
+            code = connection.getResponseCode();
             if (code < 200 || code >= 300) {
-                throw new ModelCompletionException("HTTP " + code + ": " + readAll(connection.getErrorStream()));
+                response = readAll(connection.getErrorStream());
+                ModelCompletionException exception = new ModelCompletionException("HTTP " + code + ": " + response);
+                logHttpError("sse_http", url, headers, body, code, response, exception);
+                throw exception;
             }
 
-            readSse(connection.getInputStream(), cancellationToken, handler);
+            readSse(connection.getInputStream(), cancellationToken, handler, sseLog);
         } catch (SseStreamCompleteException e) {
             return;
         } catch (ModelCompletionException e) {
@@ -114,8 +129,12 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
             if (cancellationToken != null && cancellationToken.isCancelled()) {
                 return;
             }
+            response = sseLog.toString();
+            logHttpError("sse_io", url, headers, body, code, response, e);
             throw new ModelCompletionException("模型流式通信失败: " + e.getMessage(), e);
         } catch (Exception e) {
+            response = sseLog.toString();
+            logHttpError("sse_error", url, headers, body, code, response, e);
             throw new ModelCompletionException("模型流式通信失败: " + e.getMessage(), e);
         } finally {
             if (connection != null) {
@@ -158,13 +177,14 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
         return connection;
     }
 
-    private void readSse(InputStream stream, ModelCancellationToken cancellationToken, SseEventHandler handler) throws Exception {
+    private void readSse(InputStream stream, ModelCancellationToken cancellationToken, SseEventHandler handler, StringBuilder sseLog) throws Exception {
         BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
         try {
             StringBuilder data = new StringBuilder();
             String eventType = "";
             String line;
             while ((cancellationToken == null || !cancellationToken.isCancelled()) && (line = reader.readLine()) != null) {
+                appendSseLogLine(sseLog, line);
                 if (line.length() == 0) {
                     if (data.length() > 0) {
                         handler.onEvent(eventType, data.toString());
@@ -191,6 +211,15 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
         }
     }
 
+    private void appendSseLogLine(StringBuilder sseLog, String line) {
+        if (sseLog == null) {
+            return;
+        }
+        if (sseLog.length() < 200000) {
+            sseLog.append(line).append('\n');
+        }
+    }
+
     private String readAll(InputStream stream) throws Exception {
         if (stream == null) {
             return "";
@@ -206,5 +235,20 @@ abstract class AbstractHttpModelProtocol implements ModelProtocol {
         }
         reader.close();
         return builder.toString();
+    }
+
+    private void logHttpError(String type, String url, Map<String, String> headers, JSONObject body, int code, String response, Throwable throwable) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("URL: ").append(url == null ? "" : url).append('\n');
+        builder.append("Status: ").append(code).append("\n\n");
+        builder.append("Request headers:\n").append(headers == null ? "{}" : headers.toString()).append("\n\n");
+        builder.append("Request body:\n").append(body == null ? "" : body.toString()).append("\n\n");
+        builder.append("Response:\n").append(response == null ? "" : response);
+        ErrorLog.record(type, throwable == null ? type : throwable.getMessage(), throwable, ErrorLogRedactor.redact(builder.toString()));
+    }
+
+    protected void logParseError(String type, String rawResponse, Throwable throwable) {
+        ErrorLog.record(type, throwable == null ? type : throwable.getMessage(), throwable,
+                "Raw response:\n" + (rawResponse == null ? "" : rawResponse));
     }
 }

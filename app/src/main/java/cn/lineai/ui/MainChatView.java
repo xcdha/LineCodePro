@@ -350,6 +350,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         screenRegistry.register(new ScreenFactories.DataSettingsScreenFactory());
         screenRegistry.register(new ScreenFactories.StorageManagementScreenFactory());
         screenRegistry.register(new ScreenFactories.MemorySettingsScreenFactory());
+        screenRegistry.register(new ScreenFactories.ErrorLogsScreenFactory());
         screenRegistry.register(new ScreenFactories.KeepAliveSettingsScreenFactory());
         screenRegistry.register(new ScreenFactories.AdvancedFeaturesScreenFactory());
         screenRegistry.register(new ScreenFactories.PhoneControlScreenFactory());

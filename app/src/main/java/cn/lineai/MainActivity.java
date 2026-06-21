@@ -11,6 +11,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.UserAgreementRepository;
+import cn.lineai.log.ErrorLog;
 import cn.lineai.mvp.MainCoordinator;
 import cn.lineai.ui.MainChatView;
 import cn.lineai.ui.component.PermissionUiHelper;
@@ -33,6 +34,7 @@ public final class MainActivity extends Activity implements MainChatView.Workspa
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         configureWindow();
+        ErrorLog.init(this);
         PhoneScreenshotCache.clear(this);
 
         safPickerDelegate = new SafPickerDelegate(this);

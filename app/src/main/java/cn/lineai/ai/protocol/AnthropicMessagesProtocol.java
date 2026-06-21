@@ -22,6 +22,7 @@ import org.json.JSONObject;
 public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
     @Override
     public ModelCompletionResponse complete(ModelConfig config, List<ModelMessage> messages) throws ModelCompletionException {
+        String raw = "";
         try {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config.getModelId()));
@@ -36,12 +37,13 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
             HashMap<String, String> headers = new HashMap<>();
             headers.put("x-api-key", config.getApiKey());
             headers.put("anthropic-version", "2023-06-01");
-            String raw = postJson(endpoint(config.getBaseUrl(), "/v1/messages"), body, headers);
+            raw = postJson(endpoint(config.getBaseUrl(), "/v1/messages"), body, headers);
             JSONObject response = new JSONObject(raw);
             return extractResponse(response.optJSONArray("content"));
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
+            logParseError("parse_anthropic_complete", raw, e);
             throw new ModelCompletionException("Anthropic Messages 协议解析失败: " + e.getMessage(), e);
         }
     }

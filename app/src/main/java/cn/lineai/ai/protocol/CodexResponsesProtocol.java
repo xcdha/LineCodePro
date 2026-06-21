@@ -32,6 +32,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
 
     @Override
     public ModelCompletionResponse complete(ModelConfig config, List<ModelMessage> messages) throws ModelCompletionException {
+        String raw = "";
         try {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config.getModelId()));
@@ -45,7 +46,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             putCodexClientFields(body, config);
 
             HashMap<String, String> headers = codexHeaders(config.getApiKey());
-            String raw = postJson(responsesEndpoint(config.getBaseUrl()), body, headers);
+            raw = postJson(responsesEndpoint(config.getBaseUrl()), body, headers);
             JSONObject response = new JSONObject(raw);
             StringBuilder text = new StringBuilder(response.optString("output_text"));
             StringBuilder reasoning = new StringBuilder();
@@ -55,6 +56,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
+            logParseError("parse_codex_complete", raw, e);
             throw new ModelCompletionException("Codex Responses 协议解析失败: " + e.getMessage(), e);
         }
     }
