@@ -8,4 +8,6 @@ public interface ScreenView {
     void openExternalUrl(String url);
 
     void recreateForTheme(String screenId);
+
+    void invalidateScreen(String screenId);
 }

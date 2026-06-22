@@ -71,6 +71,7 @@ import cn.lineai.ui.component.ToolSettingsScreenView;
 import cn.lineai.ui.component.TutorialScreenView;
 import cn.lineai.ui.theme.LineTheme;
 import cn.lineai.ui.util.KeyboardController;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 public final class MainChatView extends FrameLayout implements MainContract.View, BackNavigation.BackTarget {
@@ -115,6 +116,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     private String shellCommandText = "";
     private String currentScreenId = "";
     private final ScreenRegistry screenRegistry = new ScreenRegistry();
+    private final LinkedHashMap<String, View> screenCache = new LinkedHashMap<>();
     private String attachmentPickerTitle = "";
     private String attachmentPickerMessage = "";
     private String attachmentPickerSource = InputAttachment.SOURCE_LOCAL;
@@ -551,11 +553,40 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         bottomSheetView.close();
         directoryPickerSheetView.close();
         attachmentPickerSheetView.close();
-        screenHost.removeAllViews();
-        screenHost.addView(buildScreen(screenId), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        View existing = screenHost.getChildCount() > 0 ? screenHost.getChildAt(0) : null;
+        View cached = currentScreenId.length() > 0 ? screenCache.get(currentScreenId) : null;
+        View nextView;
+        if (cached != null && cached.getParent() == null) {
+            nextView = cached;
+        } else {
+            nextView = buildScreen(currentScreenId);
+            if (currentScreenId.length() > 0 && nextView != null) {
+                screenCache.put(currentScreenId, nextView);
+            }
+        }
+        if (existing != null && existing != nextView) {
+            screenHost.removeView(existing);
+        }
+        if (nextView != null && nextView.getParent() == null) {
+            screenHost.addView(nextView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        }
         screenHost.setVisibility(VISIBLE);
         screenHost.requestFocus();
         screenHost.bringToFront();
+    }
+
+    public void invalidateScreen(String screenId) {
+        String safeId = screenId == null ? "" : screenId;
+        if (safeId.length() == 0) {
+            return;
+        }
+        View cached = screenCache.remove(safeId);
+        if (cached != null && cached.getParent() instanceof ViewGroup) {
+            ((ViewGroup) cached.getParent()).removeView(cached);
+        }
+        if (safeId.equals(currentScreenId)) {
+            showScreen(safeId);
+        }
     }
 
     @Override
@@ -563,7 +594,10 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         currentScreenId = "";
         KeyboardController.clearFocusAndHide(screenHost);
         KeyboardController.clearFocusAndHide(this);
-        screenHost.removeAllViews();
+        View existing = screenHost.getChildCount() > 0 ? screenHost.getChildAt(0) : null;
+        if (existing != null) {
+            screenHost.removeView(existing);
+        }
         screenHost.setVisibility(GONE);
     }
 

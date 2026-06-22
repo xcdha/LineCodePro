@@ -2284,10 +2284,16 @@ public final class MainCoordinator implements MainUiController {
     }
 
     private void refreshVisibleScreen(String screenId) {
+        if (view != null) {
+            view.invalidateScreen(screenId);
+        }
         screenNavigationController.refreshVisibleScreen(screenId, navigationHost);
     }
 
     private void returnToScreen(String screenId) {
+        if (view != null) {
+            view.invalidateScreen(screenId);
+        }
         screenNavigationController.returnToScreen(screenId, navigationHost);
     }
 

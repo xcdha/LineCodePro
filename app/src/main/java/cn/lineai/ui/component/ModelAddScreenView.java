@@ -26,6 +26,8 @@ import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.protocol.ModelCatalogClient;
+import cn.lineai.log.ErrorLog;
+import cn.lineai.log.ErrorLogRedactor;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProtocolType;
 import cn.lineai.model.ModelProviderPreset;
@@ -636,6 +638,9 @@ public final class ModelAddScreenView extends LinearLayout {
                     showModelPicker(ids);
                 });
             } catch (ModelCompletionException e) {
+                ErrorLog.record("model_catalog", "模型列表查询失败", e,
+                        "protocol=" + type + ", baseUrl=" + baseUrl
+                                + ", apiKey=" + ErrorLogRedactor.redact("Authorization=Bearer " + apiKey));
                 mainHandler.post(() -> {
                     fetchingModels = false;
                     updateQueryState();
@@ -666,6 +671,9 @@ public final class ModelAddScreenView extends LinearLayout {
                     showModelPicker(ids, true);
                 });
             } catch (ModelCompletionException e) {
+                ErrorLog.record("model_catalog_compression", "压缩模型列表查询失败", e,
+                        "protocol=" + type + ", baseUrl=" + baseUrl
+                                + ", apiKey=" + ErrorLogRedactor.redact("Authorization=Bearer " + apiKey));
                 mainHandler.post(() -> {
                     fetchingCompressionModels = false;
                     updateCompressionQueryState();
