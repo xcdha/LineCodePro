@@ -1069,6 +1069,7 @@
     <string name="ssh_error_read_termux_script">无法读取 Termux 配置脚本: %1$s</string>
 
     <!-- MainCoordinator agent messages -->
+    <string name="message_generation_interrupted">上次生成已中断。</string>
     <string name="message_agent_terminated">Agent 已终止。</string>
     <string name="message_agent_pipeline_running">Agent 流水线运行中。</string>
     <string name="message_agent_pipeline_no_model">当前没有可用模型，无法运行 Agent 流水线。</string>

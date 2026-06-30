@@ -465,42 +465,28 @@ final class GenerationFlowController {
             if (message.getRole() != ChatMessage.Role.TOOL) {
                 continue;
             }
-            try {
-                JSONObject object = new JSONObject(message.getContent());
-                if (!object.optBoolean("linecode_agent_progress")) {
-                    continue;
-                }
-                String status = object.optString("status");
-                if (!"running".equals(status) && !"waiting_unlock".equals(status)) {
-                    continue;
-                }
-                object.put("status", "error");
-                String output = object.optString("output").trim();
-                if (output.length() == 0) {
-                    object.put("output", terminatedMessage);
-                } else if (!output.contains(terminatedMessage)) {
-                    object.put("output", output + "\n\n" + terminatedMessage);
-                }
-                object.put("model_content", terminatedMessage);
-                messages.set(i, new ChatMessage(
-                        message.getId(),
-                        ChatMessage.Role.TOOL,
-                        object.toString(),
-                        message.getReasoningContent(),
-                        false,
-                        message.isHidden(),
-                        message.isExcludeFromContext(),
-                        message.getToolCalls(),
-                        message.getToolResults(),
-                        message.getToolCallId(),
-                        message.getToolName(),
-                        true,
-                        message.getDiffId(),
-                        message.getReviewState(),
-                        message.getReviewMessage()
-                ));
-            } catch (Exception ignored) {
+            ConversationResumeSanitizer.SanitizedPayload payload =
+                    ConversationResumeSanitizer.sanitizeToolContent(message.getContent(), terminatedMessage);
+            if (!payload.changed()) {
+                continue;
             }
+            messages.set(i, new ChatMessage(
+                    message.getId(),
+                    ChatMessage.Role.TOOL,
+                    payload.content(),
+                    message.getReasoningContent(),
+                    false,
+                    message.isHidden(),
+                    message.isExcludeFromContext(),
+                    message.getToolCalls(),
+                    message.getToolResults(),
+                    message.getToolCallId(),
+                    message.getToolName(),
+                    message.isError() || payload.error(),
+                    message.getDiffId(),
+                    message.getReviewState(),
+                    message.getReviewMessage()
+            ));
         }
         addTerminatedResultsForUnfinishedToolCalls(terminatedMessage);
     }

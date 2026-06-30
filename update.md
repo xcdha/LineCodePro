@@ -1,5 +1,41 @@
 # 更新日志
 
+## v1.1.6
+
+### Agent 与工具审批
+
+- **子 Agent 工具确认机制** - Agent 内部调用需要确认的工具时不再直接失败，而是进入与普通工具一致的待确认流程；Shell、删除等高风险工具会显示等待确认状态，用户确认后继续执行，拒绝后写入拒绝结果
+- **Agent 进度待确认状态** - Agent 进度 JSON 新增 `pending` 状态展示，卡片中显示“需要确认”，并保留嵌套工具调用、确认状态、执行结果与错误信息，避免等待确认时被误判为运行失败
+- **Agent Pipeline 待确认展示** - Agent 流水线卡片支持统计和展示子 Agent 的待确认状态；每个 Agent 行可展开显示其内部工具调用，审批按钮与普通工具调用保持一致
+- **会话级自动确认延续到 Agent** - 子 Agent 内部工具确认支持“本次会话自动执行”，确认策略与普通 Shell 工具一致，减少重复审批
+
+### Bug 修复
+
+- **SSH 连接池锁异常** - 修复 SSH 测试连接和执行命令在输出正确后仍抛出 `IllegalMonitorStateException` 的问题；新建连接会正确持有锁，释放、丢弃和重建连接时只由持锁线程解锁
+- **中断后重开进度圈残留** - 修复用户停止生成、直接关闭 APP 或进程被杀后，重新打开会话仍显示进度圈的问题；加载历史会话时会把残留的 `streaming`、`running`、`pending`、缺失 tool result、Agent / Agent Pipeline 运行态统一收敛为“上次生成已中断。”并落库
+- **Agent / Pipeline 停止状态清理** - 主动停止生成时复用同一套进度清理逻辑，Agent、子 Agent 工具调用、Agent Pipeline 运行态与待确认态都会立即变为错误完成态，避免 UI 继续等待不存在的后台任务
+
+### UI 与导航
+
+- **屏幕切换动画** - 设置页、模型页、扩展页等二级页面新增前进/返回方向感知动画，返回时使用反向过渡，导航栈状态更清晰
+- **抽屉与弹层动画优化** - 优化抽屉、底部操作表、目录选择器、附件选择器的入场和退场动画，关闭时会取消旧动画并复位状态，减少快速切换时的闪烁和残留
+- **抽屉布局调整** - 会话/文件抽屉改为更适合移动端的顶部面板样式，并限制高度，文件树与会话列表在小屏上更稳定
+
+### 版本
+
+- 版本号升级到 `1.1.6`
+- `versionCode` 升级到 `19`
+
+### 测试
+
+- 新增 `AgentExecutionControllerTest` 覆盖子 Agent Shell 工具确认、拒绝、自动确认与权限边界
+- 新增 `SshConnectionPoolTest` 覆盖新建连接释放、丢弃重借、陈旧连接移除等锁行为，防止回归到 `IllegalMonitorStateException`
+- 扩展 `ScreenNavigationControllerTest` 覆盖前进/返回方向传递
+- 新增 `ConversationResumeSanitizerTest` 覆盖重启恢复时清理 streaming、pending 工具、缺失 tool result、Agent pending、Pipeline running 等残留状态
+- 已验证 `./gradlew :app:testDebugUnitTest`
+
+---
+
 ## v1.1.5
 
 ### Tool Call 与提示词

@@ -1068,6 +1068,7 @@
     <string name="ssh_error_read_termux_script">Unable to read Termux setup script: %1$s</string>
 
     <!-- MainCoordinator agent messages -->
+    <string name="message_generation_interrupted">Previous generation was interrupted.</string>
     <string name="message_agent_terminated">Agent terminated.</string>
     <string name="message_agent_pipeline_running">Agent pipeline running.</string>
     <string name="message_agent_pipeline_no_model">No model available, unable to run the agent pipeline.</string>

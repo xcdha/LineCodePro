@@ -706,6 +706,11 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                     public String defaultConversationTitle(Context context) {
                         return context.getString(R.string.drawer_new_conversation);
                     }
+
+                    @Override
+                    public String interruptedGenerationMessage(Context context) {
+                        return context.getString(R.string.message_generation_interrupted);
+                    }
                 }
         );
         extensionDraftController = new ExtensionDraftController(

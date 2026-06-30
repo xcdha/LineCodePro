@@ -18,6 +18,8 @@ final class ConversationPersistenceController {
         String projectPath();
 
         String defaultConversationTitle(Context context);
+
+        String interruptedGenerationMessage(Context context);
     }
 
     private final Context context;
@@ -63,7 +65,16 @@ final class ConversationPersistenceController {
     }
 
     void applyConversation(ConversationRecord conversation) {
-        chatSessionStore.applyConversation(conversation);
+        ConversationResumeSanitizer.Result result = ConversationResumeSanitizer.sanitize(
+                conversation,
+                host.interruptedGenerationMessage(context)
+        );
+        ConversationRecord nextConversation = result.conversation();
+        chatSessionStore.applyConversation(nextConversation);
+        chatSessionStore.setStreaming(false);
+        if (result.changed() && nextConversation != null) {
+            conversationStore.saveConversation(nextConversation);
+        }
     }
 
     void ensureCurrentConversation() {
