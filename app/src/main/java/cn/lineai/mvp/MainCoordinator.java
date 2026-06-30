@@ -139,6 +139,15 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
         }
 
         @Override
+        public void showScreen(String screenId, boolean forward, boolean animate) {
+            if (view instanceof cn.lineai.ui.MainChatView) {
+                ((cn.lineai.ui.MainChatView) view).showScreen(screenId, forward, animate);
+            } else if (view != null) {
+                view.showScreen(screenId);
+            }
+        }
+
+        @Override
         public void showChatScreen() {
             if (view != null) {
                 view.showChatScreen();
@@ -1423,14 +1432,14 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
 
     private void refreshVisibleScreen(String screenId) {
         if (view != null) {
-            view.invalidateScreen(screenId);
+            view.evictScreen(screenId);
         }
         screenNavigationController.refreshVisibleScreen(screenId, navigationHost);
     }
 
     private void returnToScreen(String screenId) {
         if (view != null) {
-            view.invalidateScreen(screenId);
+            view.evictScreen(screenId);
         }
         screenNavigationController.returnToScreen(screenId, navigationHost);
     }

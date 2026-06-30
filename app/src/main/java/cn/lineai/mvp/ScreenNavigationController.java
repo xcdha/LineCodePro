@@ -12,6 +12,10 @@ public final class ScreenNavigationController {
             showScreen(screenId);
         }
 
+        default void showScreen(String screenId, boolean forward, boolean animate) {
+            showScreen(screenId, forward);
+        }
+
         void showChatScreen();
     }
 
@@ -45,7 +49,7 @@ public final class ScreenNavigationController {
                 screenStack.add(safeScreenId);
             }
         }
-        showVisibleScreen(safeScreenId, host);
+        showVisibleScreen(safeScreenId, host, true, false);
     }
 
     public void returnToScreen(String screenId, Host host) {
@@ -164,10 +168,14 @@ public final class ScreenNavigationController {
     }
 
     private void showVisibleScreen(String screenId, Host host, boolean forward) {
+        showVisibleScreen(screenId, host, forward, true);
+    }
+
+    private void showVisibleScreen(String screenId, Host host, boolean forward, boolean animate) {
         if (host == null) {
             return;
         }
         host.hideOverlays();
-        host.showScreen(screenId, forward);
+        host.showScreen(screenId, forward, animate);
     }
 }

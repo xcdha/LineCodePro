@@ -28,6 +28,34 @@ public final class ScreenNavigationControllerTest {
 
         Assert.assertEquals("settings", host.lastScreenId);
         Assert.assertTrue(host.lastForward);
+        Assert.assertTrue(host.lastAnimate);
+    }
+
+    @Test
+    public void refreshVisibleScreenDoesNotAnimateCurrentScreenRebuild() {
+        ScreenNavigationController controller = new ScreenNavigationController();
+        RecordingHost host = new RecordingHost();
+
+        controller.showScreen("mcp", host);
+        controller.refreshVisibleScreen("mcp", host);
+
+        Assert.assertEquals("mcp", host.lastScreenId);
+        Assert.assertTrue(host.lastForward);
+        Assert.assertFalse(host.lastAnimate);
+    }
+
+    @Test
+    public void backNavigationAnimatesInReverseDirection() {
+        ScreenNavigationController controller = new ScreenNavigationController();
+        RecordingHost host = new RecordingHost();
+
+        controller.showScreen("settings", host);
+        controller.showScreen("mcp", host);
+        controller.backFrom("mcp", host);
+
+        Assert.assertEquals("settings", host.lastScreenId);
+        Assert.assertFalse(host.lastForward);
+        Assert.assertTrue(host.lastAnimate);
     }
 
     @Test
@@ -77,6 +105,7 @@ public final class ScreenNavigationControllerTest {
     private static final class RecordingHost implements ScreenNavigationController.Host {
         private String lastScreenId = "";
         private boolean lastForward;
+        private boolean lastAnimate;
         private boolean chatShown;
 
         @Override
@@ -92,6 +121,14 @@ public final class ScreenNavigationControllerTest {
         public void showScreen(String screenId, boolean forward) {
             lastScreenId = screenId;
             lastForward = forward;
+            lastAnimate = true;
+        }
+
+        @Override
+        public void showScreen(String screenId, boolean forward, boolean animate) {
+            lastScreenId = screenId;
+            lastForward = forward;
+            lastAnimate = animate;
         }
 
         @Override

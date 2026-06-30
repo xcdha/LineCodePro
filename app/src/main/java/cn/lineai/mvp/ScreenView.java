@@ -9,5 +9,9 @@ public interface ScreenView {
 
     void recreateForTheme(String screenId);
 
+    default void evictScreen(String screenId) {
+        invalidateScreen(screenId);
+    }
+
     void invalidateScreen(String screenId);
 }

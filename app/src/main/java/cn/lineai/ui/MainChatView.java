@@ -557,6 +557,10 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     }
 
     public void showScreen(String screenId, boolean forward) {
+        showScreen(screenId, forward, true);
+    }
+
+    public void showScreen(String screenId, boolean forward, boolean animate) {
         int animationGeneration = ++screenAnimationGeneration;
         screenClosing = false;
         String previousScreenId = currentScreenId;
@@ -596,6 +600,23 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         screenHost.requestFocus();
         screenHost.bringToFront();
         if (nextView == null) {
+            resetScreenHostAnimationState();
+            return;
+        }
+        if (!animate || currentScreenId.equals(previousScreenId)) {
+            nextView.animate().cancel();
+            nextView.setTranslationX(0f);
+            nextView.setAlpha(1f);
+            for (int i = screenHost.getChildCount() - 1; i >= 0; i--) {
+                View child = screenHost.getChildAt(i);
+                if (child == nextView) {
+                    continue;
+                }
+                child.animate().cancel();
+                child.setTranslationX(0f);
+                child.setAlpha(1f);
+                screenHost.removeViewAt(i);
+            }
             resetScreenHostAnimationState();
             return;
         }
@@ -641,7 +662,8 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 .start();
     }
 
-    public void invalidateScreen(String screenId) {
+    @Override
+    public void evictScreen(String screenId) {
         String safeId = screenId == null ? "" : screenId;
         if (safeId.length() == 0) {
             return;
@@ -650,8 +672,13 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         if (cached != null && cached.getParent() instanceof ViewGroup) {
             ((ViewGroup) cached.getParent()).removeView(cached);
         }
+    }
+
+    public void invalidateScreen(String screenId) {
+        String safeId = screenId == null ? "" : screenId;
+        evictScreen(safeId);
         if (safeId.equals(currentScreenId)) {
-            showScreen(safeId);
+            showScreen(safeId, true, false);
         }
     }
 
