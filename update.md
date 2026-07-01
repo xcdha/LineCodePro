@@ -1,5 +1,43 @@
 # 更新日志
 
+## v1.1.7
+
+### 数据存储与导出
+
+- **消息文本分块存储** - 新增 `message_text_chunks` 侧表，把 `messages.content` / `reasoning_content` / `raw_json` 等大文本按 64KB 切片存放，规避 SQLite `CursorWindow` 单行 2MB 限制；模型输出或大文件 diff 写入不再因为单行过大而触发 `SQLiteBlobTooBigException`
+- **数据库版本升级到 4** - `LineCodeSchema.VERSION` 升到 4，并新增 `AddMessageTextChunksTable` 迁移，在 `onUpgrade` 时按顺序建表与索引；v3 数据库升级时数据不会丢失
+- **Repository 适配分块读写** - `ConversationRepository`、`LearningContextRepository`、`StorageStatsRepository` 改为通过 `MessageTextChunkStore` 读写大文本；`ConversationIndexer` 写入索引时只保留 4000 字符的摘要，`raw_json` 不再落到 `conversation_index`，避免索引行过大
+- **学习上下文兼容** - `LearningContextRepository` 在读取历史消息和索引时通过 `substr(..., 320)` 截取前缀，并通过 `message_text_chunks` 兜底读取分块文本；`storage_stats` 中的聊天与 diff 缓存统计改为基于 `MessageTextChunkStore.totalLength` 聚合
+- **.linecode 归档适配分块** - `LineCodeDatabaseArchive` 导出时把 `messages` 表的大文本列置空并在 `message_text_chunks` 中按 64KB 切片存放；旧版归档中可能仍包含历史分块文本的兼容逻辑已补齐，新增 `nullCell` / `integerCell` / `stringCell` 工具方法
+
+### 提示词与 Tool Call
+
+- **Tool Call 配对修复** - `ModelPromptController.completeToolCallPairsForRequest` 会在构造模型请求前把缺失的 `tool` 消息补齐，避免 assistant `tool_calls` 没有对应结果导致 OpenAI / Anthropic / Responses 协议拒绝请求；同时把游离的 `tool` 结果移动到对应 assistant 之后，过期或孤儿的 `tool` 消息会被丢弃
+- **中断补齐默认文案** - `ModelPromptController.Host` 新增 `interruptedGenerationMessage` 默认方法，中文返回 `上次生成已中断。`、英文返回 `Previous generation was interrupted.`；`MainCoordinator` 通过 `R.string.message_generation_interrupted` 覆盖默认文案，保证多语言一致
+- **补齐逻辑覆盖 stop / kill 场景** - 用户主动停止生成、应用被强杀、进程重启后，模型请求都会带上补齐后的 `tool` 配对，对外模型不会因缺结果而报错或要求重复工具调用
+
+### UI 与导航
+
+- **屏幕切换无动画刷新** - `MainChatView.showScreen` 新增 `animate` 重载；`invalidateScreen` 重建当前页时不再播放转场动画，避免数据刷新时的闪烁；`ScreenView` 新增 `evictScreen` 默认方法，调用链路更清晰
+- **前进 / 返回方向控制** - `ScreenNavigationController.Host.showScreen(id, forward, animate)` 默认实现转发到 `showScreen(id, forward)`，新接口允许在 `backFrom` 路径上保留方向感知的反向动画
+- **抽屉方向修复** - `DrawerView` 从顶部面板调整为左侧侧边栏样式：`Gravity.START` + `DrawerWidth 360dp` + `translationX` 动画；与 v1.1.6 的描述一致，避免小屏上文件树与会话列表被压缩
+- **`refreshVisibleScreen` 不再误触发动画** - `MainCoordinator` 中两处 `view.invalidateScreen` 调用改为 `view.evictScreen` + `showScreen(id, true, false)`，重建当前页时直接落到终态，行为符合直觉
+
+### 版本
+
+- 版本号升级到 `1.1.7`
+- `versionCode` 升级到 `20`
+
+### 测试
+
+- 新增 `ModelPromptControllerTest` 覆盖：缺失 `tool` 结果补齐、已有 `tool` 结果重排到 assistant 之后、孤儿 `tool` 结果丢弃、空输入不抛异常等场景
+- 新增 `AddMessageTextChunksTableTest` 校验迁移目标版本为 4
+- 扩展 `LineCodeSchemaTest` 覆盖 `message_text_chunks` 表与索引的建表 SQL 声明
+- 扩展 `ScreenNavigationControllerTest` 覆盖 `refreshVisibleScreen` 无动画重建与 `backFrom` 反向动画
+- 已验证 `./gradlew :app:testDebugUnitTest`
+
+---
+
 ## v1.1.6
 
 ### Agent 与工具审批
