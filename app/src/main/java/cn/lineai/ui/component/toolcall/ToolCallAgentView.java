@@ -8,6 +8,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import cn.lineai.R;
+import cn.lineai.tool.NestedToolCallParser;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.ui.component.FlowLayoutView;
@@ -15,6 +16,7 @@ import cn.lineai.ui.component.IconButtonView;
 import cn.lineai.ui.component.ThinkingBlockView;
 import cn.lineai.ui.markdown.MarkdownView;
 import cn.lineai.ui.theme.LineTheme;
+import java.util.List;
 import java.util.Locale;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -234,33 +236,12 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         labelParams.topMargin = LineTheme.dp(getContext(), LineTheme.SM);
         content.addView(label, labelParams);
 
-        for (int i = 0; i < nestedToolCalls.length(); i++) {
-            JSONObject item = nestedToolCalls.optJSONObject(i);
-            if (item == null) {
-                continue;
-            }
-            ToolCall call = new ToolCall(
-                    item.optString("id"),
-                    item.optString("name"),
-                    item.optString("arguments", "{}")
-            );
-            ToolResult result = null;
-            JSONObject resultObject = item.optJSONObject("result");
-            if (resultObject != null) {
-                result = new ToolResult(
-                        call.getId(),
-                        call.getName(),
-                        resultObject.optString("content"),
-                        resultObject.optBoolean("is_error"),
-                        resultObject.optString("diff_id"),
-                        resultObject.optString("review_state"),
-                        resultObject.optString("review_message")
-                );
-            }
+        List<NestedToolCallParser.NestedCall> nestedCalls = NestedToolCallParser.parse(nestedToolCalls);
+        for (NestedToolCallParser.NestedCall nc : nestedCalls) {
             ToolCallBlockView block = new ToolCallBlockView(getContext());
             block.setProjectPath(projectPath);
             block.setToolReviewListener(toolReviewListener);
-            block.bind(call, result);
+            block.bind(nc.call, nc.result);
             LayoutParams blockParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
             blockParams.topMargin = LineTheme.dp(getContext(), LineTheme.XS);
             content.addView(block, blockParams);

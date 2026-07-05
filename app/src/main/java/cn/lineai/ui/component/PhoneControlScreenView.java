@@ -19,12 +19,17 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
         void onOpenAccessibilitySettings();
 
         void onPermissionEnabledChanged(String permissionId, boolean enabled);
+
+        boolean isPermissionEnabled(String permissionId);
+
+        void onSetPermissionEnabled(String permissionId, boolean enabled);
+
+        void onAcceptDisclaimer();
     }
 
     private final boolean accessibilityEnabled;
     private final boolean disclaimerAccepted;
     private final Listener listener;
-    private final PhoneControlRepository phoneControlRepository;
 
     public PhoneControlScreenView(Context context, boolean accessibilityEnabled,
                                   boolean disclaimerAccepted, Listener listener) {
@@ -32,7 +37,6 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
         this.accessibilityEnabled = accessibilityEnabled;
         this.disclaimerAccepted = disclaimerAccepted;
         this.listener = listener;
-        this.phoneControlRepository = new PhoneControlRepository(context);
 
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, 0, LineTheme.LG, 0);
@@ -137,7 +141,7 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
                 context.getString(R.string.screen_phone_control_disclaimer_agree),
                 context.getString(R.string.screen_phone_control_disclaimer_disagree),
                 () -> {
-                    phoneControlRepository.setDisclaimerAccepted(true);
+                    listener.onAcceptDisclaimer();
                     listener.onOpenAccessibilitySettings();
                 },
                 null
@@ -146,13 +150,11 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
 
     private void addPermissionSwitch(Context context, LinearLayout list, int labelRes, int descRes,
                                      int iconType, String permissionId, boolean divider) {
-        boolean checked = phoneControlRepository.isPermissionEnabled(permissionId);
+        boolean checked = listener.isPermissionEnabled(permissionId);
         SwitchRowView row = new SwitchRowView(context, iconType, context.getString(labelRes),
                 context.getString(descRes), checked, (buttonView, isChecked) -> {
-            phoneControlRepository.setPermissionEnabled(permissionId, isChecked);
-            if (listener != null) {
-                listener.onPermissionEnabledChanged(permissionId, isChecked);
-            }
+            listener.onSetPermissionEnabled(permissionId, isChecked);
+            listener.onPermissionEnabledChanged(permissionId, isChecked);
         });
         list.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         if (divider) {

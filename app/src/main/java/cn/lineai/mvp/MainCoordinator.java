@@ -13,6 +13,7 @@ import cn.lineai.data.repository.ChatModeRepository;
 import cn.lineai.data.repository.ConversationRecord;
 import cn.lineai.data.repository.ConversationStore;
 import cn.lineai.data.repository.DiffStore;
+import cn.lineai.log.ErrorLogRepository;
 import cn.lineai.data.repository.ExtensionStore;
 import cn.lineai.data.repository.FileTreeStore;
 import cn.lineai.data.repository.InputSettingsRepository;
@@ -26,6 +27,9 @@ import cn.lineai.data.repository.PromptTemplateRepository;
 import cn.lineai.data.repository.SshFileTreeStore;
 import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsStore;
+import cn.lineai.data.repository.KeepAliveRepository;
+import cn.lineai.data.repository.PhoneControlRepository;
+import cn.lineai.data.repository.StorageStatsRepository;
 import cn.lineai.mvp.agent.AgentExecutionController;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.FileTreeNode;
@@ -35,6 +39,9 @@ import cn.lineai.model.ModelStore;
 import cn.lineai.model.SheetOption;
 import cn.lineai.model.SshConfig;
 import cn.lineai.ssh.SshService;
+import cn.lineai.ssh.TermuxHelper;
+import cn.lineai.service.KeepAliveService;
+import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolExecutionCoordinator;
 import cn.lineai.tool.ToolRegistry;
@@ -1574,5 +1581,117 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
     @Override
     public void onKeepAliveSettingsChanged() {
         storageMaintenanceController.applyKeepAliveSettings();
+    }
+
+    // ===== Phone control =====
+
+    @Override
+    public boolean isPhoneControlAccessibilityEnabled() {
+        return new PhoneControlRepository(context).isAccessibilityEnabled();
+    }
+
+    @Override
+    public boolean isPhoneControlDisclaimerAccepted() {
+        return new PhoneControlRepository(context).isDisclaimerAccepted();
+    }
+
+    @Override
+    public boolean isPhoneControlPermissionEnabled(String permissionId) {
+        return new PhoneControlRepository(context).isPermissionEnabled(permissionId);
+    }
+
+    @Override
+    public void onPhoneControlSetPermissionEnabled(String permissionId, boolean enabled) {
+        new PhoneControlRepository(context).setPermissionEnabled(permissionId, enabled);
+    }
+
+    @Override
+    public void onPhoneControlAcceptDisclaimer() {
+        new PhoneControlRepository(context).setDisclaimerAccepted(true);
+    }
+
+    // ===== Error logs =====
+
+    @Override
+    public List<ErrorLogEntry> getErrorLogs() {
+        return new ErrorLogRepository(context).list();
+    }
+
+    @Override
+    public void clearErrorLogs() {
+        new ErrorLogRepository(context).clear();
+    }
+
+    // ===== Storage stats =====
+
+    @Override
+    public StorageStatsRepository.StorageStats getStorageStats() {
+        return new StorageStatsRepository(context).getStats();
+    }
+
+    // ===== Keep alive =====
+
+    @Override
+    public KeepAliveRepository.KeepAliveSettings getKeepAliveSettings() {
+        return new KeepAliveRepository(context).getSettings();
+    }
+
+    @Override
+    public void setKeepAliveWakeLockEnabled(boolean enabled) {
+        new KeepAliveRepository(context).setWakeLockEnabled(enabled);
+    }
+
+    @Override
+    public void setKeepAliveForegroundEnabled(boolean enabled) {
+        new KeepAliveRepository(context).setForegroundEnabled(enabled);
+    }
+
+    @Override
+    public void setKeepAliveFakeAudioEnabled(boolean enabled) {
+        new KeepAliveRepository(context).setFakeAudioEnabled(enabled);
+    }
+
+    @Override
+    public void updateKeepAliveService() {
+        KeepAliveRepository.KeepAliveSettings settings = new KeepAliveRepository(context).getSettings();
+        if (settings.wakeLockEnabled || settings.foregroundEnabled || settings.fakeAudioEnabled) {
+            KeepAliveService.start(context, settings.wakeLockEnabled, settings.foregroundEnabled, settings.fakeAudioEnabled);
+        } else {
+            KeepAliveService.stop(context);
+        }
+    }
+
+    @Override
+    public void updateKeepAliveServiceStatus(String status) {
+        KeepAliveService.updateStatus(context, status);
+    }
+
+    // ===== SSH =====
+
+    @Override
+    public SshConfig getSshConfig() {
+        return sshService.getConfig();
+    }
+
+    @Override
+    public void saveSshConfig(SshConfig config) {
+        sshService.saveConfig(config);
+    }
+
+    @Override
+    public String testSshConnection(SshConfig config) throws Exception {
+        return sshService.testConnection(config);
+    }
+
+    // ===== Termux =====
+
+    @Override
+    public void openTermux() throws Exception {
+        sshService.openTermux();
+    }
+
+    @Override
+    public TermuxHelper.TermuxSetupResult setupTermuxSsh(int timeoutMs) throws Exception {
+        return sshService.setupTermuxOpenSsh(timeoutMs);
     }
 }

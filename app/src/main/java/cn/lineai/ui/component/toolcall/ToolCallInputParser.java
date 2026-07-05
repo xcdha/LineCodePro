@@ -2,9 +2,7 @@ package cn.lineai.ui.component.toolcall;
 
 import android.content.Context;
 import cn.lineai.R;
-import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolRegistry;
 import org.json.JSONObject;
 
 /**
@@ -44,14 +42,11 @@ final class ToolCallInputParser {
             return name == null ? "" : name;
         }
         // 优先使用工具自提供的标签
-        ToolRegistry registry = ToolCallUtils.getToolRegistry();
-        if (registry != null) {
-            BaseTool tool = registry.get(name);
-            if (tool != null) {
-                String label = tool.getDisplayLabel(context, input, workspacePath);
-                if (label != null) {
-                    return label;
-                }
+        cn.lineai.tool.ToolDisplayResolver resolver = cn.lineai.tool.ToolDisplayResolver.getDefault();
+        if (resolver != null) {
+            String label = resolver.getDisplayLabel(context, name, input, workspacePath);
+            if (label != null) {
+                return label;
             }
         }
         // fallback 到通用逻辑
@@ -59,14 +54,11 @@ final class ToolCallInputParser {
     }
 
     static String phoneControlActionName(Context context, String name) {
-        ToolRegistry registry = ToolCallUtils.getToolRegistry();
-        if (registry != null) {
-            BaseTool tool = registry.get(name);
-            if (tool != null) {
-                String actionName = tool.getActionName(context);
-                if (actionName != null) {
-                    return actionName;
-                }
+        cn.lineai.tool.ToolDisplayResolver resolver = cn.lineai.tool.ToolDisplayResolver.getDefault();
+        if (resolver != null) {
+            String actionName = resolver.getActionName(context, name);
+            if (actionName != null) {
+                return actionName;
             }
         }
         return context == null ? (name == null ? "" : name) : context.getString(R.string.tool_call_phone_action_default);

@@ -6,7 +6,16 @@ import java.util.HashMap;
 import java.util.Map;
 
 public final class ToolCallViewFactoryRegistry {
+    private static ToolCallViewFactoryRegistry defaultInstance;
     private final Map<ToolDisplayCategory, ToolCallViewFactory> factories = new HashMap<>();
+
+    public static void setDefault(ToolCallViewFactoryRegistry registry) {
+        defaultInstance = registry;
+    }
+
+    public static ToolCallViewFactoryRegistry getDefault() {
+        return defaultInstance;
+    }
 
     public void register(ToolCallViewFactory factory) {
         factories.put(factory.category(), factory);

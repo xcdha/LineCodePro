@@ -2,8 +2,6 @@ package cn.lineai.ui.component;
 
 import android.content.Context;
 import android.graphics.Typeface;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -18,11 +16,11 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
         void onBack();
         void onClearDiffCache();
         void onClearChatHistory();
+        StorageStatsRepository.StorageStats onLoadStats();
     }
 
     private final Context context;
-    private final StorageStatsRepository repository;
-    private final Handler handler;
+    private final Listener listener;
     private TextView totalSizeView;
     private TextView diffSizeView;
     private TextView diffCountView;
@@ -36,8 +34,7 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
     public StorageManagementScreenView(Context context, Listener listener) {
         super(context, context.getString(R.string.screen_storage_title), listener::onBack, refreshButton(context, listener));
         this.context = context;
-        this.repository = new StorageStatsRepository(context);
-        this.handler = new Handler(Looper.getMainLooper());
+        this.listener = listener;
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
 
@@ -137,10 +134,8 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
     }
 
     private void loadStats() {
-        new Thread(() -> {
-            StorageStatsRepository.StorageStats stats = repository.getStats();
-            handler.post(() -> updateViews(stats));
-        }).start();
+        StorageStatsRepository.StorageStats stats = listener.onLoadStats();
+        updateViews(stats);
     }
 
     private void updateViews(StorageStatsRepository.StorageStats stats) {

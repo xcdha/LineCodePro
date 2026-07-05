@@ -2,27 +2,27 @@ package cn.lineai.ui.component;
 
 import android.content.Context;
 import android.graphics.Typeface;
-import android.os.Handler;
-import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.os.Handler;
+import android.os.Looper;
 import cn.lineai.R;
 import cn.lineai.model.SshConfig;
-import cn.lineai.ssh.SshService;
 import cn.lineai.ui.theme.LineTheme;
 
 public final class SshSettingsScreenView extends ScreenScaffoldView {
     public interface Listener {
         void onBack();
-
         void onOpenTermuxIntegration();
+        SshConfig onLoadConfig();
+        void onSaveConfig(SshConfig config);
+        String onTestConnection(SshConfig config) throws Exception;
     }
 
-    private final SshService sshService;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Listener listener;
     private final FormTextFieldView hostField;
     private final FormTextFieldView portField;
     private final FormTextFieldView usernameField;
@@ -34,8 +34,8 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
 
     public SshSettingsScreenView(Context context, Listener listener) {
         super(context, context.getString(R.string.screen_ssh_title), listener::onBack, null);
-        sshService = new SshService(context);
-        SshConfig config = sshService.getConfig();
+        this.listener = listener;
+        SshConfig config = listener.onLoadConfig();
 
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
@@ -71,7 +71,7 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
         LinearLayout actions = new LinearLayout(context);
         actions.setOrientation(HORIZONTAL);
         LinearLayout saveButton = button(context, context.getString(R.string.screen_ssh_save), IconButtonView.SAVE, false, v -> {
-            sshService.saveConfig(readConfig());
+            listener.onSaveConfig(readConfig());
             setStatus(context.getString(R.string.screen_ssh_status_saved_title), context.getString(R.string.screen_ssh_status_saved_message), false);
         });
         testButton = button(context, context.getString(R.string.screen_ssh_test), IconButtonView.TERMINAL, true, v -> testConnection());
@@ -101,16 +101,17 @@ public final class SshSettingsScreenView extends ScreenScaffoldView {
         setTesting(true);
         setStatus(context.getString(R.string.screen_ssh_status_testing_title), context.getString(R.string.screen_ssh_status_testing_message), false);
         SshConfig config = readConfig();
-        sshService.saveConfig(config);
+        listener.onSaveConfig(config);
+        Handler handler = new Handler(Looper.getMainLooper());
         new Thread(() -> {
             try {
-                String output = sshService.testConnection(config);
-                mainHandler.post(() -> {
+                String output = listener.onTestConnection(config);
+                handler.post(() -> {
                     setTesting(false);
                     setStatus(context.getString(R.string.screen_ssh_status_success_title), output.trim().length() == 0 ? context.getString(R.string.screen_ssh_status_success_message) : output.trim(), false);
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> {
+                handler.post(() -> {
                     setTesting(false);
                     setStatus(context.getString(R.string.screen_ssh_status_failed_title), describeException(e), true);
                 });

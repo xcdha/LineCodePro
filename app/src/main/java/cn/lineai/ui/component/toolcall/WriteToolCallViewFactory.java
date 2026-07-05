@@ -4,6 +4,12 @@ import android.content.Context;
 import cn.lineai.tool.ToolDisplayCategory;
 
 public final class WriteToolCallViewFactory implements ToolCallViewFactory {
+    private final DiffLoader diffLoader;
+
+    public WriteToolCallViewFactory(DiffLoader diffLoader) {
+        this.diffLoader = diffLoader;
+    }
+
     @Override
     public ToolDisplayCategory category() {
         return ToolDisplayCategory.WRITE;
@@ -11,6 +17,8 @@ public final class WriteToolCallViewFactory implements ToolCallViewFactory {
 
     @Override
     public ToolCallCardView createView(Context context) {
-        return new ToolCallWriteView(context);
+        ToolCallWriteView view = new ToolCallWriteView(context);
+        view.setDiffLoader(diffLoader);
+        return view;
     }
 }

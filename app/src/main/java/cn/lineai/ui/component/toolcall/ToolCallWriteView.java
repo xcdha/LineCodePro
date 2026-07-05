@@ -9,7 +9,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
 import cn.lineai.data.repository.DiffRecord;
-import cn.lineai.data.repository.DiffRepository;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.ui.component.IconButtonView;
@@ -20,6 +19,7 @@ import org.json.JSONObject;
 public final class ToolCallWriteView extends BaseToolCallView implements ToolCallCardView {
     private ToolReviewListener toolReviewListener;
     private String projectPath = "";
+    private DiffLoader diffLoader;
     private boolean diffExpanded;
 
     public ToolCallWriteView(Context context) {
@@ -32,6 +32,10 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
 
     public void setProjectPath(String projectPath) {
         this.projectPath = projectPath == null ? "" : projectPath;
+    }
+
+    public void setDiffLoader(DiffLoader diffLoader) {
+        this.diffLoader = diffLoader;
     }
 
     public void bind(ToolCall toolCall, ToolResult result) {
@@ -204,11 +208,14 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
         if (result == null || result.getDiffId().length() == 0) {
             return null;
         }
-        try {
-            return new DiffRepository(getContext()).getDiff(result.getDiffId());
-        } catch (Exception ignored) {
-            return null;
+        if (diffLoader != null) {
+            try {
+                return diffLoader.loadDiff(result.getDiffId());
+            } catch (Exception ignored) {
+                return null;
+            }
         }
+        return null;
     }
 
     private LinearLayout reviewButton(int iconType, String label, int color, int background, int border) {

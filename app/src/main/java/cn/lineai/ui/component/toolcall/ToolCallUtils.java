@@ -2,54 +2,24 @@ package cn.lineai.ui.component.toolcall;
 
 import android.content.Context;
 import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolDisplayCategory;
-import cn.lineai.tool.ToolRegistry;
 import org.json.JSONObject;
 
 /**
  * 工具调用工具集合的门面：聚合 {@link ToolCallInputParser}、
- * {@link ToolCallPathDisplay}、{@link ToolCallJsonFormatter}、
- * {@link ToolCategory} 的静态方法，调用方只需 import 这一个类。
+ * {@link ToolCallPathDisplay}、{@link ToolCallJsonFormatter} 的静态方法，
+ * 调用方只需 import 这一个类。
  */
 public final class ToolCallUtils {
-    private static ToolRegistry toolRegistry;
-
     private ToolCallUtils() {
     }
 
-    public static void setToolRegistry(ToolRegistry registry) {
-        toolRegistry = registry;
-    }
-
-    static ToolRegistry getToolRegistry() {
-        return toolRegistry;
-    }
-
     public static ToolDisplayCategory getDisplayCategory(String name) {
-        if (toolRegistry != null) {
-            return toolRegistry.getCachedDisplayCategory(name);
+        cn.lineai.tool.ToolDisplayResolver resolver = cn.lineai.tool.ToolDisplayResolver.getDefault();
+        if (resolver != null) {
+            return resolver.getDisplayCategory(name);
         }
-        return fallbackDisplayCategory(name);
-    }
-
-    private static ToolDisplayCategory fallbackDisplayCategory(String name) {
-        if (name == null) return ToolDisplayCategory.GENERIC;
-        if ("file_read".equals(name) || "glob".equals(name) || "list_dir".equals(name)
-                || "web_search".equals(name) || "web_fetch".equals(name)
-                || "image_understanding".equals(name)) return ToolDisplayCategory.READ;
-        if ("file_write".equals(name) || "file_edit".equals(name)) return ToolDisplayCategory.WRITE;
-        if ("file_delete".equals(name)) return ToolDisplayCategory.DELETE;
-        if ("http_server".equals(name)) return ToolDisplayCategory.HTTP;
-        if ("shell_execute".equals(name)) return ToolDisplayCategory.SHELL;
-        if ("agent".equals(name)) return ToolDisplayCategory.AGENT;
-        if ("agent_pipeline".equals(name)) return ToolDisplayCategory.AGENT_PIPELINE;
-        if ("todo_update".equals(name)) return ToolDisplayCategory.TODO;
-        if ("image_generation".equals(name)) return ToolDisplayCategory.IMAGE_GENERATION;
-        if (name.startsWith("phone_")) return ToolDisplayCategory.PHONE_CONTROL;
-        if (name.startsWith("agentx_")) return ToolDisplayCategory.AGENT;
-        if (name.startsWith("mcpx_")) return ToolDisplayCategory.GENERIC;
-        return ToolDisplayCategory.GENERIC;
+        return cn.lineai.tool.ToolDisplayResolver.fallbackDisplayCategory(name);
     }
 
     static JSONObject parseInput(ToolCall toolCall) {

@@ -8,14 +8,18 @@ import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
 
 public final class ToolCallBlockView extends LinearLayout {
-    private static final ToolCallViewFactoryRegistry REGISTRY = createRegistry();
-
+    private final ToolCallViewFactoryRegistry registry;
     private String lastSignature = "";
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
 
     public ToolCallBlockView(Context context) {
+        this(context, ToolCallViewFactoryRegistry.getDefault());
+    }
+
+    public ToolCallBlockView(Context context, ToolCallViewFactoryRegistry registry) {
         super(context);
+        this.registry = registry;
         setOrientation(VERTICAL);
     }
 
@@ -27,7 +31,7 @@ public final class ToolCallBlockView extends LinearLayout {
         lastSignature = signature;
         String name = toolCall == null ? "" : toolCall.getName();
         ToolDisplayCategory category = ToolCallUtils.getDisplayCategory(name);
-        ToolCallCardView childView = REGISTRY.createView(getContext(), category);
+        ToolCallCardView childView = registry.createView(getContext(), category);
         if (childView != null) {
             removeAllViews();
             childView.setToolReviewListener(toolReviewListener);
@@ -70,21 +74,5 @@ public final class ToolCallBlockView extends LinearLayout {
                     .append(result.getReviewMessage());
         }
         return builder.toString();
-    }
-
-    private static ToolCallViewFactoryRegistry createRegistry() {
-        ToolCallViewFactoryRegistry registry = new ToolCallViewFactoryRegistry();
-        registry.register(new ShellToolCallViewFactory());
-        registry.register(new TodoToolCallViewFactory());
-        registry.register(new AgentToolCallViewFactory());
-        registry.register(new AgentPipelineToolCallViewFactory());
-        registry.register(new ReadToolCallViewFactory());
-        registry.register(new ImageGenerationToolCallViewFactory());
-        registry.register(new PhoneControlToolCallViewFactory());
-        registry.register(new WriteToolCallViewFactory());
-        registry.register(new DeleteToolCallViewFactory());
-        registry.register(new HttpToolCallViewFactory());
-        registry.register(new GenericToolCallViewFactory());
-        return registry;
     }
 }
