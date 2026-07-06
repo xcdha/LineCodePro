@@ -47,10 +47,10 @@ public final class ModelAddScreenView extends LinearLayout {
 
     private final String[] providerLabels = new String[4];
 
-    private final TextView saveAction;
-    private final TextView testAction;
-    private final TextView providerLabelView;
-    private final EditText nameInput;
+    private TextView saveAction;
+    private TextView testAction;
+    private TextView providerLabelView;
+    private EditText nameInput;
     private final ModelProviderPreset preset;
     private final ModelConfig editingModel;
     private final ModelCatalogClient catalogClient = new ModelCatalogClient();

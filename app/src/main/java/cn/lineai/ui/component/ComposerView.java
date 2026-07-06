@@ -49,18 +49,18 @@ public final class ComposerView extends LinearLayout {
     }
 
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final LinearLayout modelSelectorButton;
-    private final TextView modelText;
-    private final IconButtonView modelChevron;
-    private final TextView contextText;
-    private final LinearLayout modeSelectorButton;
-    private final TextView modeSelectorText;
-    private final IconButtonView modeSelectorChevron;
-    private final HorizontalScrollView attachmentScroll;
-    private final LinearLayout attachmentList;
-    private final IconButtonView attachButton;
-    private final EditText input;
-    private final IconButtonView sendButton;
+    private LinearLayout modelSelectorButton;
+    private TextView modelText;
+    private IconButtonView modelChevron;
+    private TextView contextText;
+    private LinearLayout modeSelectorButton;
+    private TextView modeSelectorText;
+    private IconButtonView modeSelectorChevron;
+    private HorizontalScrollView attachmentScroll;
+    private LinearLayout attachmentList;
+    private IconButtonView attachButton;
+    private EditText input;
+    private IconButtonView sendButton;
     private final ArrayList<InputAttachment> attachments = new ArrayList<>();
     private PopupWindow modePopup;
     private PopupWindow modelPopup;

@@ -1,6 +1,6 @@
 package cn.lineai.mvp;
 
-import cn.lineai.data.repository.ConversationRecord;
+import cn.lineai.model.ConversationUiModel;
 import cn.lineai.model.InputAttachment;
 import java.util.List;
 
@@ -29,7 +29,7 @@ public interface ChatController {
 
     void onToolReview(String toolCallId, String state, String diffId);
 
-    List<ConversationRecord> getConversationMetas();
+    List<ConversationUiModel> getConversationMetas();
 
     String getCurrentConversationId();
 }

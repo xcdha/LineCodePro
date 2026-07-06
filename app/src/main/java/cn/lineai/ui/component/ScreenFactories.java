@@ -9,8 +9,8 @@ import android.provider.Settings;
 import android.view.View;
 import android.widget.Toast;
 import cn.lineai.R;
-import cn.lineai.data.repository.KeepAliveRepository;
-import cn.lineai.data.repository.StorageStatsRepository;
+import cn.lineai.model.KeepAliveSettings;
+import cn.lineai.model.StorageStatsUiModel;
 import cn.lineai.ipc.IpcProviderConfig;
 import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.model.ExtensionAgentConfig;
@@ -408,7 +408,7 @@ public final class ScreenFactories {
                 }
 
                 @Override
-                public StorageStatsRepository.StorageStats onLoadStats() {
+                public StorageStatsUiModel onLoadStats() {
                     return controller.getStorageStats();
                 }
             });
@@ -497,7 +497,7 @@ public final class ScreenFactories {
                 }
 
                 @Override
-                public KeepAliveRepository.KeepAliveSettings onLoadSettings() {
+                public KeepAliveSettings onLoadSettings() {
                     return controller.getKeepAliveSettings();
                 }
 

@@ -8,7 +8,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.data.repository.StorageStatsRepository;
+import cn.lineai.model.StorageStatsUiModel;
 import cn.lineai.ui.theme.LineTheme;
 
 public final class StorageManagementScreenView extends ScreenScaffoldView {
@@ -16,7 +16,7 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
         void onBack();
         void onClearDiffCache();
         void onClearChatHistory();
-        StorageStatsRepository.StorageStats onLoadStats();
+        StorageStatsUiModel onLoadStats();
     }
 
     private final Context context;
@@ -134,11 +134,11 @@ public final class StorageManagementScreenView extends ScreenScaffoldView {
     }
 
     private void loadStats() {
-        StorageStatsRepository.StorageStats stats = listener.onLoadStats();
+        StorageStatsUiModel stats = listener.onLoadStats();
         updateViews(stats);
     }
 
-    private void updateViews(StorageStatsRepository.StorageStats stats) {
+    private void updateViews(StorageStatsUiModel stats) {
         totalSizeView.setText(stats.formatTotalSize());
         diffSizeView.setText(stats.formatDiffCacheSize());
         diffCountView.setText(stats.diffCacheCount + context.getString(R.string.screen_storage_unit_items));

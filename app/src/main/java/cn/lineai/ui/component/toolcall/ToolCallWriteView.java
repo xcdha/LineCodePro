@@ -8,7 +8,7 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.data.repository.DiffRecord;
+import cn.lineai.model.DiffUiModel;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.ui.component.IconButtonView;
@@ -41,7 +41,7 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
     public void bind(ToolCall toolCall, ToolResult result) {
         removeAllViews();
         setTag(new Object[] {toolCall, result});
-        DiffRecord diffRecord = loadDiff(result);
+        DiffUiModel diffRecord = loadDiff(result);
 
         LinearLayout body = new LinearLayout(getContext());
         body.setOrientation(VERTICAL);
@@ -59,7 +59,7 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
         buildMessage(toolCall, result, diffRecord);
     }
 
-    private LinearLayout buildHeader(ToolCall toolCall, ToolResult result, DiffRecord diffRecord) {
+    private LinearLayout buildHeader(ToolCall toolCall, ToolResult result, DiffUiModel diffRecord) {
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         String filePath = input.optString("file_path");
         String fileName = fileName(filePath);
@@ -134,7 +134,7 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
         return fileRow;
     }
 
-    private LinearLayout buildActionRow(ToolCall toolCall, ToolResult result, DiffRecord diffRecord) {
+    private LinearLayout buildActionRow(ToolCall toolCall, ToolResult result, DiffUiModel diffRecord) {
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         boolean complete = result != null;
         boolean error = result != null && result.isError();
@@ -182,7 +182,7 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
         return actionRow;
     }
 
-    private void buildDiffSection(ToolCall toolCall, ToolResult result, DiffRecord diffRecord) {
+    private void buildDiffSection(ToolCall toolCall, ToolResult result, DiffUiModel diffRecord) {
         boolean complete = result != null;
         boolean error = result != null && result.isError();
         boolean hasDiff = complete && !error && diffRecord != null;
@@ -191,7 +191,7 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
         }
     }
 
-    private void buildMessage(ToolCall toolCall, ToolResult result, DiffRecord diffRecord) {
+    private void buildMessage(ToolCall toolCall, ToolResult result, DiffUiModel diffRecord) {
         boolean complete = result != null;
         boolean error = result != null && result.isError();
         boolean hasDiff = complete && !error && diffRecord != null;
@@ -204,7 +204,7 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
         }
     }
 
-    private DiffRecord loadDiff(ToolResult result) {
+    private DiffUiModel loadDiff(ToolResult result) {
         if (result == null || result.getDiffId().length() == 0) {
             return null;
         }
@@ -240,7 +240,7 @@ public final class ToolCallWriteView extends BaseToolCallView implements ToolCal
         return button;
     }
 
-    private void addDiffSection(DiffRecord record) {
+    private void addDiffSection(DiffUiModel record) {
         View divider = new View(getContext());
         divider.setBackgroundColor(LineTheme.CODE_BORDER);
         addView(divider, new LayoutParams(LayoutParams.MATCH_PARENT, 1));

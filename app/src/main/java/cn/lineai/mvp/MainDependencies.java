@@ -147,7 +147,11 @@ public final class MainDependencies {
 
     private ToolCallViewFactoryRegistry createToolCallViewFactoryRegistry() {
         cn.lineai.ui.component.toolcall.DiffLoader diffLoader =
-                diffId -> diffRepository.getDiff(diffId);
+                diffId -> {
+                    cn.lineai.data.repository.DiffRecord r = diffRepository.getDiff(diffId);
+                    if (r == null) return null;
+                    return new cn.lineai.model.DiffUiModel(r.getId(), r.getFilePath(), r.getOldContent(), r.getNewContent(), r.isReverted());
+                };
         ToolCallViewFactoryRegistry registry = new ToolCallViewFactoryRegistry();
         registry.register(new ShellToolCallViewFactory());
         registry.register(new TodoToolCallViewFactory());

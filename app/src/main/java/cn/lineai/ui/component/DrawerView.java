@@ -19,7 +19,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.data.repository.ConversationRecord;
+import cn.lineai.model.ConversationUiModel;
 import cn.lineai.model.FileTreeNode;
 import cn.lineai.ui.theme.LineTheme;
 import java.text.SimpleDateFormat;
@@ -60,7 +60,7 @@ public final class DrawerView extends FrameLayout {
     private final LinearLayout headerActions;
     private final LinearLayout body;
     private final LinearLayout tabs;
-    private List<ConversationRecord> conversations;
+    private List<ConversationUiModel> conversations;
     private String currentConversationId = "";
     private String projectLabel = "";
     private String projectPath = "";
@@ -69,7 +69,7 @@ public final class DrawerView extends FrameLayout {
     private Listener listener;
     private int activeTab = TAB_CONVERSATIONS;
     private int renderedBodyTab = -1;
-    private List<ConversationRecord> renderedConversations;
+    private List<ConversationUiModel> renderedConversations;
     private String renderedConversationId = "";
     private String renderedProjectLabel = "";
     private String renderedProjectPath = "";
@@ -130,7 +130,7 @@ public final class DrawerView extends FrameLayout {
     }
 
     public void render(
-            List<ConversationRecord> conversations,
+            List<ConversationUiModel> conversations,
             String currentConversationId,
             String projectLabel,
             String projectPath,
@@ -263,7 +263,7 @@ public final class DrawerView extends FrameLayout {
     }
 
     private boolean isSameBody(
-            List<ConversationRecord> nextConversations,
+            List<ConversationUiModel> nextConversations,
             String nextConversationId,
             String nextProjectLabel,
             String nextProjectPath,
@@ -341,7 +341,7 @@ public final class DrawerView extends FrameLayout {
             list.addView(empty, emptyParams);
             return;
         }
-        for (ConversationRecord conversation : conversations) {
+        for (ConversationUiModel conversation : conversations) {
             addConversationItem(
                     list,
                     conversation.getId(),

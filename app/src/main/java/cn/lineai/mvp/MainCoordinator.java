@@ -33,6 +33,8 @@ import cn.lineai.data.repository.StorageStatsRepository;
 import cn.lineai.mvp.agent.AgentExecutionController;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.model.FileTreeNode;
+import cn.lineai.model.KeepAliveSettings;
+import cn.lineai.model.StorageStatsUiModel;
 import cn.lineai.model.InputAttachment;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelStore;
@@ -1625,15 +1627,28 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
     // ===== Storage stats =====
 
     @Override
-    public StorageStatsRepository.StorageStats getStorageStats() {
-        return new StorageStatsRepository(context).getStats();
+    public StorageStatsUiModel getStorageStats() {
+        StorageStatsRepository.StorageStats stats = new StorageStatsRepository(context).getStats();
+        StorageStatsUiModel ui = new StorageStatsUiModel();
+        ui.totalSize = stats.totalSize;
+        ui.totalCount = stats.totalCount;
+        ui.diffCacheSize = stats.diffCacheSize;
+        ui.diffCacheCount = stats.diffCacheCount;
+        ui.chatSize = stats.chatSize;
+        ui.chatCount = stats.chatCount;
+        ui.configSize = stats.configSize;
+        ui.configCount = stats.configCount;
+        ui.homeSize = stats.homeSize;
+        ui.homeCount = stats.homeCount;
+        return ui;
     }
 
     // ===== Keep alive =====
 
     @Override
-    public KeepAliveRepository.KeepAliveSettings getKeepAliveSettings() {
-        return new KeepAliveRepository(context).getSettings();
+    public KeepAliveSettings getKeepAliveSettings() {
+        KeepAliveRepository.KeepAliveSettings s = new KeepAliveRepository(context).getSettings();
+        return new KeepAliveSettings(s.wakeLockEnabled, s.foregroundEnabled, s.fakeAudioEnabled);
     }
 
     @Override

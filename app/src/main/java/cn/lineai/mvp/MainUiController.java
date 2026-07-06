@@ -1,7 +1,7 @@
 package cn.lineai.mvp;
 
-import cn.lineai.data.repository.KeepAliveRepository;
-import cn.lineai.data.repository.StorageStatsRepository;
+import cn.lineai.model.KeepAliveSettings;
+import cn.lineai.model.StorageStatsUiModel;
 import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.model.SshConfig;
 import cn.lineai.ssh.TermuxHelper;
@@ -38,10 +38,10 @@ public interface MainUiController extends ChatController,
     void clearErrorLogs();
 
     // Storage stats
-    StorageStatsRepository.StorageStats getStorageStats();
+    StorageStatsUiModel getStorageStats();
 
     // Keep alive
-    KeepAliveRepository.KeepAliveSettings getKeepAliveSettings();
+    KeepAliveSettings getKeepAliveSettings();
 
     void setKeepAliveWakeLockEnabled(boolean enabled);
 

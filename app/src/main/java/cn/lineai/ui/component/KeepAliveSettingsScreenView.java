@@ -7,13 +7,13 @@ import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 import cn.lineai.R;
-import cn.lineai.data.repository.KeepAliveRepository;
+import cn.lineai.model.KeepAliveSettings;
 
 public final class KeepAliveSettingsScreenView extends ScreenScaffoldView {
     public interface Listener {
         void onBack();
         void onSettingsChanged();
-        KeepAliveRepository.KeepAliveSettings onLoadSettings();
+        KeepAliveSettings onLoadSettings();
         void onSetWakeLockEnabled(boolean enabled);
         void onSetForegroundEnabled(boolean enabled);
         void onSetFakeAudioEnabled(boolean enabled);
@@ -37,7 +37,7 @@ public final class KeepAliveSettingsScreenView extends ScreenScaffoldView {
         this.permissionUiHelper = permissionUiHelper;
         LinearLayout content = getContent();
 
-        KeepAliveRepository.KeepAliveSettings settings = listener.onLoadSettings();
+        KeepAliveSettings settings = listener.onLoadSettings();
 
         SettingsSectionView coding = new SettingsSectionView(context, context.getString(R.string.screen_keep_alive_section_coding));
 
