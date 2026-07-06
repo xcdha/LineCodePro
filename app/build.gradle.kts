@@ -157,11 +157,34 @@ android {
     buildFeatures {
         aidl = true
     }
-    packaging {
-        resources {
-            excludes.remove("META-INF/LICENSE")
-            pickFirsts.add("META-INF/LICENSE")
-        }
+}
+
+abstract class GenerateLicenseAssetTask : org.gradle.api.DefaultTask() {
+    @get:org.gradle.api.tasks.InputFile
+    abstract val licenseFile: org.gradle.api.file.RegularFileProperty
+
+    @get:org.gradle.api.tasks.OutputDirectory
+    abstract val outputDir: org.gradle.api.file.DirectoryProperty
+
+    @org.gradle.api.tasks.TaskAction
+    fun generate() {
+        val target = outputDir.get().asFile.resolve("LICENSE")
+        target.parentFile.mkdirs()
+        licenseFile.get().asFile.copyTo(target, overwrite = true)
+    }
+}
+
+val generateLicenseAsset = tasks.register<GenerateLicenseAssetTask>("generateLicenseAsset") {
+    licenseFile.set(rootProject.file("LICENSE"))
+    outputDir.set(layout.buildDirectory.dir("generated/license-assets"))
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateLicenseAsset,
+            GenerateLicenseAssetTask::outputDir
+        )
     }
 }
 
