@@ -9,10 +9,12 @@ public final class ToolResult {
     private final String reviewState;
     private final String reviewMessage;
 
+    @Deprecated
     public ToolResult(String toolCallId, String toolName, String content, boolean error) {
         this(toolCallId, toolName, content, error, "", "", "");
     }
 
+    @Deprecated
     public ToolResult(
             String toolCallId,
             String toolName,
@@ -29,6 +31,19 @@ public final class ToolResult {
         this.diffId = diffId == null ? "" : diffId;
         this.reviewState = reviewState == null ? "" : reviewState;
         this.reviewMessage = reviewMessage == null ? "" : reviewMessage;
+    }
+
+    public static ToolResult success(String output) {
+        return new ToolResult("", "", output, false, "", "", "");
+    }
+
+    public static ToolResult error(String error) {
+        return new ToolResult("", "", error, true, "", "", "");
+    }
+
+    public static ToolResult withReview(String output, String toolCallId, String toolName,
+                                         String diffId, String reviewState, String reviewMessage) {
+        return new ToolResult(toolCallId, toolName, output, false, diffId, reviewState, reviewMessage);
     }
 
     public String getToolCallId() {

@@ -97,11 +97,11 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
         selectedTools.clear();
         selectedMcps.clear();
         if (config == null) {
-            if (hasTool("file_read")) {
-                selectedTools.add("file_read");
+            if (hasTool(cn.lineai.tool.builtin.FileReadTool.NAME)) {
+                selectedTools.add(cn.lineai.tool.builtin.FileReadTool.NAME);
             }
-            if (hasTool("glob")) {
-                selectedTools.add("glob");
+            if (hasTool(cn.lineai.tool.builtin.GlobTool.NAME)) {
+                selectedTools.add(cn.lineai.tool.builtin.GlobTool.NAME);
             }
             return;
         }

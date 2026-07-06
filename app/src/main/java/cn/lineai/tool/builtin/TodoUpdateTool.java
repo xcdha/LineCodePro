@@ -14,9 +14,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class TodoUpdateTool extends BaseTool {
+    public static final String NAME = "todo_update";
+
     @Override
     public String getName() {
-        return "todo_update";
+        return NAME;
     }
 
     @Override

@@ -13,7 +13,6 @@ import cn.lineai.data.repository.ChatModeRepository;
 import cn.lineai.data.repository.ConversationRecord;
 import cn.lineai.data.repository.ConversationStore;
 import cn.lineai.data.repository.DiffStore;
-import cn.lineai.log.ErrorLogRepository;
 import cn.lineai.data.repository.ExtensionStore;
 import cn.lineai.data.repository.FileTreeStore;
 import cn.lineai.data.repository.InputSettingsRepository;
@@ -28,7 +27,6 @@ import cn.lineai.data.repository.SshFileTreeStore;
 import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsStore;
 import cn.lineai.data.repository.KeepAliveRepository;
-import cn.lineai.data.repository.PhoneControlRepository;
 import cn.lineai.data.repository.StorageStatsRepository;
 import cn.lineai.mvp.agent.AgentExecutionController;
 import cn.lineai.model.ChatMessage;
@@ -74,6 +72,10 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
     private final ModelPromptController modelPromptController;
     private final DirectoryPickerController directoryPickerController;
     private final StorageMaintenanceController storageMaintenanceController;
+    private final PhoneControlController phoneControlController;
+    private final ErrorLogController errorLogController;
+    private final cn.lineai.data.repository.StorageStatsRepository storageStatsRepository;
+    private final cn.lineai.data.repository.KeepAliveRepository keepAliveRepository;
     private final ContextCompactionController contextCompactionController;
     private final IpcProviderController ipcProviderController;
     private final GenerationController generationController = new GenerationController();
@@ -225,93 +227,13 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
         generationLifecycleController = new GenerationLifecycleController(context, messages);
         sshFileTreeController = new SshFileTreeController(
                 sshFileTreeRepository,
-                new SshFileTreeController.Host() {
-                    @Override
-                    public boolean isSshExecutionMode() {
-                        return MainCoordinator.this.isSshExecutionMode();
-                    }
-
-                    @Override
-                    public String projectPath() {
-                        return projectState.path();
-                    }
-
-                    @Override
-                    public String projectLabel() {
-                        return projectState.label();
-                    }
-
-                    @Override
-                    public boolean isExpanded(String path) {
-                        return fileTreeInteractionController.isExpanded(path);
-                    }
-
-                    @Override
-                    public void addExpandedPath(String path) {
-                        fileTreeInteractionController.addExpandedPath(path);
-                    }
-
-                    @Override
-                    public void setProjectPathFromSshRoot(String path) {
-                        projectState.setPathFromRemoteRoot(path);
-                    }
-
-                    @Override
-                    public String basename(String path) {
-                        return MainCoordinator.this.basename(path);
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-                },
+                new SshFileTreeHost(),
                 backgroundTasks::execute,
                 mainThread::post
         );
         ipcFileTreeController = new IpcFileTreeController(
                 ipcFileTreeRepository,
-                new IpcFileTreeController.Host() {
-                    @Override
-                    public boolean isTerminalProviderExecutionMode() {
-                        return MainCoordinator.this.isTerminalProviderExecutionMode();
-                    }
-
-                    @Override
-                    public String projectPath() {
-                        return projectState.path();
-                    }
-
-                    @Override
-                    public String projectLabel() {
-                        return projectState.label();
-                    }
-
-                    @Override
-                    public boolean isExpanded(String path) {
-                        return fileTreeInteractionController.isExpanded(path);
-                    }
-
-                    @Override
-                    public void addExpandedPath(String path) {
-                        fileTreeInteractionController.addExpandedPath(path);
-                    }
-
-                    @Override
-                    public void setProjectPathFromIpcRoot(String path) {
-                        projectState.setPathFromRemoteRoot(path);
-                    }
-
-                    @Override
-                    public String basename(String path) {
-                        return MainCoordinator.this.basename(path);
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-                },
+                new IpcFileTreeHost(),
                 backgroundTasks::execute,
                 mainThread::post
         );
@@ -350,73 +272,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                 fileTreeRepository,
                 sshFileTreeRepository,
                 ipcFileTreeRepository,
-                new FileOperationController.Host() {
-                    @Override
-                    public boolean isSshExecutionMode() {
-                        return MainCoordinator.this.isSshExecutionMode();
-                    }
-
-                    @Override
-                    public boolean isTerminalProviderExecutionMode() {
-                        return MainCoordinator.this.isTerminalProviderExecutionMode();
-                    }
-
-                    @Override
-                    public void showInputDialog(String title, String message, String initialValue, String actionId) {
-                        if (view != null) {
-                            view.showInputDialog(title, message, initialValue, actionId);
-                        }
-                    }
-
-                    @Override
-                    public void showConfirmationDialog(String title, String message, String confirmLabel, boolean danger, String actionId) {
-                        if (view != null) {
-                            view.showConfirmationDialog(title, message, confirmLabel, danger, actionId);
-                        }
-                    }
-
-                    @Override
-                    public void showFileActionDialog(String title, String subtitle, ArrayList<SheetOption> options) {
-                        if (view != null) {
-                            view.showFileActionDialog(title, subtitle, options);
-                        }
-                    }
-
-                    @Override
-                    public void addExpandedPath(String path) {
-                        fileTreeInteractionController.addExpandedPath(path);
-                    }
-
-                    @Override
-                    public void refreshSshDirectoryAfterFileOperation(String path) {
-                        sshFileTreeController.refreshDirectoryAfterFileOperation(path);
-                    }
-
-                    @Override
-                    public void refreshIpcDirectoryAfterFileOperation(String path) {
-                        ipcFileTreeController.refreshDirectoryAfterFileOperation(path);
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-
-                    @Override
-                    public void showNotice(String text) {
-                        MainCoordinator.this.showNotice(text);
-                    }
-
-                    @Override
-                    public String basename(String path) {
-                        return MainCoordinator.this.basename(path);
-                    }
-
-                    @Override
-                    public String parentPath(String path) {
-                        return MainCoordinator.this.parentPath(path);
-                    }
-                },
+                new FileOperationHost(),
                 backgroundTasks::execute,
                 mainThread::post
         );
@@ -449,91 +305,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                 sshFileTreeRepository,
                 storagePermissionManager,
                 safPathResolver,
-                new ProjectWorkspaceController.Host() {
-                    @Override
-                    public boolean isViewAttached() {
-                        return view != null;
-                    }
-
-                    @Override
-                    public boolean isTermuxSshHost() {
-                        return MainCoordinator.this.isTermuxSshHost();
-                    }
-
-                    @Override
-                    public void applyProject(ProjectRecord project) {
-                        MainCoordinator.this.applyProject(project);
-                    }
-
-                    @Override
-                    public void resetTodoState() {
-                        MainCoordinator.this.resetTodoState();
-                    }
-
-                    @Override
-                    public void requestSshFileTreeLoad(boolean force) {
-                        MainCoordinator.this.requestSshFileTreeLoad(force);
-                    }
-
-                    @Override
-                    public void showSheet(String title, List<SheetOption> options) {
-                        if (view != null) {
-                            view.showSheet(title, options);
-                        }
-                    }
-
-                    @Override
-                    public void showInputDialog(String title, String message, String initialValue, String actionId) {
-                        if (view != null) {
-                            view.showInputDialog(title, message, initialValue, actionId);
-                        }
-                    }
-
-                    @Override
-                    public void showConfirmationDialog(String title, String message, String confirmLabel, boolean danger, String actionId) {
-                        if (view != null) {
-                            view.showConfirmationDialog(title, message, confirmLabel, danger, actionId);
-                        }
-                    }
-
-                    @Override
-                    public void hideOverlays() {
-                        if (view != null) {
-                            view.hideOverlays();
-                        }
-                    }
-
-                    @Override
-                    public void openExternalProjectPicker() {
-                        if (view != null) {
-                            view.openExternalProjectPicker();
-                        }
-                    }
-
-                    @Override
-                    public void openManageAllFilesPermissionSettings() {
-                        if (view != null) {
-                            view.openManageAllFilesPermissionSettings();
-                        }
-                    }
-
-                    @Override
-                    public void requestLegacyStoragePermissions() {
-                        if (view != null) {
-                            view.requestLegacyStoragePermissions();
-                        }
-                    }
-
-                    @Override
-                    public void showNotice(String text) {
-                        MainCoordinator.this.showNotice(text);
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-                },
+                new ProjectWorkspaceHost(),
                 backgroundTasks::execute,
                 mainThread::post
         );
@@ -587,56 +359,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
         );
         lineCodeArchiveController = new LineCodeArchiveController(
                 dependencies.lineCodeArchiveService,
-                new LineCodeArchiveController.Host() {
-                    @Override
-                    public void openExportPicker(String fileName) {
-                        if (view != null) {
-                            view.openLineCodeExportPicker(fileName);
-                        }
-                    }
-
-                    @Override
-                    public void persistBeforeExport() {
-                        persistCurrentConversation();
-                    }
-
-                    @Override
-                    public void openImportPicker() {
-                        if (view != null) {
-                            view.openLineCodeImportPicker();
-                        }
-                    }
-
-                    @Override
-                    public void showImportConfirmation(String sourceName) {
-                        if (view != null) {
-                            view.showConfirmationDialog(
-                                    "覆盖导入 .linecode",
-                                    "将从「" + sourceName + "」恢复数据库、聊天记录、配置和 .linecode 工作区文件。当前本机数据会被覆盖。",
-                                    context.getString(R.string.common_confirm),
-                                    true,
-                                    "data:import_linecode"
-                            );
-                        }
-                    }
-
-                    @Override
-                    public void beforeImport() {
-                        generationLifecycleController.cancelActiveGeneration();
-                        chatSessionStore.setStreaming(false);
-                        generationLifecycleController.stopKeepAlive();
-                    }
-
-                    @Override
-                    public void afterImport() {
-                        reloadAfterLineCodeImport();
-                    }
-
-                    @Override
-                    public void showNotice(String text) {
-                        MainCoordinator.this.showNotice(text);
-                    }
-                },
+                new LineCodeArchiveHost(),
                 backgroundTasks::execute,
                 mainThread::post
         );
@@ -810,59 +533,17 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                 sshFileTreeRepository,
                 backgroundTasks::execute,
                 mainThread::post,
-                new DirectoryPickerController.Host() {
-                    @Override
-                    public boolean isViewAttached() {
-                        return view != null;
-                    }
-
-                    @Override
-                    public String projectPath() {
-                        return projectState.path();
-                    }
-
-                    @Override
-                    public boolean isTermuxSshHost() {
-                        return MainCoordinator.this.isTermuxSshHost();
-                    }
-
-                    @Override
-                    public void applySelectedProject(String path, boolean ssh) {
-                        projectWorkspaceController.applyDirectoryPickerProject(path, ssh);
-                    }
-
-                    @Override
-                    public void hideDirectoryPicker() {
-                        if (view != null) {
-                            view.hideDirectoryPicker();
-                        }
-                    }
-
-                    @Override
-                    public void showDirectoryPicker(
-                            String title,
-                            String subtitle,
-                            FileTreeNode tree,
-                            String selectedPath,
-                            boolean loading,
-                            String message
-                    ) {
-                        if (view != null) {
-                            view.showDirectoryPicker(title, subtitle, tree, selectedPath, loading, message);
-                        }
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-                }
+                new DirectoryPickerHost()
         );
+        storageStatsRepository = dependencies.storageStatsRepository;
+        keepAliveRepository = dependencies.keepAliveRepository;
         storageMaintenanceController = new StorageMaintenanceController(
                 context,
                 messages,
                 chatSessionStore,
                 conversationRepository,
+                keepAliveRepository,
+                storageStatsRepository,
                 new StorageMaintenanceController.Host() {
                     @Override
                     public void clearCurrentConversation() {
@@ -881,6 +562,8 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                     }
                 }
         );
+        phoneControlController = dependencies.phoneControlController;
+        errorLogController = dependencies.errorLogController;
         contextCompactionController = new ContextCompactionController(
                 context,
                 messages,
@@ -891,64 +574,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                 contextManager,
                 backgroundTasks,
                 mainThread,
-                new ContextCompactionController.Host() {
-                    @Override
-                    public String nextId() {
-                        return MainCoordinator.this.nextId();
-                    }
-
-                    @Override
-                    public void persistCurrentConversation() {
-                        MainCoordinator.this.persistCurrentConversation();
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-
-                    @Override
-                    public void showNotice(String message) {
-                        MainCoordinator.this.showNotice(message);
-                    }
-
-                    @Override
-                    public void startInitialModelRequest(
-                            int generationId,
-                            ModelConfig selectedModel,
-                            ModelCancellationToken cancellationToken,
-                            String userInput
-                    ) {
-                        generationFlowController.startInitialModelRequest(generationId, selectedModel, cancellationToken, userInput);
-                    }
-
-                    @Override
-                    public void startGenerationKeepAlive() {
-                        generationLifecycleController.startKeepAlive();
-                    }
-
-                    @Override
-                    public void stopGenerationKeepAlive() {
-                        generationLifecycleController.stopKeepAlive();
-                    }
-
-                    @Override
-                    public void setCurrentCancellationToken(ModelCancellationToken cancellationToken) {
-                        generationLifecycleController.setCurrentCancellationToken(cancellationToken);
-                    }
-
-                    @Override
-                    public ModelCancellationToken currentCancellationToken() {
-                        return generationLifecycleController.currentCancellationToken();
-                    }
-
-                    @Override
-                    public void showSheet(String title, List<SheetOption> options) {
-                        if (view != null) {
-                            view.showSheet(title, new ArrayList<>(options));
-                        }
-                    }
-                }
+                new ContextCompactionHost()
         );
         ipcProviderController = new IpcProviderController(
                 context,
@@ -1016,62 +642,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                 todoStateStore,
                 mainThread,
                 backgroundTasks,
-                new GenerationFlowController.Host() {
-                    @Override
-                    public String nextId() {
-                        return MainCoordinator.this.nextId();
-                    }
-
-                    @Override
-                    public String projectPath() {
-                        return projectState.path();
-                    }
-
-                    @Override
-                    public String projectSource() {
-                        return projectState.source();
-                    }
-
-                    @Override
-                    public String currentConversationId() {
-                        return chatSessionStore.getCurrentConversationId();
-                    }
-
-                    @Override
-                    public String syncModePermission() {
-                        return MainCoordinator.this.syncModePermission();
-                    }
-
-                    @Override
-                    public void persistCurrentConversation() {
-                        MainCoordinator.this.persistCurrentConversation();
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-
-                    @Override
-                    public void stopGenerationKeepAlive() {
-                        generationLifecycleController.stopKeepAlive();
-                    }
-
-                    @Override
-                    public void setCurrentCancellationToken(ModelCancellationToken cancellationToken) {
-                        generationLifecycleController.setCurrentCancellationToken(cancellationToken);
-                    }
-
-                    @Override
-                    public boolean isSshExecutionMode() {
-                        return MainCoordinator.this.isSshExecutionMode();
-                    }
-
-                    @Override
-                    public boolean isTerminalProviderExecutionMode() {
-                        return MainCoordinator.this.isTerminalProviderExecutionMode();
-                    }
-                }
+                new GenerationFlowHost()
         );
         generationLifecycleController.setGenerationFlowController(generationFlowController);
         chatInteractionController = new ChatInteractionController(
@@ -1083,93 +654,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                 toolSettingsRepository,
                 contextCompactionController,
                 generationFlowController,
-                new ChatInteractionController.Host() {
-                    @Override
-                    public String nextId() {
-                        return MainCoordinator.this.nextId();
-                    }
-
-                    @Override
-                    public String agentTerminatedMessage() {
-                        return MainCoordinator.this.agentTerminatedMessage();
-                    }
-
-                    @Override
-                    public String syncModePermission() {
-                        return MainCoordinator.this.syncModePermission();
-                    }
-
-                    @Override
-                    public void ensureCurrentConversation() {
-                        MainCoordinator.this.ensureCurrentConversation();
-                    }
-
-                    @Override
-                    public void persistCurrentConversation() {
-                        MainCoordinator.this.persistCurrentConversation();
-                    }
-
-                    @Override
-                    public void loadConversation(String id) {
-                        MainCoordinator.this.loadConversation(id);
-                    }
-
-                    @Override
-                    public void cancelActiveGeneration() {
-                        generationLifecycleController.cancelActiveGeneration();
-                    }
-
-                    @Override
-                    public void startGenerationKeepAlive() {
-                        generationLifecycleController.startKeepAlive();
-                    }
-
-                    @Override
-                    public void stopGenerationKeepAlive() {
-                        generationLifecycleController.stopKeepAlive();
-                    }
-
-                    @Override
-                    public void setCurrentCancellationToken(ModelCancellationToken cancellationToken) {
-                        generationLifecycleController.setCurrentCancellationToken(cancellationToken);
-                    }
-
-                    @Override
-                    public void markStreamingMessagesStopped() {
-                        generationLifecycleController.markStreamingMessagesStopped();
-                    }
-
-                    @Override
-                    public void resetTodoState() {
-                        MainCoordinator.this.resetTodoState();
-                    }
-
-                    @Override
-                    public void hideOverlays() {
-                        if (view != null) {
-                            view.hideOverlays();
-                        }
-                    }
-
-                    @Override
-                    public void showChatScreen() {
-                        if (view != null) {
-                            view.showChatScreen();
-                        }
-                    }
-
-                    @Override
-                    public void setComposerDraft(String text, ArrayList<InputAttachment> attachments) {
-                        if (view != null) {
-                            view.setComposerDraft(text, attachments);
-                        }
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-                }
+                new ChatInteractionHost()
         );
         overlayActionController = new OverlayActionController(
                 context,
@@ -1179,36 +664,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                 contextCompactionController,
                 chatInteractionController,
                 lineCodeArchiveController,
-                new OverlayActionController.Host() {
-                    @Override
-                    public boolean isViewAttached() {
-                        return view != null;
-                    }
-
-                    @Override
-                    public void showSheet(String title, ArrayList<SheetOption> options) {
-                        if (view != null) {
-                            view.showSheet(title, options);
-                        }
-                    }
-
-                    @Override
-                    public void hideOverlays() {
-                        if (view != null) {
-                            view.hideOverlays();
-                        }
-                    }
-
-                    @Override
-                    public void showScreen(String screenId) {
-                        MainCoordinator.this.showScreen(screenId);
-                    }
-
-                    @Override
-                    public void render() {
-                        MainCoordinator.this.render();
-                    }
-                }
+                new OverlayActionHost()
         );
         attachmentPickerController = new AttachmentPickerCoordinator(
                 fileTreeRepository,
@@ -1216,44 +672,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
                 ipcFileTreeRepository,
                 backgroundTasks::execute,
                 mainThread::post,
-                new AttachmentPickerCoordinator.Host() {
-                    @Override
-                    public boolean isStreaming() {
-                        return chatSessionStore.isStreaming();
-                    }
-
-                    @Override
-                    public boolean isSshExecutionMode() {
-                        return MainCoordinator.this.isSshExecutionMode();
-                    }
-
-                    @Override
-                    public boolean isTerminalProviderExecutionMode() {
-                        return MainCoordinator.this.isTerminalProviderExecutionMode();
-                    }
-
-                    @Override
-                    public String projectPath() {
-                        return projectState.path();
-                    }
-
-                    @Override
-                    public String defaultHomePath() {
-                        return projectRepository.getDefaultHomePath();
-                    }
-
-                    @Override
-                    public boolean isViewAttached() {
-                        return view != null;
-                    }
-
-                    @Override
-                    public void showAttachmentPicker(String title, FileTreeNode tree, boolean loading, String message, String source) {
-                        if (view != null) {
-                            view.showAttachmentPicker(title, tree, loading, message, source);
-                        }
-                    }
-                }
+                new AttachmentPickerHost()
         );
         applyProject(projectRepository.ensureSelectedProjectPath(toolSettingsRepository.getExecutionMode()));
         fileTreeInteractionController.addExpandedPath(projectState.path());
@@ -1455,14 +874,44 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
         screenNavigationController.showScreen(screenId, navigationHost);
     }
 
-    private void refreshVisibleScreen(String screenId) {
+    String projectPath() {
+        return projectState.path();
+    }
+
+    String projectLabel() {
+        return projectState.label();
+    }
+
+    boolean isViewAttached() {
+        return view != null;
+    }
+
+    void viewHideOverlays() {
+        if (view != null) {
+            view.hideOverlays();
+        }
+    }
+
+    void viewShowScreen(String screenId) {
+        if (view != null) {
+            view.showScreen(screenId);
+        }
+    }
+
+    void viewShowChatScreen() {
+        if (view != null) {
+            view.showChatScreen();
+        }
+    }
+
+    void refreshVisibleScreen(String screenId) {
         if (view != null) {
             view.evictScreen(screenId);
         }
         screenNavigationController.refreshVisibleScreen(screenId, navigationHost);
     }
 
-    private void returnToScreen(String screenId) {
+    void returnToScreen(String screenId) {
         if (view != null) {
             view.evictScreen(screenId);
         }
@@ -1486,11 +935,11 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
         ipcFileTreeController.requestFileTreeLoad(force);
     }
 
-    private boolean isSshExecutionMode() {
+    boolean isSshExecutionMode() {
         return projectState.isSshExecutionMode(toolSettingsRepository);
     }
 
-    private boolean isTerminalProviderExecutionMode() {
+    boolean isTerminalProviderExecutionMode() {
         return projectState.isTerminalProviderExecutionMode(toolSettingsRepository);
     }
 
@@ -1500,15 +949,15 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
         return "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host);
     }
 
-    private String basename(String path) {
+    String basename(String path) {
         return projectState.basename(path);
     }
 
-    private String parentPath(String path) {
+    String parentPath(String path) {
         return projectState.parentPath(path);
     }
 
-    private void showNotice(String text) {
+    void showNotice(String text) {
         messages.add(new ChatMessage(nextId(), ChatMessage.Role.ASSISTANT, text, false));
         render();
     }
@@ -1519,7 +968,7 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
         return chatModeRepository.getMode();
     }
 
-    private void render() {
+    void render() {
         if (view == null) {
             return;
         }
@@ -1589,46 +1038,46 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
 
     @Override
     public boolean isPhoneControlAccessibilityEnabled() {
-        return new PhoneControlRepository(context).isAccessibilityEnabled();
+        return phoneControlController.isAccessibilityEnabled();
     }
 
     @Override
     public boolean isPhoneControlDisclaimerAccepted() {
-        return new PhoneControlRepository(context).isDisclaimerAccepted();
+        return phoneControlController.isDisclaimerAccepted();
     }
 
     @Override
     public boolean isPhoneControlPermissionEnabled(String permissionId) {
-        return new PhoneControlRepository(context).isPermissionEnabled(permissionId);
+        return phoneControlController.isPermissionEnabled(permissionId);
     }
 
     @Override
     public void onPhoneControlSetPermissionEnabled(String permissionId, boolean enabled) {
-        new PhoneControlRepository(context).setPermissionEnabled(permissionId, enabled);
+        phoneControlController.setPermissionEnabled(permissionId, enabled);
     }
 
     @Override
     public void onPhoneControlAcceptDisclaimer() {
-        new PhoneControlRepository(context).setDisclaimerAccepted(true);
+        phoneControlController.setDisclaimerAccepted(true);
     }
 
     // ===== Error logs =====
 
     @Override
     public List<ErrorLogEntry> getErrorLogs() {
-        return new ErrorLogRepository(context).list();
+        return errorLogController.list();
     }
 
     @Override
     public void clearErrorLogs() {
-        new ErrorLogRepository(context).clear();
+        errorLogController.clear();
     }
 
     // ===== Storage stats =====
 
     @Override
     public StorageStatsUiModel getStorageStats() {
-        StorageStatsRepository.StorageStats stats = new StorageStatsRepository(context).getStats();
+        StorageStatsRepository.StorageStats stats = storageStatsRepository.getStats();
         StorageStatsUiModel ui = new StorageStatsUiModel();
         ui.totalSize = stats.totalSize;
         ui.totalCount = stats.totalCount;
@@ -1647,28 +1096,28 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
 
     @Override
     public KeepAliveSettings getKeepAliveSettings() {
-        KeepAliveRepository.KeepAliveSettings s = new KeepAliveRepository(context).getSettings();
+        KeepAliveRepository.KeepAliveSettings s = keepAliveRepository.getSettings();
         return new KeepAliveSettings(s.wakeLockEnabled, s.foregroundEnabled, s.fakeAudioEnabled);
     }
 
     @Override
     public void setKeepAliveWakeLockEnabled(boolean enabled) {
-        new KeepAliveRepository(context).setWakeLockEnabled(enabled);
+        keepAliveRepository.setWakeLockEnabled(enabled);
     }
 
     @Override
     public void setKeepAliveForegroundEnabled(boolean enabled) {
-        new KeepAliveRepository(context).setForegroundEnabled(enabled);
+        keepAliveRepository.setForegroundEnabled(enabled);
     }
 
     @Override
     public void setKeepAliveFakeAudioEnabled(boolean enabled) {
-        new KeepAliveRepository(context).setFakeAudioEnabled(enabled);
+        keepAliveRepository.setFakeAudioEnabled(enabled);
     }
 
     @Override
     public void updateKeepAliveService() {
-        KeepAliveRepository.KeepAliveSettings settings = new KeepAliveRepository(context).getSettings();
+        KeepAliveRepository.KeepAliveSettings settings = keepAliveRepository.getSettings();
         if (settings.wakeLockEnabled || settings.foregroundEnabled || settings.fakeAudioEnabled) {
             KeepAliveService.start(context, settings.wakeLockEnabled, settings.foregroundEnabled, settings.fakeAudioEnabled);
         } else {
@@ -1708,5 +1157,587 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
     @Override
     public TermuxHelper.TermuxSetupResult setupTermuxSsh(int timeoutMs) throws Exception {
         return sshService.setupTermuxOpenSsh(timeoutMs);
+    }
+
+    // ===== Named Host implementations =====
+
+    private class SshFileTreeHost extends HostBase implements SshFileTreeController.Host {
+        @Override
+        public boolean isSshExecutionMode() {
+            return MainCoordinator.this.isSshExecutionMode();
+        }
+
+        @Override
+        public String projectPath() {
+            return super.projectPath();
+        }
+
+        @Override
+        public String projectLabel() {
+            return super.projectLabel();
+        }
+
+        @Override
+        public boolean isExpanded(String path) {
+            return fileTreeInteractionController.isExpanded(path);
+        }
+
+        @Override
+        public void addExpandedPath(String path) {
+            fileTreeInteractionController.addExpandedPath(path);
+        }
+
+        @Override
+        public void setProjectPathFromSshRoot(String path) {
+            projectState.setPathFromRemoteRoot(path);
+        }
+
+        SshFileTreeHost() {
+            super(MainCoordinator.this);
+        }
+    }
+
+    private class IpcFileTreeHost extends HostBase implements IpcFileTreeController.Host {
+        @Override
+        public boolean isTerminalProviderExecutionMode() {
+            return MainCoordinator.this.isTerminalProviderExecutionMode();
+        }
+
+        @Override
+        public String projectPath() {
+            return super.projectPath();
+        }
+
+        @Override
+        public String projectLabel() {
+            return super.projectLabel();
+        }
+
+        @Override
+        public boolean isExpanded(String path) {
+            return fileTreeInteractionController.isExpanded(path);
+        }
+
+        @Override
+        public void addExpandedPath(String path) {
+            fileTreeInteractionController.addExpandedPath(path);
+        }
+
+        @Override
+        public void setProjectPathFromIpcRoot(String path) {
+            projectState.setPathFromRemoteRoot(path);
+        }
+
+        IpcFileTreeHost() {
+            super(MainCoordinator.this);
+        }
+    }
+
+    private class ChatInteractionHost implements ChatInteractionController.Host {
+        @Override
+        public String nextId() {
+            return MainCoordinator.this.nextId();
+        }
+
+        @Override
+        public String agentTerminatedMessage() {
+            return MainCoordinator.this.agentTerminatedMessage();
+        }
+
+        @Override
+        public String syncModePermission() {
+            return MainCoordinator.this.syncModePermission();
+        }
+
+        @Override
+        public void ensureCurrentConversation() {
+            MainCoordinator.this.ensureCurrentConversation();
+        }
+
+        @Override
+        public void persistCurrentConversation() {
+            MainCoordinator.this.persistCurrentConversation();
+        }
+
+        @Override
+        public void loadConversation(String id) {
+            MainCoordinator.this.loadConversation(id);
+        }
+
+        @Override
+        public void cancelActiveGeneration() {
+            generationLifecycleController.cancelActiveGeneration();
+        }
+
+        @Override
+        public void startGenerationKeepAlive() {
+            generationLifecycleController.startKeepAlive();
+        }
+
+        @Override
+        public void stopGenerationKeepAlive() {
+            generationLifecycleController.stopKeepAlive();
+        }
+
+        @Override
+        public void setCurrentCancellationToken(ModelCancellationToken cancellationToken) {
+            generationLifecycleController.setCurrentCancellationToken(cancellationToken);
+        }
+
+        @Override
+        public void markStreamingMessagesStopped() {
+            generationLifecycleController.markStreamingMessagesStopped();
+        }
+
+        @Override
+        public void resetTodoState() {
+            MainCoordinator.this.resetTodoState();
+        }
+
+        @Override
+        public void hideOverlays() {
+            viewHideOverlays();
+        }
+
+        @Override
+        public void showChatScreen() {
+            viewShowChatScreen();
+        }
+
+        @Override
+        public void setComposerDraft(String text, ArrayList<InputAttachment> attachments) {
+            if (view != null) {
+                view.setComposerDraft(text, attachments);
+            }
+        }
+
+        @Override
+        public void render() {
+            MainCoordinator.this.render();
+        }
+    }
+
+    private class ProjectWorkspaceHost implements ProjectWorkspaceController.Host {
+        @Override
+        public boolean isViewAttached() {
+            return view != null;
+        }
+
+        @Override
+        public boolean isTermuxSshHost() {
+            return MainCoordinator.this.isTermuxSshHost();
+        }
+
+        @Override
+        public void applyProject(ProjectRecord project) {
+            MainCoordinator.this.applyProject(project);
+        }
+
+        @Override
+        public void resetTodoState() {
+            MainCoordinator.this.resetTodoState();
+        }
+
+        @Override
+        public void requestSshFileTreeLoad(boolean force) {
+            MainCoordinator.this.requestSshFileTreeLoad(force);
+        }
+
+        @Override
+        public void showSheet(String title, List<SheetOption> options) {
+            if (view != null) {
+                view.showSheet(title, options);
+            }
+        }
+
+        @Override
+        public void showInputDialog(String title, String message, String initialValue, String actionId) {
+            if (view != null) {
+                view.showInputDialog(title, message, initialValue, actionId);
+            }
+        }
+
+        @Override
+        public void showConfirmationDialog(String title, String message, String confirmLabel, boolean danger, String actionId) {
+            if (view != null) {
+                view.showConfirmationDialog(title, message, confirmLabel, danger, actionId);
+            }
+        }
+
+        @Override
+        public void hideOverlays() {
+            viewHideOverlays();
+        }
+
+        @Override
+        public void openExternalProjectPicker() {
+            if (view != null) {
+                view.openExternalProjectPicker();
+            }
+        }
+
+        @Override
+        public void openManageAllFilesPermissionSettings() {
+            if (view != null) {
+                view.openManageAllFilesPermissionSettings();
+            }
+        }
+
+        @Override
+        public void requestLegacyStoragePermissions() {
+            if (view != null) {
+                view.requestLegacyStoragePermissions();
+            }
+        }
+
+        @Override
+        public void showNotice(String text) {
+            MainCoordinator.this.showNotice(text);
+        }
+
+        @Override
+        public void render() {
+            MainCoordinator.this.render();
+        }
+    }
+
+    private class FileOperationHost extends HostBase implements FileOperationController.Host {
+        @Override
+        public boolean isSshExecutionMode() {
+            return MainCoordinator.this.isSshExecutionMode();
+        }
+
+        @Override
+        public boolean isTerminalProviderExecutionMode() {
+            return MainCoordinator.this.isTerminalProviderExecutionMode();
+        }
+
+        @Override
+        public void showInputDialog(String title, String message, String initialValue, String actionId) {
+            if (view != null) {
+                view.showInputDialog(title, message, initialValue, actionId);
+            }
+        }
+
+        @Override
+        public void showConfirmationDialog(String title, String message, String confirmLabel, boolean danger, String actionId) {
+            if (view != null) {
+                view.showConfirmationDialog(title, message, confirmLabel, danger, actionId);
+            }
+        }
+
+        @Override
+        public void showFileActionDialog(String title, String subtitle, ArrayList<SheetOption> options) {
+            if (view != null) {
+                view.showFileActionDialog(title, subtitle, options);
+            }
+        }
+
+        @Override
+        public void addExpandedPath(String path) {
+            fileTreeInteractionController.addExpandedPath(path);
+        }
+
+        @Override
+        public void refreshSshDirectoryAfterFileOperation(String path) {
+            sshFileTreeController.refreshDirectoryAfterFileOperation(path);
+        }
+
+        @Override
+        public void refreshIpcDirectoryAfterFileOperation(String path) {
+            ipcFileTreeController.refreshDirectoryAfterFileOperation(path);
+        }
+
+        @Override
+        public void showNotice(String text) {
+            MainCoordinator.this.showNotice(text);
+        }
+
+        FileOperationHost() {
+            super(MainCoordinator.this);
+        }
+    }
+
+    private class LineCodeArchiveHost implements LineCodeArchiveController.Host {
+        @Override
+        public void openExportPicker(String fileName) {
+            if (view != null) {
+                view.openLineCodeExportPicker(fileName);
+            }
+        }
+
+        @Override
+        public void persistBeforeExport() {
+            persistCurrentConversation();
+        }
+
+        @Override
+        public void openImportPicker() {
+            if (view != null) {
+                view.openLineCodeImportPicker();
+            }
+        }
+
+        @Override
+        public void showImportConfirmation(String sourceName) {
+            if (view != null) {
+                view.showConfirmationDialog(
+                        "覆盖导入 .linecode",
+                        "将从「" + sourceName + "」恢复数据库、聊天记录、配置和 .linecode 工作区文件。当前本机数据会被覆盖。",
+                        context.getString(R.string.common_confirm),
+                        true,
+                        "data:import_linecode"
+                );
+            }
+        }
+
+        @Override
+        public void beforeImport() {
+            generationLifecycleController.cancelActiveGeneration();
+            chatSessionStore.setStreaming(false);
+            generationLifecycleController.stopKeepAlive();
+        }
+
+        @Override
+        public void afterImport() {
+            reloadAfterLineCodeImport();
+        }
+
+        @Override
+        public void showNotice(String text) {
+            MainCoordinator.this.showNotice(text);
+        }
+    }
+
+    private class DirectoryPickerHost implements DirectoryPickerController.Host {
+        @Override
+        public boolean isViewAttached() {
+            return view != null;
+        }
+
+        @Override
+        public String projectPath() {
+            return projectState.path();
+        }
+
+        @Override
+        public boolean isTermuxSshHost() {
+            return MainCoordinator.this.isTermuxSshHost();
+        }
+
+        @Override
+        public void applySelectedProject(String path, boolean ssh) {
+            projectWorkspaceController.applyDirectoryPickerProject(path, ssh);
+        }
+
+        @Override
+        public void hideDirectoryPicker() {
+            if (view != null) {
+                view.hideDirectoryPicker();
+            }
+        }
+
+        @Override
+        public void showDirectoryPicker(
+                String title,
+                String subtitle,
+                FileTreeNode tree,
+                String selectedPath,
+                boolean loading,
+                String message
+        ) {
+            if (view != null) {
+                view.showDirectoryPicker(title, subtitle, tree, selectedPath, loading, message);
+            }
+        }
+
+        @Override
+        public void render() {
+            MainCoordinator.this.render();
+        }
+    }
+
+    private class ContextCompactionHost implements ContextCompactionController.Host {
+        @Override
+        public String nextId() {
+            return MainCoordinator.this.nextId();
+        }
+
+        @Override
+        public void persistCurrentConversation() {
+            MainCoordinator.this.persistCurrentConversation();
+        }
+
+        @Override
+        public void render() {
+            MainCoordinator.this.render();
+        }
+
+        @Override
+        public void showNotice(String message) {
+            MainCoordinator.this.showNotice(message);
+        }
+
+        @Override
+        public void startInitialModelRequest(
+                int generationId,
+                ModelConfig selectedModel,
+                ModelCancellationToken cancellationToken,
+                String userInput
+        ) {
+            generationFlowController.startInitialModelRequest(generationId, selectedModel, cancellationToken, userInput);
+        }
+
+        @Override
+        public void startGenerationKeepAlive() {
+            generationLifecycleController.startKeepAlive();
+        }
+
+        @Override
+        public void stopGenerationKeepAlive() {
+            generationLifecycleController.stopKeepAlive();
+        }
+
+        @Override
+        public void setCurrentCancellationToken(ModelCancellationToken cancellationToken) {
+            generationLifecycleController.setCurrentCancellationToken(cancellationToken);
+        }
+
+        @Override
+        public ModelCancellationToken currentCancellationToken() {
+            return generationLifecycleController.currentCancellationToken();
+        }
+
+        @Override
+        public void showSheet(String title, List<SheetOption> options) {
+            if (view != null) {
+                view.showSheet(title, new ArrayList<>(options));
+            }
+        }
+    }
+
+    private class GenerationFlowHost implements GenerationFlowController.Host {
+        @Override
+        public String nextId() {
+            return MainCoordinator.this.nextId();
+        }
+
+        @Override
+        public String projectPath() {
+            return projectState.path();
+        }
+
+        @Override
+        public String projectSource() {
+            return projectState.source();
+        }
+
+        @Override
+        public String currentConversationId() {
+            return chatSessionStore.getCurrentConversationId();
+        }
+
+        @Override
+        public String syncModePermission() {
+            return MainCoordinator.this.syncModePermission();
+        }
+
+        @Override
+        public void persistCurrentConversation() {
+            MainCoordinator.this.persistCurrentConversation();
+        }
+
+        @Override
+        public void render() {
+            MainCoordinator.this.render();
+        }
+
+        @Override
+        public void stopGenerationKeepAlive() {
+            generationLifecycleController.stopKeepAlive();
+        }
+
+        @Override
+        public void setCurrentCancellationToken(ModelCancellationToken cancellationToken) {
+            generationLifecycleController.setCurrentCancellationToken(cancellationToken);
+        }
+
+        @Override
+        public boolean isSshExecutionMode() {
+            return MainCoordinator.this.isSshExecutionMode();
+        }
+
+        @Override
+        public boolean isTerminalProviderExecutionMode() {
+            return MainCoordinator.this.isTerminalProviderExecutionMode();
+        }
+    }
+
+    private class OverlayActionHost implements OverlayActionController.Host {
+        @Override
+        public boolean isViewAttached() {
+            return view != null;
+        }
+
+        @Override
+        public void showSheet(String title, ArrayList<SheetOption> options) {
+            if (view != null) {
+                view.showSheet(title, options);
+            }
+        }
+
+        @Override
+        public void hideOverlays() {
+            viewHideOverlays();
+        }
+
+        @Override
+        public void showScreen(String screenId) {
+            MainCoordinator.this.showScreen(screenId);
+        }
+
+        @Override
+        public void render() {
+            MainCoordinator.this.render();
+        }
+    }
+
+    private class AttachmentPickerHost implements AttachmentPickerCoordinator.Host {
+        @Override
+        public boolean isStreaming() {
+            return chatSessionStore.isStreaming();
+        }
+
+        @Override
+        public boolean isSshExecutionMode() {
+            return MainCoordinator.this.isSshExecutionMode();
+        }
+
+        @Override
+        public boolean isTerminalProviderExecutionMode() {
+            return MainCoordinator.this.isTerminalProviderExecutionMode();
+        }
+
+        @Override
+        public String projectPath() {
+            return projectState.path();
+        }
+
+        @Override
+        public String defaultHomePath() {
+            return projectRepository.getDefaultHomePath();
+        }
+
+        @Override
+        public boolean isViewAttached() {
+            return view != null;
+        }
+
+        @Override
+        public void showAttachmentPicker(String title, FileTreeNode tree, boolean loading, String message, String source) {
+            if (view != null) {
+                view.showAttachmentPicker(title, tree, loading, message, source);
+            }
+        }
     }
 }

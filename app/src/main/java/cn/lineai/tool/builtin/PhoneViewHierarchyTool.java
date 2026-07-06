@@ -13,6 +13,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class PhoneViewHierarchyTool extends BaseTool {
+    public static final String NAME = "phone_view_hierarchy";
     private final Context context;
 
     public PhoneViewHierarchyTool(Context context) {
@@ -21,7 +22,7 @@ public final class PhoneViewHierarchyTool extends BaseTool {
 
     @Override
     public String getName() {
-        return "phone_view_hierarchy";
+        return NAME;
     }
 
     @Override

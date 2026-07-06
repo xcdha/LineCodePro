@@ -13,11 +13,12 @@ import java.util.regex.Pattern;
 import org.json.JSONObject;
 
 public final class GlobTool extends BaseTool {
+    public static final String NAME = "glob";
     private static final int MAX_RESULTS = 1000;
 
     @Override
     public String getName() {
-        return "glob";
+        return NAME;
     }
 
     @Override

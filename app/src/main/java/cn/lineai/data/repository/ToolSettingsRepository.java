@@ -5,11 +5,34 @@ import cn.lineai.model.ChatMode;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.McpToolConfig;
 import cn.lineai.model.WebSearchConfig;
+import cn.lineai.ai.prompt.ToolPromptRenderer;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.PermissionResult;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolRegistry;
+import cn.lineai.tool.builtin.FileDeleteTool;
+import cn.lineai.tool.builtin.FileEditTool;
+import cn.lineai.tool.builtin.FileReadTool;
+import cn.lineai.tool.builtin.FileWriteTool;
+import cn.lineai.tool.builtin.GlobTool;
+import cn.lineai.tool.builtin.HttpServerTool;
+import cn.lineai.tool.builtin.ListDirectoryTool;
+import cn.lineai.tool.builtin.ImageGenerationTool;
+import cn.lineai.tool.builtin.ImageUnderstandingTool;
+import cn.lineai.tool.builtin.PhoneClickTool;
+import cn.lineai.tool.builtin.PhoneClickViewTool;
+import cn.lineai.tool.builtin.PhoneGlobalActionTool;
+import cn.lineai.tool.builtin.PhoneLongPressTool;
+import cn.lineai.tool.builtin.PhoneScreenshotTool;
+import cn.lineai.tool.builtin.PhoneSwipeTool;
+import cn.lineai.tool.builtin.PhoneViewHierarchyTool;
+import cn.lineai.tool.builtin.ShellExecuteTool;
+import cn.lineai.tool.builtin.AgentTool;
+import cn.lineai.tool.builtin.AgentPipelineTool;
+import cn.lineai.tool.builtin.TodoUpdateTool;
+import cn.lineai.tool.builtin.WebFetchTool;
+import cn.lineai.tool.builtin.WebSearchTool;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -25,13 +48,13 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     private static final Map<String, String> PHONE_CONTROL_TOOL_PERMISSION_MAP;
     static {
         Map<String, String> map = new LinkedHashMap<>();
-        map.put("phone_screenshot", PhoneControlRepository.PERMISSION_SCREENSHOT);
-        map.put("phone_click", PhoneControlRepository.PERMISSION_CLICK);
-        map.put("phone_swipe", PhoneControlRepository.PERMISSION_SWIPE);
-        map.put("phone_long_press", PhoneControlRepository.PERMISSION_LONG_PRESS);
-        map.put("phone_view_hierarchy", PhoneControlRepository.PERMISSION_VIEW_HIERARCHY);
-        map.put("phone_click_view", PhoneControlRepository.PERMISSION_VIEW_ACTION);
-        map.put("phone_global_action", PhoneControlRepository.PERMISSION_GLOBAL_ACTION);
+        map.put(PhoneScreenshotTool.NAME, PhoneControlRepository.PERMISSION_SCREENSHOT);
+        map.put(PhoneClickTool.NAME, PhoneControlRepository.PERMISSION_CLICK);
+        map.put(PhoneSwipeTool.NAME, PhoneControlRepository.PERMISSION_SWIPE);
+        map.put(PhoneLongPressTool.NAME, PhoneControlRepository.PERMISSION_LONG_PRESS);
+        map.put(PhoneViewHierarchyTool.NAME, PhoneControlRepository.PERMISSION_VIEW_HIERARCHY);
+        map.put(PhoneClickViewTool.NAME, PhoneControlRepository.PERMISSION_VIEW_ACTION);
+        map.put(PhoneGlobalActionTool.NAME, PhoneControlRepository.PERMISSION_GLOBAL_ACTION);
         PHONE_CONTROL_TOOL_PERMISSION_MAP = java.util.Collections.unmodifiableMap(map);
     }
 
@@ -41,42 +64,47 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
 
     private static final McpToolConfig[] DEFAULT_CONFIGS = new McpToolConfig[] {
             new McpToolConfig("file_ops", "文件操作", "读取、写入、编辑和删除文件", true,
-                    new String[] {"file_read", "file_write", "file_edit", "file_delete", "glob", "list_dir"},
+                    new String[] {FileReadTool.NAME, FileWriteTool.NAME, FileEditTool.NAME, FileDeleteTool.NAME, GlobTool.NAME, ListDirectoryTool.NAME},
                     MODE_LOCAL),
-            new McpToolConfig("http_server", "HTTP 服务器", "启动本地 HTTP 文件服务器", true,
-                    new String[] {"http_server"},
+            new McpToolConfig(HttpServerTool.NAME, "HTTP 服务器", "启动本地 HTTP 文件服务器", true,
+                    new String[] {HttpServerTool.NAME},
                     MODE_LOCAL),
-            new McpToolConfig("agent", "Agent", "分派 Agent 处理任务", true,
-                    new String[] {"agent", "agent_pipeline"},
+            new McpToolConfig(AgentTool.NAME, "Agent", "分派 Agent 处理任务", true,
+                    new String[] {AgentTool.NAME, AgentPipelineTool.NAME},
                     MODE_ALL),
             new McpToolConfig("phone_control", "手机控制", "通过无障碍服务控制本机操作", true,
-                    new String[] {"phone_screenshot", "phone_click", "phone_swipe", "phone_long_press", "phone_view_hierarchy", "phone_click_view", "phone_global_action"},
+                    new String[] {PhoneScreenshotTool.NAME, PhoneClickTool.NAME, PhoneSwipeTool.NAME, PhoneLongPressTool.NAME, PhoneViewHierarchyTool.NAME, PhoneClickViewTool.NAME, PhoneGlobalActionTool.NAME},
                     MODE_LOCAL),
             new McpToolConfig("todo", "任务清单", "维护当前会话的 TODO 列表，状态会注入到 system prompt", true,
-                    new String[] {"todo_update"},
+                    new String[] {TodoUpdateTool.NAME},
                     MODE_ALL),
-            new McpToolConfig("image_understanding", "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,
-                    new String[] {"image_understanding"},
+            new McpToolConfig(ImageUnderstandingTool.NAME, "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,
+                    new String[] {ImageUnderstandingTool.NAME},
                     MODE_ALL),
-            new McpToolConfig("image_generation", "图片生成", "调用已选择的生图模型生成图片，并以内联 Markdown 图片返回", false,
-                    new String[] {"image_generation"},
+            new McpToolConfig(ImageGenerationTool.NAME, "图片生成", "调用已选择的生图模型生成图片，并以内联 Markdown 图片返回", false,
+                    new String[] {ImageGenerationTool.NAME},
                     MODE_ALL),
             new McpToolConfig("shell", "SSH Shell", "通过 SSH 执行 shell 命令", true,
-                    new String[] {"shell_execute"},
+                    new String[] {ShellExecuteTool.NAME},
                     MODE_REMOTE),
-            new McpToolConfig("web_search", "网页搜索", "搜索互联网并查看网页内容", false,
-                    new String[] {"web_search", "web_fetch"},
+            new McpToolConfig(WebSearchTool.NAME, "网页搜索", "搜索互联网并查看网页内容", false,
+                    new String[] {WebSearchTool.NAME, WebFetchTool.NAME},
                     MODE_ALL)
     };
 
     private final SettingsRepository settingsRepository;
     private final WebSearchConfigRepository webSearchConfigRepository;
     private final PhoneControlRepository phoneControlRepository;
+    private ToolRegistry toolRegistry;
 
     public ToolSettingsRepository(Context context) {
         settingsRepository = new SettingsRepository(context);
         webSearchConfigRepository = new WebSearchConfigRepository(context);
         phoneControlRepository = new PhoneControlRepository(context);
+    }
+
+    public void setToolRegistry(ToolRegistry toolRegistry) {
+        this.toolRegistry = toolRegistry;
     }
 
     @Override
@@ -272,8 +300,15 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
 
     @Override
     public synchronized boolean needsConfirmation(String toolName) {
-        if ("file_delete".equals(toolName) || "shell_execute".equals(toolName)) {
-            return true;
+        if (toolRegistry != null) {
+            BaseTool tool = toolRegistry.get(toolName);
+            if (tool != null && tool.needsConfirmation()) {
+                return true;
+            }
+        } else {
+            if (FileDeleteTool.NAME.equals(toolName) || ShellExecuteTool.NAME.equals(toolName)) {
+                return true;
+            }
         }
         return PERMISSION_CONFIRM.equals(getPermissionMode());
     }
@@ -390,7 +425,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     }
 
     static boolean isReadonlyAlwaysAllowed(String toolName) {
-        return "todo_update".equals(toolName);
+        return TodoUpdateTool.NAME.equals(toolName);
     }
 
     static boolean isReadonlyToolAllowedForMode(String executionMode, String toolName, ToolCategory category) {
@@ -400,9 +435,9 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
         if (!EXECUTION_SSH.equals(executionMode) && !EXECUTION_TERMINAL_PROVIDER.equals(executionMode)) {
             return false;
         }
-        return "shell_execute".equals(toolName)
-                || "agent".equals(toolName)
-                || "agent_pipeline".equals(toolName);
+        return ShellExecuteTool.NAME.equals(toolName)
+                || AgentTool.NAME.equals(toolName)
+                || AgentPipelineTool.NAME.equals(toolName);
     }
 
     private boolean isEnabledExtensionTool(String toolName, ToolCategory category) {

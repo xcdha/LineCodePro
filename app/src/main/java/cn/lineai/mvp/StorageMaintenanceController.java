@@ -21,6 +21,8 @@ final class StorageMaintenanceController {
     private final ArrayList<ChatMessage> messages;
     private final ChatSessionStore chatSessionStore;
     private final ConversationStore conversationRepository;
+    private final KeepAliveRepository keepAliveRepository;
+    private final StorageStatsRepository storageStatsRepository;
     private final Host host;
 
     StorageMaintenanceController(
@@ -28,23 +30,27 @@ final class StorageMaintenanceController {
             ArrayList<ChatMessage> messages,
             ChatSessionStore chatSessionStore,
             ConversationStore conversationRepository,
+            KeepAliveRepository keepAliveRepository,
+            StorageStatsRepository storageStatsRepository,
             Host host
     ) {
         this.context = context;
         this.messages = messages;
         this.chatSessionStore = chatSessionStore;
         this.conversationRepository = conversationRepository;
+        this.keepAliveRepository = keepAliveRepository;
+        this.storageStatsRepository = storageStatsRepository;
         this.host = host;
     }
 
     void clearDiffCache() {
-        new StorageStatsRepository(context).clearDiffCache();
+        storageStatsRepository.clearDiffCache();
         host.refreshStorageScreen();
         host.render();
     }
 
     void clearChatHistory() {
-        new StorageStatsRepository(context).clearChatHistory();
+        storageStatsRepository.clearChatHistory();
         messages.clear();
         chatSessionStore.clearCurrentConversation();
         conversationRepository.clearAll();
@@ -54,7 +60,7 @@ final class StorageMaintenanceController {
     }
 
     void applyKeepAliveSettings() {
-        KeepAliveRepository.KeepAliveSettings settings = new KeepAliveRepository(context).getSettings();
+        KeepAliveRepository.KeepAliveSettings settings = keepAliveRepository.getSettings();
         if (settings.wakeLockEnabled || settings.foregroundEnabled || settings.fakeAudioEnabled) {
             KeepAliveService.start(context,
                     settings.wakeLockEnabled,

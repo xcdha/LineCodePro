@@ -1,6 +1,5 @@
 package cn.lineai.context;
 
-import android.content.Context;
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.ai.ModelClient;
 import cn.lineai.ai.ModelCompletionException;
@@ -11,6 +10,7 @@ import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.ai.message.SystemModelMessage;
 import cn.lineai.ai.message.ToolModelMessage;
 import cn.lineai.ai.message.UserModelMessage;
+import cn.lineai.ai.prompt.StringTemplate;
 import cn.lineai.ai.protocol.CodexResponsesProtocol;
 import cn.lineai.ai.protocol.OpenAiResponsesCompactionProtocol;
 import cn.lineai.data.repository.PromptTemplateRepository;
@@ -22,6 +22,7 @@ import cn.lineai.model.ModelProtocolType;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCall;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -37,25 +38,16 @@ public final class ContextCompactionService {
     private final CodexResponsesProtocol responsesSummaryProtocol;
     private final PromptTemplateRepository promptTemplateRepository;
 
-    public ContextCompactionService(Context context) {
-        this(context, new ModelClient(), new OpenAiResponsesCompactionProtocol(), new CodexResponsesProtocol(),
-                new PromptTemplateRepository(context));
-    }
-
     public ContextCompactionService(
-            Context context,
             ModelClient modelClient,
             OpenAiResponsesCompactionProtocol responsesCompactionProtocol,
             CodexResponsesProtocol responsesSummaryProtocol,
             PromptTemplateRepository promptTemplateRepository
     ) {
-        Context appContext = context.getApplicationContext();
         this.modelClient = modelClient;
         this.responsesCompactionProtocol = responsesCompactionProtocol;
         this.responsesSummaryProtocol = responsesSummaryProtocol;
-        this.promptTemplateRepository = promptTemplateRepository == null
-                ? new PromptTemplateRepository(appContext)
-                : promptTemplateRepository;
+        this.promptTemplateRepository = promptTemplateRepository;
     }
 
     public ContextCompactionResult compact(
@@ -220,16 +212,16 @@ public final class ContextCompactionService {
 
     public String createCompactSummaryContent(String summary) {
         String formatted = formatCompactSummary(summary);
-        return "This session is being continued from a previous conversation that ran out of context. "
-                + "The summary below covers the earlier portion of the conversation.\n\n"
-                + formatted
-                + "\n\nContinue the conversation from where it left off without asking the user any further questions. Resume directly.";
+        String template = promptTemplateRepository.getTemplateText(
+                PromptTemplateRepository.ID_CONTEXT_COMPACTION_SUMMARY_PREFIX);
+        HashMap<String, String> values = new HashMap<>();
+        values.put("SUMMARY", formatted);
+        return new StringTemplate(template).render(values);
     }
 
     private String createResponsesCompactFallbackContent() {
-        return "This session is being continued from a previous conversation that ran out of context. "
-                + "The earlier portion of the conversation has been compacted by the OpenAI Responses compact API. "
-                + "Continue the conversation from where it left off without asking the user any further questions. Resume directly.";
+        return promptTemplateRepository.getTemplateText(
+                PromptTemplateRepository.ID_CONTEXT_COMPACTION_RESPONSES_FALLBACK);
     }
 
     private String formatCompactSummary(String summary) {

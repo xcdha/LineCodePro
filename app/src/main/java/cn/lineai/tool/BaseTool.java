@@ -11,7 +11,19 @@ public abstract class BaseTool {
     public abstract ToolCategory getCategory();
 
     public boolean requiresConfirmation() {
+        return needsConfirmation();
+    }
+
+    public boolean needsConfirmation() {
         return false;
+    }
+
+    public boolean isAllowedInReadonlyMode() {
+        return false;
+    }
+
+    public String promptSupplement(String executionMode, boolean isSsh) {
+        return null;
     }
 
     public abstract JSONObject getParameters() throws org.json.JSONException;

@@ -1,6 +1,13 @@
 package cn.lineai.ai;
 
 import cn.lineai.tool.ToolCall;
+import cn.lineai.tool.builtin.FileDeleteTool;
+import cn.lineai.tool.builtin.FileEditTool;
+import cn.lineai.tool.builtin.FileReadTool;
+import cn.lineai.tool.builtin.FileWriteTool;
+import cn.lineai.tool.builtin.GlobTool;
+import cn.lineai.tool.builtin.ListDirectoryTool;
+import cn.lineai.tool.builtin.ShellExecuteTool;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -250,13 +257,13 @@ public final class ToolCallTextParser {
             return "";
         }
         String compact = name.replace("-", "").replace("_", "").toLowerCase(java.util.Locale.ROOT);
-        if ("filewrite".equals(compact) || "writefile".equals(compact)) return "file_write";
-        if ("fileread".equals(compact) || "readfile".equals(compact)) return "file_read";
-        if ("fileedit".equals(compact) || "editfile".equals(compact)) return "file_edit";
-        if ("filedelete".equals(compact) || "deletefile".equals(compact)) return "file_delete";
-        if ("listdir".equals(compact) || "listdirectory".equals(compact)) return "list_dir";
-        if ("glob".equals(compact) || "filesearch".equals(compact) || "searchfile".equals(compact)) return "glob";
-        if ("shellexecute".equals(compact) || "shell".equals(compact)) return "shell_execute";
+        if ("filewrite".equals(compact) || "writefile".equals(compact)) return FileWriteTool.NAME;
+        if ("fileread".equals(compact) || "readfile".equals(compact)) return FileReadTool.NAME;
+        if ("fileedit".equals(compact) || "editfile".equals(compact)) return FileEditTool.NAME;
+        if ("filedelete".equals(compact) || "deletefile".equals(compact)) return FileDeleteTool.NAME;
+        if ("listdir".equals(compact) || "listdirectory".equals(compact)) return ListDirectoryTool.NAME;
+        if ("glob".equals(compact) || "filesearch".equals(compact) || "searchfile".equals(compact)) return GlobTool.NAME;
+        if ("shellexecute".equals(compact) || "shell".equals(compact)) return ShellExecuteTool.NAME;
         return name;
     }
 

@@ -13,6 +13,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class PhoneGlobalActionTool extends BaseTool {
+    public static final String NAME = "phone_global_action";
     private final Context context;
 
     public PhoneGlobalActionTool(Context context) {
@@ -21,7 +22,7 @@ public final class PhoneGlobalActionTool extends BaseTool {
 
     @Override
     public String getName() {
-        return "phone_global_action";
+        return NAME;
     }
 
     @Override

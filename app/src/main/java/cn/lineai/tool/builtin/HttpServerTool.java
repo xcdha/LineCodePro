@@ -24,11 +24,12 @@ import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 
 public final class HttpServerTool extends BaseTool {
+    public static final String NAME = "http_server";
     private static SimpleFileServer activeServer;
 
     @Override
     public String getName() {
-        return "http_server";
+        return NAME;
     }
 
     @Override

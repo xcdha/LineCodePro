@@ -13,6 +13,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class PhoneLongPressTool extends BaseTool {
+    public static final String NAME = "phone_long_press";
     private final Context context;
 
     public PhoneLongPressTool(Context context) {
@@ -21,7 +22,7 @@ public final class PhoneLongPressTool extends BaseTool {
 
     @Override
     public String getName() {
-        return "phone_long_press";
+        return NAME;
     }
 
     @Override

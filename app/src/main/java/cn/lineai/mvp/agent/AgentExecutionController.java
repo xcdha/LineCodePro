@@ -29,11 +29,17 @@ import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolRegistry;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.tool.builtin.AgentTool;
+import cn.lineai.tool.builtin.AgentPipelineTool;
+import cn.lineai.tool.builtin.FileDeleteTool;
+import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileToolPathPolicy;
+import cn.lineai.tool.builtin.FileWriteTool;
+import cn.lineai.tool.builtin.HttpServerTool;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -129,10 +135,10 @@ public final class AgentExecutionController {
             int usedToolCallCount
     ) {
         if (selectedModel == null) {
-            return new ToolResult("", "agent", "当前没有可用模型，无法运行 Agent。", true);
+            return new ToolResult("", AgentTool.NAME, "当前没有可用模型，无法运行 Agent。", true);
         }
         if (cancellationToken != null && cancellationToken.isCancelled()) {
-            return new ToolResult("", "agent", AGENT_TERMINATED_MESSAGE, true);
+            return new ToolResult("", AgentTool.NAME, AGENT_TERMINATED_MESSAGE, true);
         }
         String type = AgentTool.normalizeType(input.optString("type"));
         String description = input.optString("description").trim();
@@ -145,7 +151,7 @@ public final class AgentExecutionController {
         AgentProgressSession progress = new AgentProgressSession(
                 generationId,
                 parentContext == null ? "" : parentContext.getToolCallId(),
-                "agent",
+                AgentTool.NAME,
                 type,
                 description
         );
@@ -174,7 +180,7 @@ public final class AgentExecutionController {
         progress.setFinished(result.isError() ? "error" : "done", result.isError(), builder.toString().trim());
         host.addOrReplaceToolResult(progress.snapshotResult());
         host.render();
-        return new ToolResult("", "agent", progress.snapshotResult().getContent(), result.isError());
+        return new ToolResult("", AgentTool.NAME, progress.snapshotResult().getContent(), result.isError());
     }
 
     public ToolResult runAgentPipelineTool(
@@ -187,22 +193,22 @@ public final class AgentExecutionController {
             int usedToolCallCount
     ) {
         if (selectedModel == null) {
-            return new ToolResult("", "agent_pipeline", "当前没有可用模型，无法运行 Agent 流水线。", true);
+            return new ToolResult("", AgentPipelineTool.NAME, "当前没有可用模型，无法运行 Agent 流水线。", true);
         }
         if (cancellationToken != null && cancellationToken.isCancelled()) {
-            return new ToolResult("", "agent_pipeline", AGENT_TERMINATED_MESSAGE, true);
+            return new ToolResult("", AgentPipelineTool.NAME, AGENT_TERMINATED_MESSAGE, true);
         }
         ArrayList<PipelineAgent> agents = parsePipelineAgents(input.optJSONArray("agents"));
         if (agents.isEmpty()) {
-            return new ToolResult("", "agent_pipeline", "agent_pipeline.agents 不能为空。", true);
+            return new ToolResult("", AgentPipelineTool.NAME, "agent_pipeline.agents 不能为空。", true);
         }
         String dependencyError = validatePipelineDependencies(agents);
         if (dependencyError.length() > 0) {
-            return new ToolResult("", "agent_pipeline", dependencyError, true);
+            return new ToolResult("", AgentPipelineTool.NAME, dependencyError, true);
         }
         ArrayList<ArrayList<PipelineAgent>> levels = dependencyLevels(agents);
         if (levels.isEmpty()) {
-            return new ToolResult("", "agent_pipeline", "Agent 流水线存在循环依赖或重复 id，无法执行。", true);
+            return new ToolResult("", AgentPipelineTool.NAME, "Agent 流水线存在循环依赖或重复 id，无法执行。", true);
         }
 
         LinkedHashMap<String, AgentRunResult> results = new LinkedHashMap<>();
@@ -260,7 +266,7 @@ public final class AgentExecutionController {
                 AgentProgressSession agentProgress = new AgentProgressSession(
                         generationId,
                         "",
-                        "agent",
+                        AgentTool.NAME,
                         agent.getType(),
                         agent.getDescription(),
                         (payload, progressError) -> pipelineProgress.updateAgent(agent, payload, progressError)
@@ -318,11 +324,11 @@ public final class AgentExecutionController {
     ) {
         String toolCallId = parentContext == null ? "" : parentContext.getToolCallId();
         if (toolCallId.length() == 0) {
-            return new ToolResult("", "agent_pipeline", summary, error);
+            return new ToolResult("", AgentPipelineTool.NAME, summary, error);
         }
         return new ToolResult(
                 toolCallId,
-                "agent_pipeline",
+                AgentPipelineTool.NAME,
                 pipelineProgress.payload(),
                 error,
                 "",
@@ -505,7 +511,7 @@ public final class AgentExecutionController {
 
     public boolean isAgentToolAllowed(BaseTool tool, String type, Set<String> customToolNames, Set<String> allowedMcpToolNames) {
         String name = tool.getName();
-        if ("agent".equals(name) || "agent_pipeline".equals(name)) {
+        if (AgentTool.NAME.equals(name) || AgentPipelineTool.NAME.equals(name)) {
             return false;
         }
         if (!allowedMcpToolNames.isEmpty() && allowedMcpToolNames.contains(name)) {
@@ -517,18 +523,19 @@ public final class AgentExecutionController {
         if (isRemoteExecutionMode()) {
             return true;
         }
-        if ("file_delete".equals(name)) {
+        if (tool.needsConfirmation() && tool.getCategory() == ToolCategory.WRITE
+                && tool.getDisplayCategory() == ToolDisplayCategory.DELETE) {
             return false;
         }
         if (AgentTool.TYPE_EXPLORE.equals(type)) {
             return tool.getCategory() == ToolCategory.READ;
         }
-        if ("shell_execute".equals(name)) {
+        if (tool.isAllowedInReadonlyMode()) {
             return true;
         }
         return tool.getCategory() == ToolCategory.READ
                 || tool.getCategory() == ToolCategory.WRITE
-                || "http_server".equals(name);
+                || HttpServerTool.NAME.equals(name);
     }
 
     private boolean isRemoteExecutionMode() {
@@ -649,7 +656,7 @@ public final class AgentExecutionController {
                 && tool.requiresConfirmation()
                 && !toolReviewAwaiter.isAutoConfirmed(call)
                 && toolSettingsRepository.canExecuteTool(tool.getName(), tool.getCategory()).isAllowed()
-                && ("file_delete".equals(tool.getName()) || toolSettingsRepository.needsConfirmation(tool.getName()));
+                && (FileDeleteTool.NAME.equals(tool.getName()) || toolSettingsRepository.needsConfirmation(tool.getName()));
     }
 
     public String agentSystemPrompt(
@@ -786,7 +793,13 @@ public final class AgentExecutionController {
     }
 
     public boolean isFileWriteTool(String name) {
-        return "file_write".equals(name) || "file_edit".equals(name);
+        BaseTool tool = toolRegistry != null ? toolRegistry.get(name) : null;
+        if (tool != null) {
+            return tool.getCategory() == ToolCategory.WRITE
+                    && (tool.getDisplayCategory() == ToolDisplayCategory.WRITE
+                        || tool.getDisplayCategory() == ToolDisplayCategory.DELETE);
+        }
+        return FileWriteTool.NAME.equals(name) || FileEditTool.NAME.equals(name);
     }
 
     public boolean isInsidePath(File root, File target) throws java.io.IOException {

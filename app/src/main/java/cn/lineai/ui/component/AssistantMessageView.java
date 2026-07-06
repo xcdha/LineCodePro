@@ -234,7 +234,7 @@ public final class AssistantMessageView extends LinearLayout {
 
     private boolean isHiddenSuccessfulImageGeneration(ToolCall call, ToolResult result) {
         return call != null
-                && "image_generation".equals(call.getName())
+                && cn.lineai.tool.builtin.ImageGenerationTool.NAME.equals(call.getName())
                 && result != null
                 && !result.isError()
                 && result.getContent().trim().length() > 0

@@ -179,7 +179,7 @@ public final class ToolCallShellView extends BaseToolCallView implements ToolCal
 
         int headerColor = error ? LineTheme.DANGER : streaming ? LineTheme.ACCENT : LineTheme.TEXT_TERTIARY;
         terminalIcon.setIconColor(headerColor);
-        commandView.setText(command.length() == 0 ? "shell_execute" : command);
+        commandView.setText(command.length() == 0 ? cn.lineai.tool.builtin.ShellExecuteTool.NAME : command);
         commandView.setTextColor(headerColor);
         progressBar.setVisibility(streaming ? VISIBLE : GONE);
         viewCommandButton.setVisibility(command.length() > 0 ? VISIBLE : GONE);

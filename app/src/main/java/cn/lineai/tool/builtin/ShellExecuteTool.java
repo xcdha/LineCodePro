@@ -18,8 +18,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class ShellExecuteTool extends BaseTool {
+    public static final String NAME = "shell_execute";
     private final SshService sshService;
-    private final ToolSettingsStore settingsRepository;
     private final IpcProviderManager ipcProviderManager;
 
     public ShellExecuteTool(Context context) {
@@ -28,13 +28,12 @@ public final class ShellExecuteTool extends BaseTool {
 
     public ShellExecuteTool(Context context, IpcProviderManager ipcProviderManager) {
         sshService = context == null ? null : new SshService(context);
-        settingsRepository = context == null ? null : new ToolSettingsRepository(context);
         this.ipcProviderManager = ipcProviderManager;
     }
 
     @Override
     public String getName() {
-        return "shell_execute";
+        return NAME;
     }
 
     @Override
@@ -55,6 +54,24 @@ public final class ShellExecuteTool extends BaseTool {
     @Override
     public boolean requiresConfirmation() {
         return true;
+    }
+
+    @Override
+    public boolean needsConfirmation() {
+        return true;
+    }
+
+    @Override
+    public boolean isAllowedInReadonlyMode() {
+        return true;
+    }
+
+    @Override
+    public String promptSupplement(String executionMode, boolean isSsh) {
+        if (isSsh) {
+            return "shell_execute 默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。";
+        }
+        return "shell_execute 通过终端提供者 IPC 执行；默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。";
     }
 
     @Override
@@ -85,15 +102,23 @@ public final class ShellExecuteTool extends BaseTool {
         String cwd = inputCwd.trim().length() > 0
                 ? inputCwd.trim()
                 : context == null ? "" : context.getHomePath().trim();
-        if (isTerminalProviderMode()) {
+        ToolSettingsStore settings = resolveSettings(context);
+        if (isTerminalProviderMode(settings)) {
             return executeViaTerminalProvider(inputCommand, cwd, timeoutMs, context);
         }
         return executeViaSsh(inputCommand, cwd, timeoutMs, context);
     }
 
-    private boolean isTerminalProviderMode() {
-        return settingsRepository != null
-                && ToolSettingsRepository.EXECUTION_TERMINAL_PROVIDER.equals(settingsRepository.getExecutionMode());
+    private ToolSettingsStore resolveSettings(ToolContext context) {
+        if (context != null && context.getToolSettingsStore() != null) {
+            return context.getToolSettingsStore();
+        }
+        return null;
+    }
+
+    private boolean isTerminalProviderMode(ToolSettingsStore settings) {
+        return settings != null
+                && ToolSettingsRepository.EXECUTION_TERMINAL_PROVIDER.equals(settings.getExecutionMode());
     }
 
     private ToolResult executeViaTerminalProvider(String command, String cwd, long timeoutMs, ToolContext context) {

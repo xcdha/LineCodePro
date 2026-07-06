@@ -26,6 +26,7 @@ import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolExecutionCoordinator;
 import cn.lineai.tool.ToolRegistry;
 import cn.lineai.tool.ToolResult;
+import cn.lineai.tool.builtin.ShellExecuteTool;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -39,7 +40,7 @@ import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 
 final class GenerationFlowController {
-    private static final String SHELL_EXECUTE_TOOL = "shell_execute";
+    private static final String SHELL_EXECUTE_TOOL = ShellExecuteTool.NAME;
     private static final String TOOL_REVIEW_SESSION_AUTO = "session_auto";
 
     interface Host {

@@ -24,17 +24,21 @@ import cn.lineai.data.repository.IpcFileTreeRepository;
 import cn.lineai.data.repository.IpcFileTreeStore;
 import cn.lineai.data.repository.IpcProviderRepository;
 import cn.lineai.data.repository.IpcProviderStore;
+import cn.lineai.data.repository.KeepAliveRepository;
 import cn.lineai.data.repository.LearningContextRepository;
 import cn.lineai.data.repository.LearningContextStore;
 import cn.lineai.data.repository.OutputSettingsRepository;
+import cn.lineai.data.repository.PhoneControlRepository;
 import cn.lineai.data.repository.ProjectRepository;
 import cn.lineai.data.repository.ProjectStore;
 import cn.lineai.data.repository.PromptTemplateRepository;
 import cn.lineai.data.repository.SshFileTreeRepository;
 import cn.lineai.data.repository.SshFileTreeStore;
+import cn.lineai.data.repository.StorageStatsRepository;
 import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsStore;
+import cn.lineai.log.ErrorLogRepository;
 import cn.lineai.ipc.IpcProviderManager;
 import cn.lineai.ipc.IpcProviderScanner;
 import cn.lineai.model.ModelRepository;
@@ -96,6 +100,12 @@ public final class MainDependencies {
     final LineCodeArchiveService lineCodeArchiveService;
     final TodoStateStore todoStateStore;
     final ToolCallViewFactoryRegistry toolCallViewFactoryRegistry;
+    final PhoneControlRepository phoneControlRepository;
+    final ErrorLogRepository errorLogRepository;
+    final StorageStatsRepository storageStatsRepository;
+    final KeepAliveRepository keepAliveRepository;
+    final PhoneControlController phoneControlController;
+    final ErrorLogController errorLogController;
 
     public MainDependencies(Context context) {
         this.context = context;
@@ -124,16 +134,18 @@ public final class MainDependencies {
         contextManager = new ContextManager();
         modelClient = new ModelClient();
         contextCompactionService = new ContextCompactionService(
-                context,
                 modelClient,
                 new OpenAiResponsesCompactionProtocol(),
                 new CodexResponsesProtocol(),
                 promptTemplateRepository);
         toolRegistry = new ToolRegistry(context, ipcProviderManager);
+        ((ToolSettingsRepository) toolSettingsRepository).setToolRegistry(toolRegistry);
         cn.lineai.tool.ToolDisplayResolver.setDefault(new cn.lineai.tool.ToolDisplayResolver(toolRegistry));
         toolCallViewFactoryRegistry = createToolCallViewFactoryRegistry();
         cn.lineai.ui.component.toolcall.ToolCallViewFactoryRegistry.setDefault(toolCallViewFactoryRegistry);
-        toolExecutor = new ToolExecutor(toolRegistry, toolSettingsRepository, diffRepository);
+        toolExecutor = new ToolExecutor(toolRegistry, toolSettingsRepository, diffRepository,
+                (ModelStore) modelRepository, sshFileTreeRepository, new cn.lineai.ai.protocol.ModelProtocolFactory(),
+                modelClient, promptTemplateRepository);
         toolExecutionCoordinator = new ToolExecutionCoordinator(toolRegistry);
         systemPromptProvider = new SystemPromptProvider(context, promptTemplateRepository);
         storagePermissionManager = new StoragePermissionManager(context);
@@ -143,6 +155,12 @@ public final class MainDependencies {
         lineCodeArchiveService = new LineCodeArchiveService(context);
         todoStateStore = new TodoStateStore();
         chatModeRepository.initialize(toolSettingsRepository);
+        phoneControlRepository = new PhoneControlRepository(context);
+        errorLogRepository = new ErrorLogRepository(context);
+        storageStatsRepository = new StorageStatsRepository(context);
+        keepAliveRepository = new KeepAliveRepository(context);
+        phoneControlController = new PhoneControlController(phoneControlRepository);
+        errorLogController = new ErrorLogController(errorLogRepository);
     }
 
     private ToolCallViewFactoryRegistry createToolCallViewFactoryRegistry() {

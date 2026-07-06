@@ -56,7 +56,7 @@ final class ImageResponseParser {
             throw new Exception("接口没有返回 b64_json、data_url 或 url。");
         }
         if (context != null) {
-            context.reportToolProgress("image_generation", "正在读取生成图片...", false);
+            context.reportToolProgress(ImageGenerationTool.NAME, "正在读取生成图片...", false);
         }
         ImageApiClient.DownloadedImage downloaded = apiClient.downloadImage(url);
         return new GeneratedImage(downloaded.mimeType,

@@ -11,9 +11,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class FileDeleteTool extends BaseTool {
+    public static final String NAME = "file_delete";
+
     @Override
     public String getName() {
-        return "file_delete";
+        return NAME;
     }
 
     @Override
@@ -33,6 +35,11 @@ public final class FileDeleteTool extends BaseTool {
 
     @Override
     public boolean requiresConfirmation() {
+        return true;
+    }
+
+    @Override
+    public boolean needsConfirmation() {
         return true;
     }
 

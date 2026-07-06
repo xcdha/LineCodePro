@@ -86,6 +86,34 @@ public final class ScreenFactories {
         return null;
     }
 
+    private static cn.lineai.model.ExtensionKindUiModel buildExtensionKindUiModel(
+            Context context, String kind, cn.lineai.model.ExtensionOverviewState state) {
+        cn.lineai.mvp.ExtensionKindDescriptor d = cn.lineai.mvp.ExtensionKindRegistry.getInstance().get(kind);
+        if (d == null) {
+            return null;
+        }
+        java.util.List<cn.lineai.model.ExtensionItemUiModel> items = new java.util.ArrayList<>();
+        java.util.List<cn.lineai.mvp.ExtensionItem> mvpItems = d.getInstalledItems(state);
+        if (mvpItems != null) {
+            for (cn.lineai.mvp.ExtensionItem item : mvpItems) {
+                items.add(new cn.lineai.model.ExtensionItemUiModel(
+                        item.getId(), item.getName(), item.getDescription(), item.isEnabled()));
+            }
+        }
+        return new cn.lineai.model.ExtensionKindUiModel(
+                d.kind(),
+                d.title(context),
+                d.iconType(),
+                d.sectionTitle(context),
+                d.inlineTitle(context),
+                d.inlineDesc(context),
+                d.addActionType(),
+                d.hasModifyAction(),
+                d.emptyMessage(context),
+                items
+        );
+    }
+
     private static View newModelAddScreen(Context context, MainChatView view, MainUiController controller,
                                          ModelProviderPreset preset, boolean local, ModelConfig editingModel) {
         return new ModelAddScreenView(context, preset, local, editingModel, new ModelAddScreenView.Listener() {
@@ -1109,7 +1137,8 @@ public final class ScreenFactories {
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
             String id = currentScreenId(view);
             String kind = id.substring(PREFIX.length());
-            return new ExtensionDetailScreenView(context, kind, controller.getExtensionOverview(), new ExtensionDetailScreenView.Listener() {
+            cn.lineai.model.ExtensionKindUiModel uiModel = buildExtensionKindUiModel(context, kind, controller.getExtensionOverview());
+            return new ExtensionDetailScreenView(context, uiModel, new ExtensionDetailScreenView.Listener() {
                 @Override
                 public void onBack() {
                     view.handleScreenBack();

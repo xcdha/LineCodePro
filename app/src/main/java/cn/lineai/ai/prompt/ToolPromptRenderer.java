@@ -1,5 +1,7 @@
-package cn.lineai.data.repository;
+package cn.lineai.ai.prompt;
 
+import cn.lineai.data.repository.ToolSettingsRepository;
+import cn.lineai.data.repository.ToolSettingsStore;
 import cn.lineai.model.McpToolConfig;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCategory;
@@ -12,7 +14,7 @@ import java.util.Set;
 
 public class ToolPromptRenderer {
 
-    static String renderToolPrompt(
+    public static String renderToolPrompt(
             List<McpToolConfig> configs,
             Set<String> enabled,
             Map<String, BaseTool> toolByName,
@@ -21,7 +23,7 @@ public class ToolPromptRenderer {
         return renderToolPrompt(ToolSettingsStore.EXECUTION_LOCAL, configs, enabled, toolByName, nativeToolProtocol);
     }
 
-    static String renderToolPrompt(
+    public static String renderToolPrompt(
             String executionMode,
             List<McpToolConfig> configs,
             Set<String> enabled,
@@ -140,26 +142,9 @@ public class ToolPromptRenderer {
                     builder.append('\n');
                 }
             }
-            if ("shell".equals(config.getId())) {
-                if (isSsh) {
-                    builder.append("shell_execute 默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。\n");
-                } else {
-                    builder.append("shell_execute 通过终端提供者 IPC 执行；默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。\n");
-                }
-            } else if ("web_search".equals(config.getId())) {
-                if (isSsh) {
-                    builder.append("web_search 和 web_fetch 由应用侧网络配置执行，不依赖 SSH 主机环境。\n");
-                } else {
-                    builder.append("web_search 和 web_fetch 由应用侧网络配置执行，不依赖终端提供者环境。\n");
-                }
-            } else if ("image_understanding".equals(config.getId())) {
-                if (isSsh) {
-                    builder.append("image_understanding 通过 SFTP 读取 SSH 工作区图片，再由应用侧视觉模型配置执行。\n");
-                } else {
-                    builder.append("image_understanding 通过 IPC 读取终端提供者环境图片，再由应用侧视觉模型配置执行。\n");
-                }
-            } else if ("image_generation".equals(config.getId())) {
-                builder.append("image_generation 由应用侧生图模型配置执行，不依赖").append(isSsh ? "SSH 主机环境" : "终端提供者环境").append("；结果会以内联 Markdown 图片返回。\n");
+            String supplement = findToolSupplement(config, executionMode, isSsh, toolByName);
+            if (supplement != null) {
+                builder.append(supplement).append('\n');
             }
             builder.append('\n');
         }
@@ -210,7 +195,7 @@ public class ToolPromptRenderer {
         builder.append('\n');
     }
 
-    static String categoryLabel(ToolCategory category) {
+    public static String categoryLabel(ToolCategory category) {
         if (category == ToolCategory.GENERATE) {
             return "generate";
         }
@@ -221,5 +206,26 @@ public class ToolPromptRenderer {
             return "system";
         }
         return "read";
+    }
+
+    private static String findToolSupplement(
+            McpToolConfig config,
+            String executionMode,
+            boolean isSsh,
+            Map<String, BaseTool> toolByName
+    ) {
+        if (config == null || toolByName == null || toolByName.isEmpty()) {
+            return null;
+        }
+        for (String toolName : config.getTools()) {
+            BaseTool tool = toolByName.get(toolName);
+            if (tool != null) {
+                String supplement = tool.promptSupplement(executionMode, isSsh);
+                if (supplement != null) {
+                    return supplement;
+                }
+            }
+        }
+        return null;
     }
 }

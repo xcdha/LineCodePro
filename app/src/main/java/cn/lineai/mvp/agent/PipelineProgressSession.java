@@ -2,6 +2,7 @@ package cn.lineai.mvp.agent;
 
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolResult;
+import cn.lineai.tool.builtin.AgentPipelineTool;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import org.json.JSONArray;
@@ -111,13 +112,13 @@ public final class PipelineProgressSession {
     public void publish(boolean nextError) {
         String payload = buildPayload();
         if (publisher != null && toolCallId.length() > 0) {
-            publisher.publish(toolCallId, "agent_pipeline", payload, nextError);
+            publisher.publish(toolCallId, AgentPipelineTool.NAME, payload, nextError);
             return;
         }
         if (parentContext == null || toolCallId.length() == 0) {
             return;
         }
-        parentContext.reportToolProgress("agent_pipeline", payload, nextError);
+        parentContext.reportToolProgress(AgentPipelineTool.NAME, payload, nextError);
     }
 
     public String payload() {
@@ -128,7 +129,7 @@ public final class PipelineProgressSession {
         try {
             JSONObject object = new JSONObject();
             object.put("linecode_agent_pipeline_progress", true);
-            object.put("kind", "agent_pipeline");
+            object.put("kind", AgentPipelineTool.NAME);
             object.put("status", status);
             object.put("total", agents.size());
             object.put("completed", countStatus("done"));

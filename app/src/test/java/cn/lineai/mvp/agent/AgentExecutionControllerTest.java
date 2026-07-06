@@ -367,6 +367,28 @@ public final class AgentExecutionControllerTest {
         }
 
         @Override
+        public cn.lineai.tool.ToolDisplayCategory getDisplayCategory() {
+            if ("file_delete".equals(name)) return cn.lineai.tool.ToolDisplayCategory.DELETE;
+            if ("shell_execute".equals(name)) return cn.lineai.tool.ToolDisplayCategory.SHELL;
+            if ("agent".equals(name)) return cn.lineai.tool.ToolDisplayCategory.AGENT;
+            if ("agent_pipeline".equals(name)) return cn.lineai.tool.ToolDisplayCategory.AGENT_PIPELINE;
+            if ("file_read".equals(name) || "web_search".equals(name)) return cn.lineai.tool.ToolDisplayCategory.READ;
+            if ("file_write".equals(name) || "file_edit".equals(name)) return cn.lineai.tool.ToolDisplayCategory.WRITE;
+            if ("http_server".equals(name)) return cn.lineai.tool.ToolDisplayCategory.HTTP;
+            return cn.lineai.tool.ToolDisplayCategory.GENERIC;
+        }
+
+        @Override
+        public boolean needsConfirmation() {
+            return "file_delete".equals(name) || "shell_execute".equals(name);
+        }
+
+        @Override
+        public boolean isAllowedInReadonlyMode() {
+            return "shell_execute".equals(name) || "agent".equals(name) || "agent_pipeline".equals(name);
+        }
+
+        @Override
         public JSONObject getParameters() {
             return new JSONObject();
         }

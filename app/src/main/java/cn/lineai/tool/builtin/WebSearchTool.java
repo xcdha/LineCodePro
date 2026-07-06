@@ -11,6 +11,7 @@ import java.util.List;
 import org.json.JSONObject;
 
 public final class WebSearchTool extends BaseTool {
+    public static final String NAME = "web_search";
     private final WebSearchConfigRepository configRepository;
     private final WebSearchService webSearchService = new WebSearchService();
 
@@ -24,7 +25,15 @@ public final class WebSearchTool extends BaseTool {
 
     @Override
     public String getName() {
-        return "web_search";
+        return NAME;
+    }
+
+    @Override
+    public String promptSupplement(String executionMode, boolean isSsh) {
+        if (isSsh) {
+            return "web_search 和 web_fetch 由应用侧网络配置执行，不依赖 SSH 主机环境。";
+        }
+        return "web_search 和 web_fetch 由应用侧网络配置执行，不依赖终端提供者环境。";
     }
 
     @Override

@@ -1,6 +1,21 @@
 package cn.lineai.tool;
 
 import android.content.Context;
+import cn.lineai.tool.builtin.AgentPipelineTool;
+import cn.lineai.tool.builtin.AgentTool;
+import cn.lineai.tool.builtin.FileDeleteTool;
+import cn.lineai.tool.builtin.FileEditTool;
+import cn.lineai.tool.builtin.FileReadTool;
+import cn.lineai.tool.builtin.FileWriteTool;
+import cn.lineai.tool.builtin.GlobTool;
+import cn.lineai.tool.builtin.HttpServerTool;
+import cn.lineai.tool.builtin.ImageGenerationTool;
+import cn.lineai.tool.builtin.ImageUnderstandingTool;
+import cn.lineai.tool.builtin.ListDirectoryTool;
+import cn.lineai.tool.builtin.ShellExecuteTool;
+import cn.lineai.tool.builtin.TodoUpdateTool;
+import cn.lineai.tool.builtin.WebFetchTool;
+import cn.lineai.tool.builtin.WebSearchTool;
 import org.json.JSONObject;
 
 /**
@@ -59,17 +74,17 @@ public final class ToolDisplayResolver {
 
     public static ToolDisplayCategory fallbackDisplayCategory(String name) {
         if (name == null) return ToolDisplayCategory.GENERIC;
-        if ("file_read".equals(name) || "glob".equals(name) || "list_dir".equals(name)
-                || "web_search".equals(name) || "web_fetch".equals(name)
-                || "image_understanding".equals(name)) return ToolDisplayCategory.READ;
-        if ("file_write".equals(name) || "file_edit".equals(name)) return ToolDisplayCategory.WRITE;
-        if ("file_delete".equals(name)) return ToolDisplayCategory.DELETE;
-        if ("http_server".equals(name)) return ToolDisplayCategory.HTTP;
-        if ("shell_execute".equals(name)) return ToolDisplayCategory.SHELL;
-        if ("agent".equals(name)) return ToolDisplayCategory.AGENT;
-        if ("agent_pipeline".equals(name)) return ToolDisplayCategory.AGENT_PIPELINE;
-        if ("todo_update".equals(name)) return ToolDisplayCategory.TODO;
-        if ("image_generation".equals(name)) return ToolDisplayCategory.IMAGE_GENERATION;
+        if (FileReadTool.NAME.equals(name) || GlobTool.NAME.equals(name) || ListDirectoryTool.NAME.equals(name)
+                || WebSearchTool.NAME.equals(name) || WebFetchTool.NAME.equals(name)
+                || ImageUnderstandingTool.NAME.equals(name)) return ToolDisplayCategory.READ;
+        if (FileWriteTool.NAME.equals(name) || FileEditTool.NAME.equals(name)) return ToolDisplayCategory.WRITE;
+        if (FileDeleteTool.NAME.equals(name)) return ToolDisplayCategory.DELETE;
+        if (HttpServerTool.NAME.equals(name)) return ToolDisplayCategory.HTTP;
+        if (ShellExecuteTool.NAME.equals(name)) return ToolDisplayCategory.SHELL;
+        if (AgentTool.NAME.equals(name)) return ToolDisplayCategory.AGENT;
+        if (AgentPipelineTool.NAME.equals(name)) return ToolDisplayCategory.AGENT_PIPELINE;
+        if (TodoUpdateTool.NAME.equals(name)) return ToolDisplayCategory.TODO;
+        if (ImageGenerationTool.NAME.equals(name)) return ToolDisplayCategory.IMAGE_GENERATION;
         if (name.startsWith("phone_")) return ToolDisplayCategory.PHONE_CONTROL;
         if (name.startsWith("agentx_")) return ToolDisplayCategory.AGENT;
         if (name.startsWith("mcpx_")) return ToolDisplayCategory.GENERIC;

@@ -11,13 +11,14 @@ import java.util.Arrays;
 import org.json.JSONObject;
 
 public final class FileReadTool extends BaseTool {
+    public static final String NAME = "file_read";
     private static final long LARGE_FILE_THRESHOLD_BYTES = 50L * 1024L;
     private static final int DEFAULT_LIMIT = 2000;
     private static final int MAX_DIRECTORY_ITEMS = 400;
 
     @Override
     public String getName() {
-        return "file_read";
+        return NAME;
     }
 
     @Override

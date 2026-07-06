@@ -17,6 +17,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class PhoneScreenshotTool extends BaseTool {
+    public static final String NAME = "phone_screenshot";
     private final Context context;
 
     public PhoneScreenshotTool(Context context) {
@@ -25,7 +26,7 @@ public final class PhoneScreenshotTool extends BaseTool {
 
     @Override
     public String getName() {
-        return "phone_screenshot";
+        return NAME;
     }
 
     @Override

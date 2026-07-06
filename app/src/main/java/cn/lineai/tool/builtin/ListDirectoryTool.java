@@ -11,9 +11,11 @@ import java.util.Arrays;
 import org.json.JSONObject;
 
 public final class ListDirectoryTool extends BaseTool {
+    public static final String NAME = "list_dir";
+
     @Override
     public String getName() {
-        return "list_dir";
+        return NAME;
     }
 
     @Override

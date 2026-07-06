@@ -8,11 +8,12 @@ import cn.lineai.tool.ToolResult;
 import org.json.JSONObject;
 
 public final class WebFetchTool extends BaseTool {
+    public static final String NAME = "web_fetch";
     private final WebSearchService webSearchService = new WebSearchService();
 
     @Override
     public String getName() {
-        return "web_fetch";
+        return NAME;
     }
 
     @Override

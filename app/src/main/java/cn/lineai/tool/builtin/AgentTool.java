@@ -9,12 +9,18 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class AgentTool extends BaseTool {
+    public static final String NAME = "agent";
     public static final String TYPE_EXPLORE = "explore";
     public static final String TYPE_SUB_CODING = "sub-coding";
 
     @Override
     public String getName() {
-        return "agent";
+        return NAME;
+    }
+
+    @Override
+    public boolean isAllowedInReadonlyMode() {
+        return true;
     }
 
     @Override

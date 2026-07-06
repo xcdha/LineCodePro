@@ -13,6 +13,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class PhoneClickViewTool extends BaseTool {
+    public static final String NAME = "phone_click_view";
     private final Context context;
 
     public PhoneClickViewTool(Context context) {

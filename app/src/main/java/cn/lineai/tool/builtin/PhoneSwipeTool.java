@@ -13,6 +13,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class PhoneSwipeTool extends BaseTool {
+    public static final String NAME = "phone_swipe";
     private final Context context;
 
     public PhoneSwipeTool(Context context) {
@@ -21,7 +22,7 @@ public final class PhoneSwipeTool extends BaseTool {
 
     @Override
     public String getName() {
-        return "phone_swipe";
+        return NAME;
     }
 
     @Override

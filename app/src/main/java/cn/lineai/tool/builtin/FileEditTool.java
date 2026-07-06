@@ -12,9 +12,11 @@ import java.nio.charset.StandardCharsets;
 import org.json.JSONObject;
 
 public final class FileEditTool extends BaseTool {
+    public static final String NAME = "file_edit";
+
     @Override
     public String getName() {
-        return "file_edit";
+        return NAME;
     }
 
     @Override

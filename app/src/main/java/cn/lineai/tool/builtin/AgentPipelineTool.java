@@ -11,9 +11,16 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class AgentPipelineTool extends BaseTool {
+    public static final String NAME = "agent_pipeline";
+
     @Override
     public String getName() {
-        return "agent_pipeline";
+        return NAME;
+    }
+
+    @Override
+    public boolean isAllowedInReadonlyMode() {
+        return true;
     }
 
     @Override
