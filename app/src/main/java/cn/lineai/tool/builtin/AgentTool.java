@@ -3,17 +3,24 @@ package cn.lineai.tool.builtin;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class AgentTool extends BaseTool {
+    public static final String NAME = "agent";
     public static final String TYPE_EXPLORE = "explore";
     public static final String TYPE_SUB_CODING = "sub-coding";
 
     @Override
     public String getName() {
-        return "agent";
+        return NAME;
+    }
+
+    @Override
+    public boolean isAllowedInReadonlyMode() {
+        return true;
     }
 
     @Override
@@ -24,6 +31,11 @@ public final class AgentTool extends BaseTool {
     @Override
     public ToolCategory getCategory() {
         return ToolCategory.SYSTEM;
+    }
+
+    @Override
+    public ToolDisplayCategory getDisplayCategory() {
+        return ToolDisplayCategory.AGENT;
     }
 
     @Override

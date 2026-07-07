@@ -3,20 +3,21 @@ package cn.lineai.tool.builtin;
 import android.content.Context;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsStore;
+import cn.lineai.ai.protocol.ModelProtocolFactory;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelContextParser;
 import cn.lineai.model.ModelProtocolType;
-import cn.lineai.model.ModelRepository;
+import cn.lineai.model.ModelStore;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class ImageGenerationTool extends BaseTool {
-    private final ToolSettingsStore settingsRepository;
-    private final ModelRepository modelRepository;
+    public static final String NAME = "image_generation";
     private final ImageApiClient apiClient;
     private final ImageResponseParser responseParser;
 
@@ -25,16 +26,20 @@ public final class ImageGenerationTool extends BaseTool {
     }
 
     public ImageGenerationTool(Context context) {
-        Context appContext = context == null ? null : context.getApplicationContext();
-        settingsRepository = appContext == null ? null : new ToolSettingsRepository(appContext);
-        modelRepository = appContext == null ? null : new ModelRepository(appContext);
         apiClient = new ImageApiClient();
         responseParser = new ImageResponseParser(apiClient, new Base64ImageValidator());
     }
 
     @Override
     public String getName() {
-        return "image_generation";
+        return NAME;
+    }
+
+    @Override
+    public String promptSupplement(String executionMode, boolean isSsh) {
+        return "image_generation 由应用侧生图模型配置执行，不依赖"
+                + (isSsh ? "SSH 主机环境" : "终端提供者环境")
+                + "；结果会以内联 Markdown 图片返回。";
     }
 
     @Override
@@ -45,6 +50,16 @@ public final class ImageGenerationTool extends BaseTool {
     @Override
     public ToolCategory getCategory() {
         return ToolCategory.GENERATE;
+    }
+
+    @Override
+    public ToolDisplayCategory getDisplayCategory() {
+        return ToolDisplayCategory.IMAGE_GENERATION;
+    }
+
+    @Override
+    public boolean shouldHideOnSuccess() {
+        return true;
     }
 
     @Override
@@ -69,6 +84,9 @@ public final class ImageGenerationTool extends BaseTool {
 
     @Override
     public ToolResult execute(JSONObject input, ToolContext context) {
+        ToolSettingsStore settingsRepository = context != null ? context.getToolSettingsStore() : null;
+        ModelStore modelRepository = context != null ? context.getModelRepository() : null;
+        ModelProtocolFactory modelProtocolFactory = context != null ? context.getModelProtocolFactory() : null;
         if (settingsRepository == null || modelRepository == null) {
             return error("图片生成工具未接入应用上下文。");
         }
@@ -76,12 +94,14 @@ public final class ImageGenerationTool extends BaseTool {
         if (prompt.length() == 0) {
             return error("图片生成提示词不能为空。");
         }
-        ModelConfig model = selectedModel();
+        ModelConfig model = selectedModel(settingsRepository, modelRepository);
         if (model == null) {
             return error("图片生成未选择模型。请在 设置 -> 工具设置 -> 图片操作 中选择生图模型。");
         }
-        if (model.getProtocolType() != ModelProtocolType.OPENAI_COMPATIBLE
-                && model.getProtocolType() != ModelProtocolType.CODEX_RESPONSES) {
+        if (modelProtocolFactory == null) {
+            modelProtocolFactory = new ModelProtocolFactory();
+        }
+        if (!modelProtocolFactory.create(model.getProtocolType()).supportsImageGeneration()) {
             return error("图片生成当前仅支持 OpenAI 兼容或 Codex 协议模型。请添加或选择一个 Images API 兼容模型。");
         }
         try {
@@ -107,7 +127,7 @@ public final class ImageGenerationTool extends BaseTool {
         }
     }
 
-    private ModelConfig selectedModel() {
+    private ModelConfig selectedModel(ToolSettingsStore settingsRepository, ModelStore modelRepository) {
         String modelId = settingsRepository.getImageGenerationModelId();
         return modelId.length() == 0 ? null : modelRepository.getModel(modelId);
     }

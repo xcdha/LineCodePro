@@ -12,7 +12,7 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.ssh.SshService;
+import cn.lineai.model.SshConfig;
 import cn.lineai.ssh.TermuxHelper;
 import cn.lineai.ui.theme.LineTheme;
 import java.util.regex.Pattern;
@@ -20,6 +20,9 @@ import java.util.regex.Pattern;
 public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
     public interface Listener {
         void onBack();
+        void onOpenTermux() throws Exception;
+        TermuxHelper.TermuxSetupResult onSetupTermuxSsh(int timeoutMs) throws Exception;
+        String onTestConnection(SshConfig config) throws Exception;
     }
 
     private static final int REQUEST_TERMUX_RUN_COMMAND = 7104;
@@ -27,14 +30,13 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
             "LINEAI_PRIVATE_KEY_BEGIN[\\s\\S]*?LINEAI_PRIVATE_KEY_END"
     );
 
-    private final SshService sshService;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Listener listener;
     private final TextView statusView;
     private final LinearLayout setupButton;
 
     public TermuxIntegrationScreenView(Context context, Listener listener) {
         super(context, context.getString(R.string.screen_termux_title), listener::onBack, null);
-        sshService = new SshService(context);
+        this.listener = listener;
 
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
@@ -95,7 +97,7 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
         Context context = getContext();
         ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
         if (clipboard != null) {
-            clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.screen_termux_clip_label), SshService.TERMUX_ALLOW_EXTERNAL_APPS_COMMAND));
+            clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.screen_termux_clip_label), TermuxHelper.TERMUX_ALLOW_EXTERNAL_APPS_COMMAND));
         }
         setStatus(context.getString(R.string.screen_termux_status_copied_title), context.getString(R.string.screen_termux_status_copied_message), false);
     }
@@ -113,7 +115,7 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
     private void openTermux() {
         Context context = getContext();
         try {
-            sshService.openTermux();
+            listener.onOpenTermux();
             setStatus(context.getString(R.string.screen_termux_status_opened_title), context.getString(R.string.screen_termux_status_opened_message), false);
         } catch (Exception e) {
             setStatus(context.getString(R.string.screen_termux_status_open_failed_title), e.getMessage(), true);
@@ -124,11 +126,12 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
         Context context = getContext();
         setSetupRunning(true);
         setStatus(context.getString(R.string.screen_termux_status_setup_title), context.getString(R.string.screen_termux_status_setup_message), false);
+        Handler handler = new Handler(Looper.getMainLooper());
         new Thread(() -> {
             try {
-                TermuxHelper.TermuxSetupResult setup = sshService.setupTermuxOpenSsh(15 * 60 * 1000);
-                String testOutput = sshService.testConnection(setup.getConfig());
-                mainHandler.post(() -> {
+                TermuxHelper.TermuxSetupResult setup = listener.onSetupTermuxSsh(15 * 60 * 1000);
+                String testOutput = listener.onTestConnection(setup.getConfig());
+                handler.post(() -> {
                     setSetupRunning(false);
                     String doneMessage = context.getString(R.string.screen_termux_status_setup_done_message,
                             valueOrUnknown(setup.getShell()),
@@ -137,7 +140,7 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
                     setStatus(context.getString(R.string.screen_termux_status_setup_done_title), doneMessage, false);
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> {
+                handler.post(() -> {
                     setSetupRunning(false);
                     setStatus(context.getString(R.string.screen_termux_status_setup_failed_title), redact(e.getMessage()), true);
                 });
@@ -193,13 +196,13 @@ public final class TermuxIntegrationScreenView extends ScreenScaffoldView {
         return row;
     }
 
-    private LinearLayout button(Context context, String label, int iconType, boolean primary, View.OnClickListener listener) {
+    private LinearLayout button(Context context, String label, int iconType, boolean primary, View.OnClickListener onClickListener) {
         LinearLayout button = new LinearLayout(context);
         button.setOrientation(HORIZONTAL);
         button.setGravity(Gravity.CENTER);
         button.setClickable(true);
         button.setBackground(LineTheme.roundedStroke(context, primary ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 8, primary ? LineTheme.ACCENT : LineTheme.BORDER_LIGHT));
-        button.setOnClickListener(listener);
+        button.setOnClickListener(onClickListener);
         LineTheme.padding(button, LineTheme.SM, 0, LineTheme.SM, 0);
         IconButtonView icon = new IconButtonView(context, iconType);
         icon.setIconColor(primary ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_SECONDARY);

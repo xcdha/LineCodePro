@@ -5,10 +5,34 @@ import cn.lineai.model.ChatMode;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.McpToolConfig;
 import cn.lineai.model.WebSearchConfig;
+import cn.lineai.ai.prompt.ToolPromptRenderer;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.PermissionResult;
 import cn.lineai.tool.ToolCategory;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolRegistry;
+import cn.lineai.tool.builtin.FileDeleteTool;
+import cn.lineai.tool.builtin.FileEditTool;
+import cn.lineai.tool.builtin.FileReadTool;
+import cn.lineai.tool.builtin.FileWriteTool;
+import cn.lineai.tool.builtin.GlobTool;
+import cn.lineai.tool.builtin.HttpServerTool;
+import cn.lineai.tool.builtin.ListDirectoryTool;
+import cn.lineai.tool.builtin.ImageGenerationTool;
+import cn.lineai.tool.builtin.ImageUnderstandingTool;
+import cn.lineai.tool.builtin.PhoneClickTool;
+import cn.lineai.tool.builtin.PhoneClickViewTool;
+import cn.lineai.tool.builtin.PhoneGlobalActionTool;
+import cn.lineai.tool.builtin.PhoneLongPressTool;
+import cn.lineai.tool.builtin.PhoneScreenshotTool;
+import cn.lineai.tool.builtin.PhoneSwipeTool;
+import cn.lineai.tool.builtin.PhoneViewHierarchyTool;
+import cn.lineai.tool.builtin.ShellExecuteTool;
+import cn.lineai.tool.builtin.AgentTool;
+import cn.lineai.tool.builtin.AgentPipelineTool;
+import cn.lineai.tool.builtin.TodoUpdateTool;
+import cn.lineai.tool.builtin.WebFetchTool;
+import cn.lineai.tool.builtin.WebSearchTool;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -24,45 +48,63 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     private static final Map<String, String> PHONE_CONTROL_TOOL_PERMISSION_MAP;
     static {
         Map<String, String> map = new LinkedHashMap<>();
-        map.put("phone_screenshot", PhoneControlRepository.PERMISSION_SCREENSHOT);
-        map.put("phone_click", PhoneControlRepository.PERMISSION_CLICK);
-        map.put("phone_swipe", PhoneControlRepository.PERMISSION_SWIPE);
-        map.put("phone_long_press", PhoneControlRepository.PERMISSION_LONG_PRESS);
-        map.put("phone_view_hierarchy", PhoneControlRepository.PERMISSION_VIEW_HIERARCHY);
-        map.put("phone_click_view", PhoneControlRepository.PERMISSION_VIEW_ACTION);
-        map.put("phone_global_action", PhoneControlRepository.PERMISSION_GLOBAL_ACTION);
+        map.put(PhoneScreenshotTool.NAME, PhoneControlRepository.PERMISSION_SCREENSHOT);
+        map.put(PhoneClickTool.NAME, PhoneControlRepository.PERMISSION_CLICK);
+        map.put(PhoneSwipeTool.NAME, PhoneControlRepository.PERMISSION_SWIPE);
+        map.put(PhoneLongPressTool.NAME, PhoneControlRepository.PERMISSION_LONG_PRESS);
+        map.put(PhoneViewHierarchyTool.NAME, PhoneControlRepository.PERMISSION_VIEW_HIERARCHY);
+        map.put(PhoneClickViewTool.NAME, PhoneControlRepository.PERMISSION_VIEW_ACTION);
+        map.put(PhoneGlobalActionTool.NAME, PhoneControlRepository.PERMISSION_GLOBAL_ACTION);
         PHONE_CONTROL_TOOL_PERMISSION_MAP = java.util.Collections.unmodifiableMap(map);
     }
 
+    private static final Set<String> MODE_LOCAL = java.util.Collections.singleton(EXECUTION_LOCAL);
+    private static final Set<String> MODE_REMOTE = java.util.Collections.unmodifiableSet(new HashSet<>(java.util.Arrays.asList(EXECUTION_SSH, EXECUTION_TERMINAL_PROVIDER)));
+    private static final Set<String> MODE_ALL = java.util.Collections.unmodifiableSet(new HashSet<>(java.util.Arrays.asList(EXECUTION_LOCAL, EXECUTION_SSH, EXECUTION_TERMINAL_PROVIDER)));
+
     private static final McpToolConfig[] DEFAULT_CONFIGS = new McpToolConfig[] {
             new McpToolConfig("file_ops", "文件操作", "读取、写入、编辑和删除文件", true,
-                    new String[] {"file_read", "file_write", "file_edit", "file_delete", "glob", "list_dir"}),
-            new McpToolConfig("http_server", "HTTP 服务器", "启动本地 HTTP 文件服务器", true,
-                    new String[] {"http_server"}),
-            new McpToolConfig("agent", "Agent", "分派 Agent 处理任务", true,
-                    new String[] {"agent", "agent_pipeline"}),
+                    new String[] {FileReadTool.NAME, FileWriteTool.NAME, FileEditTool.NAME, FileDeleteTool.NAME, GlobTool.NAME, ListDirectoryTool.NAME},
+                    MODE_LOCAL),
+            new McpToolConfig(HttpServerTool.NAME, "HTTP 服务器", "启动本地 HTTP 文件服务器", true,
+                    new String[] {HttpServerTool.NAME},
+                    MODE_LOCAL),
+            new McpToolConfig(AgentTool.NAME, "Agent", "分派 Agent 处理任务", true,
+                    new String[] {AgentTool.NAME, AgentPipelineTool.NAME},
+                    MODE_ALL),
             new McpToolConfig("phone_control", "手机控制", "通过无障碍服务控制本机操作", true,
-                    new String[] {"phone_screenshot", "phone_click", "phone_swipe", "phone_long_press", "phone_view_hierarchy", "phone_click_view", "phone_global_action"}),
+                    new String[] {PhoneScreenshotTool.NAME, PhoneClickTool.NAME, PhoneSwipeTool.NAME, PhoneLongPressTool.NAME, PhoneViewHierarchyTool.NAME, PhoneClickViewTool.NAME, PhoneGlobalActionTool.NAME},
+                    MODE_LOCAL),
             new McpToolConfig("todo", "任务清单", "维护当前会话的 TODO 列表，状态会注入到 system prompt", true,
-                    new String[] {"todo_update"}),
-            new McpToolConfig("image_understanding", "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,
-                    new String[] {"image_understanding"}),
-            new McpToolConfig("image_generation", "图片生成", "调用已选择的生图模型生成图片，并以内联 Markdown 图片返回", false,
-                    new String[] {"image_generation"}),
+                    new String[] {TodoUpdateTool.NAME},
+                    MODE_ALL),
+            new McpToolConfig(ImageUnderstandingTool.NAME, "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,
+                    new String[] {ImageUnderstandingTool.NAME},
+                    MODE_ALL),
+            new McpToolConfig(ImageGenerationTool.NAME, "图片生成", "调用已选择的生图模型生成图片，并以内联 Markdown 图片返回", false,
+                    new String[] {ImageGenerationTool.NAME},
+                    MODE_ALL),
             new McpToolConfig("shell", "SSH Shell", "通过 SSH 执行 shell 命令", true,
-                    new String[] {"shell_execute"}),
-            new McpToolConfig("web_search", "网页搜索", "搜索互联网并查看网页内容", false,
-                    new String[] {"web_search", "web_fetch"})
+                    new String[] {ShellExecuteTool.NAME},
+                    MODE_REMOTE),
+            new McpToolConfig(WebSearchTool.NAME, "网页搜索", "搜索互联网并查看网页内容", false,
+                    new String[] {WebSearchTool.NAME, WebFetchTool.NAME},
+                    MODE_ALL)
     };
 
     private final SettingsRepository settingsRepository;
     private final WebSearchConfigRepository webSearchConfigRepository;
     private final PhoneControlRepository phoneControlRepository;
+    private ToolRegistry toolRegistry;
 
     public ToolSettingsRepository(Context context) {
         settingsRepository = new SettingsRepository(context);
         webSearchConfigRepository = new WebSearchConfigRepository(context);
         phoneControlRepository = new PhoneControlRepository(context);
+    }
+
+    public void setToolRegistry(ToolRegistry toolRegistry) {
+        this.toolRegistry = toolRegistry;
     }
 
     @Override
@@ -168,9 +210,9 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
 
     static McpToolConfig displayConfigForMode(String executionMode, McpToolConfig config, boolean enabled) {
         if ("shell".equals(config.getId()) && EXECUTION_TERMINAL_PROVIDER.equals(normalizeExecutionMode(executionMode))) {
-            return new McpToolConfig(config.getId(), "IPC Shell", "通过终端提供者 IPC 执行 shell 命令", enabled, config.getTools());
+            return new McpToolConfig(config.getId(), "IPC Shell", "通过终端提供者 IPC 执行 shell 命令", enabled, config.getTools(), config.getSupportedExecutionModes());
         }
-        return new McpToolConfig(config.getId(), config.getName(), config.getDescription(), enabled, config.getTools());
+        return new McpToolConfig(config.getId(), config.getName(), config.getDescription(), enabled, config.getTools(), config.getSupportedExecutionModes());
     }
 
     @Override
@@ -182,25 +224,8 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
             if (!config.isEnabled()) {
                 continue;
             }
-            if (EXECUTION_LOCAL.equals(executionMode) && "shell".equals(config.getId())) {
-                continue;
-            }
-            if (EXECUTION_SSH.equals(executionMode)
-                    && !"shell".equals(config.getId())
-                    && !"web_search".equals(config.getId())
-                    && !"image_understanding".equals(config.getId())
-                    && !"image_generation".equals(config.getId())
-                    && !"todo".equals(config.getId())
-                    && !"agent".equals(config.getId())) {
-                continue;
-            }
-            if (EXECUTION_TERMINAL_PROVIDER.equals(executionMode)
-                    && !"shell".equals(config.getId())
-                    && !"web_search".equals(config.getId())
-                    && !"image_understanding".equals(config.getId())
-                    && !"image_generation".equals(config.getId())
-                    && !"todo".equals(config.getId())
-                    && !"agent".equals(config.getId())) {
+            Set<String> modes = config.getSupportedExecutionModes();
+            if (modes != null && !modes.contains(executionMode)) {
                 continue;
             }
             for (String tool : config.getTools()) {
@@ -275,8 +300,15 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
 
     @Override
     public synchronized boolean needsConfirmation(String toolName) {
-        if ("file_delete".equals(toolName) || "shell_execute".equals(toolName)) {
-            return true;
+        if (toolRegistry != null) {
+            BaseTool tool = toolRegistry.get(toolName);
+            if (tool != null && tool.needsConfirmation()) {
+                return true;
+            }
+        } else {
+            if (FileDeleteTool.NAME.equals(toolName) || ShellExecuteTool.NAME.equals(toolName)) {
+                return true;
+            }
         }
         return PERMISSION_CONFIRM.equals(getPermissionMode());
     }
@@ -319,7 +351,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
             Map<String, BaseTool> toolByName,
             boolean nativeToolProtocol
     ) {
-        return renderToolPrompt(EXECUTION_LOCAL, configs, enabled, toolByName, nativeToolProtocol);
+        return ToolPromptRenderer.renderToolPrompt(configs, enabled, toolByName, nativeToolProtocol);
     }
 
     static String renderToolPrompt(
@@ -329,95 +361,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
             Map<String, BaseTool> toolByName,
             boolean nativeToolProtocol
     ) {
-        if (enabled.isEmpty()) {
-            return "## 可用工具\n当前没有可用工具。未配置模型工具、工具组被关闭或当前权限模式禁用了所有工具。";
-        }
-        if (EXECUTION_SSH.equals(normalizeExecutionMode(executionMode))) {
-            return renderSshToolPrompt(configs, enabled, toolByName, nativeToolProtocol);
-        }
-        if (EXECUTION_TERMINAL_PROVIDER.equals(normalizeExecutionMode(executionMode))) {
-            return renderTerminalProviderToolPrompt(configs, enabled, toolByName, nativeToolProtocol);
-        }
-        StringBuilder builder = new StringBuilder();
-        builder.append("## 可用工具\n以下工具列表由当前 MCP 设置、权限模式、执行目标和已注册工具动态生成。未列出的工具不可用，工具执行必须遵守当前权限模式。\n\n");
-        List<McpToolConfig> promptConfigs = configs == null ? new ArrayList<>() : configs;
-        HashSet<String> renderedTools = new HashSet<>();
-        for (McpToolConfig config : promptConfigs) {
-            ArrayList<String> tools = new ArrayList<>();
-            for (String tool : config.getTools()) {
-                if (enabled.contains(tool)) {
-                    tools.add(tool);
-                    renderedTools.add(tool);
-                }
-            }
-            if (tools.isEmpty()) {
-                continue;
-            }
-            builder.append("### ").append(config.getName()).append('\n');
-            for (String toolName : tools) {
-                BaseTool tool = toolByName == null ? null : toolByName.get(toolName);
-                builder.append("  - ").append(toolName);
-                if (tool != null) {
-                    builder.append(" [").append(categoryLabel(tool.getCategory()));
-                    if (tool.requiresConfirmation()) {
-                        builder.append(", 需要确认");
-                    }
-                    builder.append("]：").append(tool.getDescription()).append('\n');
-                    try {
-                        builder.append("    参数: ").append(tool.getParameters().toString()).append('\n');
-                    } catch (Exception ignored) {
-                        builder.append("    参数: {}\n");
-                    }
-                } else {
-                    builder.append('\n');
-                }
-            }
-            builder.append('\n');
-        }
-        appendExtensionTools(builder, enabled, renderedTools, toolByName);
-        if (nativeToolProtocol) {
-            builder.append("工具调用由当前模型协议的原生 tools/function calling 机制提供。需要读取、写入、搜索、生成图片或列目录时，必须使用原生工具调用，不要把工具调用 JSON、XML、<tool_calls> 或 Markdown 代码块输出到正文。")
-                    .append("每次工具返回后必须继续分析结果；如果任务还没完成，继续调用合适工具执行下一步。");
-        } else {
-            builder.append("工具调用格式已锁定：需要调用工具时，只能输出 <tool_calls><tool_call name=\"工具名\"><argument name=\"参数名\">参数值</argument></tool_call></tool_calls>。")
-                    .append("不要输出 OpenAI tool_calls JSON、Markdown 代码块或自然语言包装。每次工具返回后必须继续分析结果；如果任务还没完成，继续调用合适工具执行下一步。");
-        }
-        return builder.toString().trim();
-    }
-
-    private static void appendExtensionTools(
-            StringBuilder builder,
-            Set<String> enabled,
-            Set<String> renderedTools,
-            Map<String, BaseTool> toolByName
-    ) {
-        ArrayList<String> extensionTools = new ArrayList<>();
-        for (String toolName : enabled) {
-            if (!renderedTools.contains(toolName) && ToolRegistry.isExtensionToolName(toolName)) {
-                extensionTools.add(toolName);
-            }
-        }
-        java.util.Collections.sort(extensionTools);
-        if (extensionTools.isEmpty()) {
-            return;
-        }
-        builder.append("### 扩展\n");
-        for (String toolName : extensionTools) {
-            BaseTool tool = toolByName == null ? null : toolByName.get(toolName);
-            builder.append("  - ").append(toolName);
-            if (tool != null) {
-                builder.append(" [").append(categoryLabel(tool.getCategory())).append("]：")
-                        .append(tool.getDescription()).append('\n');
-                try {
-                    builder.append("    参数: ").append(tool.getParameters().toString()).append('\n');
-                } catch (Exception ignored) {
-                    builder.append("    参数: {}\n");
-                }
-            } else {
-                builder.append('\n');
-            }
-        }
-        builder.append('\n');
+        return ToolPromptRenderer.renderToolPrompt(executionMode, configs, enabled, toolByName, nativeToolProtocol);
     }
 
     private static String renderSshToolPrompt(
@@ -426,74 +370,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
             Map<String, BaseTool> toolByName,
             boolean nativeToolProtocol
     ) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("## 可用工具\n")
-                .append("当前执行目标是 SSH Shell。本地文件读写、文件搜索和 HTTP 服务器已禁用。\n")
-                .append("Agent、Agent Pipeline、任务清单仍可用，子 Agent 只能通过 shell_execute 在 SSH 环境内完成文件操作。\n")
-                .append("图片理解会通过 SFTP 读取 SSH 工作区图片；网页搜索、图片生成和应用侧自定义 HTTP MCP 可用时仍会作为工具提供。\n")
-                .append("不要引用应用私有 home 工作目录；如果系统提示提供了 SSH 项目目录，必须在该目录内操作。\n")
-                .append("如需读取、写入、列目录或搜索文件，请通过 shell 命令在 SSH 环境内完成。\n\n");
-        List<McpToolConfig> promptConfigs = configs == null ? new ArrayList<>() : configs;
-        HashSet<String> renderedTools = new HashSet<>();
-        for (McpToolConfig config : promptConfigs) {
-            if (!"shell".equals(config.getId())
-                    && !"web_search".equals(config.getId())
-                    && !"image_understanding".equals(config.getId())
-                    && !"image_generation".equals(config.getId())
-                    && !"todo".equals(config.getId())
-                    && !"agent".equals(config.getId())) {
-                continue;
-            }
-            ArrayList<String> tools = new ArrayList<>();
-            for (String tool : config.getTools()) {
-                if (enabled.contains(tool)) {
-                    tools.add(tool);
-                    renderedTools.add(tool);
-                }
-            }
-            if (tools.isEmpty()) {
-                continue;
-            }
-            builder.append("### ").append(config.getName()).append('\n');
-            for (String toolName : tools) {
-                BaseTool tool = toolByName == null ? null : toolByName.get(toolName);
-                builder.append("  - ").append(toolName);
-                if (tool != null) {
-                    builder.append(" [").append(categoryLabel(tool.getCategory()));
-                    if (tool.requiresConfirmation()) {
-                        builder.append(", 需要确认");
-                    }
-                    builder.append("]：").append(tool.getDescription()).append('\n');
-                    try {
-                        builder.append("    参数: ").append(tool.getParameters().toString()).append('\n');
-                    } catch (Exception ignored) {
-                        builder.append("    参数: {}\n");
-                    }
-                } else {
-                    builder.append('\n');
-                }
-            }
-            if ("shell".equals(config.getId())) {
-                builder.append("shell_execute 默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。\n");
-            } else if ("web_search".equals(config.getId())) {
-                builder.append("web_search 和 web_fetch 由应用侧网络配置执行，不依赖 SSH 主机环境。\n");
-            } else if ("image_understanding".equals(config.getId())) {
-                builder.append("image_understanding 通过 SFTP 读取 SSH 工作区图片，再由应用侧视觉模型配置执行。\n");
-            } else if ("image_generation".equals(config.getId())) {
-                builder.append("image_generation 由应用侧生图模型配置执行，不依赖 SSH 主机环境；结果会以内联 Markdown 图片返回。\n");
-            }
-            builder.append('\n');
-        }
-        appendExtensionTools(builder, enabled, renderedTools, toolByName);
-        builder.append("每次工具返回后必须继续分析输出；如果任务还没完成，继续调用合适工具执行下一步。")
-                .append("不要因为刚执行过一次或两次 shell 命令就结束；只有确认任务完成、受阻或需要用户决定时才回复用户。\n");
-        if (nativeToolProtocol) {
-            builder.append("工具调用由当前模型协议的原生 tools/function calling 机制提供。不要把工具调用 JSON、XML、<tool_calls> 或 Markdown 代码块输出到正文。");
-        } else {
-            builder.append("工具调用格式已锁定：需要调用工具时，只能输出 <tool_calls><tool_call name=\"工具名\"><argument name=\"参数名\">参数值</argument></tool_call></tool_calls>。")
-                    .append("不要输出 OpenAI tool_calls JSON、Markdown 代码块或自然语言包装。");
-        }
-        return builder.toString().trim();
+        return ToolPromptRenderer.renderToolPrompt(EXECUTION_SSH, configs, enabled, toolByName, nativeToolProtocol);
     }
 
     private static String renderTerminalProviderToolPrompt(
@@ -502,87 +379,20 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
             Map<String, BaseTool> toolByName,
             boolean nativeToolProtocol
     ) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("## 可用工具\n")
-                .append("当前执行目标是终端提供者（Terminal Provider）。本地文件读写、文件搜索和 HTTP 服务器已禁用。\n")
-                .append("Agent、Agent Pipeline、任务清单仍可用，子 Agent 只能通过 shell_execute 在终端提供者环境内完成文件操作。\n")
-                .append("图片理解会通过 IPC 读取终端提供者环境的图片；网页搜索、图片生成和应用侧自定义 HTTP MCP 可用时仍会作为工具提供。\n")
-                .append("不要引用应用私有 home 工作目录；如果系统提示提供了终端提供者工作目录，必须在该目录内操作。\n")
-                .append("如需读取、写入、列目录或搜索文件，请通过 shell 命令在终端提供者环境内完成。\n\n");
-        List<McpToolConfig> promptConfigs = configs == null ? new ArrayList<>() : configs;
-        HashSet<String> renderedTools = new HashSet<>();
-        for (McpToolConfig config : promptConfigs) {
-            if (!"shell".equals(config.getId())
-                    && !"web_search".equals(config.getId())
-                    && !"image_understanding".equals(config.getId())
-                    && !"image_generation".equals(config.getId())
-                    && !"todo".equals(config.getId())
-                    && !"agent".equals(config.getId())) {
-                continue;
-            }
-            ArrayList<String> tools = new ArrayList<>();
-            for (String tool : config.getTools()) {
-                if (enabled.contains(tool)) {
-                    tools.add(tool);
-                    renderedTools.add(tool);
-                }
-            }
-            if (tools.isEmpty()) {
-                continue;
-            }
-            builder.append("### ").append(config.getName()).append('\n');
-            for (String toolName : tools) {
-                BaseTool tool = toolByName == null ? null : toolByName.get(toolName);
-                builder.append("  - ").append(toolName);
-                if (tool != null) {
-                    builder.append(" [").append(categoryLabel(tool.getCategory()));
-                    if (tool.requiresConfirmation()) {
-                        builder.append(", 需要确认");
-                    }
-                    builder.append("]：").append(tool.getDescription()).append('\n');
-                    try {
-                        builder.append("    参数: ").append(tool.getParameters().toString()).append('\n');
-                    } catch (Exception ignored) {
-                        builder.append("    参数: {}\n");
-                    }
-                } else {
-                    builder.append('\n');
-                }
-            }
-            if ("shell".equals(config.getId())) {
-                builder.append("shell_execute 通过终端提供者 IPC 执行；默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。\n");
-            } else if ("web_search".equals(config.getId())) {
-                builder.append("web_search 和 web_fetch 由应用侧网络配置执行，不依赖终端提供者环境。\n");
-            } else if ("image_understanding".equals(config.getId())) {
-                builder.append("image_understanding 通过 IPC 读取终端提供者环境图片，再由应用侧视觉模型配置执行。\n");
-            } else if ("image_generation".equals(config.getId())) {
-                builder.append("image_generation 由应用侧生图模型配置执行，不依赖终端提供者环境；结果会以内联 Markdown 图片返回。\n");
-            }
-            builder.append('\n');
-        }
-        appendExtensionTools(builder, enabled, renderedTools, toolByName);
-        builder.append("每次工具返回后必须继续分析输出；如果任务还没完成，继续调用合适工具执行下一步。")
-                .append("不要因为刚执行过一次或两次 shell 命令就结束；只有确认任务完成、受阻或需要用户决定时才回复用户。\n");
-        if (nativeToolProtocol) {
-            builder.append("工具调用由当前模型协议的原生 tools/function calling 机制提供。不要把工具调用 JSON、XML、<tool_calls> 或 Markdown 代码块输出到正文。");
-        } else {
-            builder.append("工具调用格式已锁定：需要调用工具时，只能输出 <tool_calls><tool_call name=\"工具名\"><argument name=\"参数名\">参数值</argument></tool_calls>。")
-                    .append("不要输出 OpenAI tool_calls JSON、Markdown 代码块或自然语言包装。");
-        }
-        return builder.toString().trim();
+        return ToolPromptRenderer.renderToolPrompt(EXECUTION_TERMINAL_PROVIDER, configs, enabled, toolByName, nativeToolProtocol);
     }
 
     private static String categoryLabel(ToolCategory category) {
-        if (category == ToolCategory.GENERATE) {
-            return "generate";
-        }
-        if (category == ToolCategory.WRITE) {
-            return "write";
-        }
-        if (category == ToolCategory.SYSTEM) {
-            return "system";
-        }
-        return "read";
+        return ToolPromptRenderer.categoryLabel(category);
+    }
+
+    private static void appendExtensionTools(
+            StringBuilder builder,
+            Set<String> enabled,
+            Set<String> renderedTools,
+            Map<String, BaseTool> toolByName
+    ) {
+        // delegated to ToolPromptRenderer
     }
 
     public static String normalizePermissionMode(String mode) {
@@ -602,17 +412,11 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     }
 
     public static ToolCategory getToolCategory(String toolName) {
-        if ("file_read".equals(toolName) || "glob".equals(toolName) || "list_dir".equals(toolName)
-                || "web_search".equals(toolName) || "web_fetch".equals(toolName)
-                || "image_understanding".equals(toolName)) {
-            return ToolCategory.READ;
-        }
-        if ("image_generation".equals(toolName)) {
-            return ToolCategory.GENERATE;
-        }
-        if ("file_write".equals(toolName) || "file_edit".equals(toolName) || "file_delete".equals(toolName)) {
-            return ToolCategory.WRITE;
-        }
+        ToolDisplayCategory display = cn.lineai.ui.component.toolcall.ToolCallUtils.getDisplayCategory(toolName);
+        if (display == ToolDisplayCategory.READ) return ToolCategory.READ;
+        if (display == ToolDisplayCategory.WRITE) return ToolCategory.WRITE;
+        if (display == ToolDisplayCategory.DELETE) return ToolCategory.WRITE;
+        if (display == ToolDisplayCategory.IMAGE_GENERATION) return ToolCategory.GENERATE;
         return ToolCategory.SYSTEM;
     }
 
@@ -621,7 +425,7 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     }
 
     static boolean isReadonlyAlwaysAllowed(String toolName) {
-        return "todo_update".equals(toolName);
+        return TodoUpdateTool.NAME.equals(toolName);
     }
 
     static boolean isReadonlyToolAllowedForMode(String executionMode, String toolName, ToolCategory category) {
@@ -631,9 +435,9 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
         if (!EXECUTION_SSH.equals(executionMode) && !EXECUTION_TERMINAL_PROVIDER.equals(executionMode)) {
             return false;
         }
-        return "shell_execute".equals(toolName)
-                || "agent".equals(toolName)
-                || "agent_pipeline".equals(toolName);
+        return ShellExecuteTool.NAME.equals(toolName)
+                || AgentTool.NAME.equals(toolName)
+                || AgentPipelineTool.NAME.equals(toolName);
     }
 
     private boolean isEnabledExtensionTool(String toolName, ToolCategory category) {

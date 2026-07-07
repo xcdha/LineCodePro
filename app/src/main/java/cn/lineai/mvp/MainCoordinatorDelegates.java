@@ -5,6 +5,7 @@ import cn.lineai.ipc.ScannedProvider;
 import cn.lineai.data.repository.ConversationRecord;
 import cn.lineai.data.repository.ConversationStore;
 import cn.lineai.model.AiBehaviorSettings;
+import cn.lineai.model.ConversationUiModel;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
 import cn.lineai.model.ExtensionOverviewState;
@@ -251,8 +252,15 @@ abstract class MainCoordinatorDelegates implements MainUiController {
     }
 
     @Override
-    public List<ConversationRecord> getConversationMetas() {
-        return conversationStoreDelegate().getConversationMetas();
+    public List<ConversationUiModel> getConversationMetas() {
+        List<ConversationRecord> records = conversationStoreDelegate().getConversationMetas();
+        java.util.ArrayList<ConversationUiModel> models = new java.util.ArrayList<>();
+        if (records != null) {
+            for (ConversationRecord r : records) {
+                models.add(new ConversationUiModel(r.getId(), r.getTitle(), r.getUpdatedAt()));
+            }
+        }
+        return models;
     }
 
     @Override
@@ -388,6 +396,11 @@ abstract class MainCoordinatorDelegates implements MainUiController {
     @Override
     public void onBrowserJavaScriptChanged(boolean enabled) {
         settingsDelegate().setBrowserJavaScriptEnabled(enabled);
+    }
+
+    @Override
+    public void onAllowAnyHttpChanged(boolean enabled) {
+        settingsDelegate().setAllowAnyHttp(enabled);
     }
 
     @Override

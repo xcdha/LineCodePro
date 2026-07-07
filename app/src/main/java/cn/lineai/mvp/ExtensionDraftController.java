@@ -15,6 +15,8 @@ import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelStore;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolRegistry;
+import cn.lineai.tool.builtin.FileReadTool;
+import cn.lineai.tool.builtin.GlobTool;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -184,11 +186,11 @@ final class ExtensionDraftController {
 
     private List<String> defaultAgentTools(Set<String> allowed) {
         ArrayList<String> values = new ArrayList<>();
-        if (allowed.contains("file_read")) {
-            values.add("file_read");
+        if (allowed.contains(FileReadTool.NAME)) {
+            values.add(FileReadTool.NAME);
         }
-        if (allowed.contains("glob")) {
-            values.add("glob");
+        if (allowed.contains(GlobTool.NAME)) {
+            values.add(GlobTool.NAME);
         }
         if (values.isEmpty() && !allowed.isEmpty()) {
             values.add(allowed.iterator().next());

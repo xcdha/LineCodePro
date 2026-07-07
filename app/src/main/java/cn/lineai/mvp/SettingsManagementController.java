@@ -72,6 +72,8 @@ public final class SettingsManagementController {
 
         void setBrowserJavaScriptEnabled(boolean enabled);
 
+        void setAllowAnyHttp(boolean enabled);
+
         ThemeSettingsState getThemeSettings();
 
         void applyThemeMode(String mode);
@@ -217,6 +219,11 @@ public final class SettingsManagementController {
         @Override
         public void setBrowserJavaScriptEnabled(boolean enabled) {
             outputSettingsRepository.setBrowserJavaScriptEnabled(enabled);
+        }
+
+        @Override
+        public void setAllowAnyHttp(boolean enabled) {
+            outputSettingsRepository.setAllowAnyHttp(enabled);
         }
 
         @Override
@@ -391,6 +398,12 @@ public final class SettingsManagementController {
 
     public void setBrowserJavaScriptEnabled(boolean enabled) {
         settingsStore.setBrowserJavaScriptEnabled(enabled);
+        host.render();
+    }
+
+    public void setAllowAnyHttp(boolean enabled) {
+        settingsStore.setAllowAnyHttp(enabled);
+        cn.lineai.security.UrlPolicy.setRelaxedHttpEnabled(enabled);
         host.render();
     }
 

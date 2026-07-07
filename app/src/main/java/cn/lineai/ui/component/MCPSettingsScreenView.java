@@ -10,12 +10,15 @@ import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.McpToolConfig;
 import cn.lineai.ui.theme.LineTheme;
 
 public final class MCPSettingsScreenView extends ScreenScaffoldView {
+    private static final String EXECUTION_LOCAL = "local";
+    private static final String EXECUTION_SSH = "ssh";
+    private static final String EXECUTION_TERMINAL_PROVIDER = "terminal_provider";
+
     public interface Listener {
         void onBack();
 
@@ -34,12 +37,12 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
     public MCPSettingsScreenView(Context context, McpSettingsState state, Listener listener) {
         super(context, context.getString(R.string.screen_mcp_title), listener::onBack, null);
         this.listener = listener;
-        this.state = state == null ? new McpSettingsState(ToolSettingsRepository.EXECUTION_LOCAL, null) : state;
+        this.state = state == null ? new McpSettingsState(EXECUTION_LOCAL, null) : state;
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, LineTheme.LG, LineTheme.LG, 100);
 
         addExecutionTarget(content);
-        if (ToolSettingsRepository.EXECUTION_SSH.equals(this.state.getExecutionMode())) {
+        if (EXECUTION_SSH.equals(this.state.getExecutionMode())) {
             addSshConnection(content);
         }
         addToolCards(content);
@@ -53,16 +56,16 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
         segment.setOrientation(HORIZONTAL);
         segment.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 8));
         LineTheme.padding(segment, 3, 3, 3, 3);
-        addModeButton(segment, context.getString(R.string.screen_mcp_execution_local), ToolSettingsRepository.EXECUTION_LOCAL);
-        addModeButton(segment, context.getString(R.string.screen_mcp_execution_ssh), ToolSettingsRepository.EXECUTION_SSH);
-        addModeButton(segment, context.getString(R.string.screen_mcp_execution_terminal_provider), ToolSettingsRepository.EXECUTION_TERMINAL_PROVIDER);
+        addModeButton(segment, context.getString(R.string.screen_mcp_execution_local), EXECUTION_LOCAL);
+        addModeButton(segment, context.getString(R.string.screen_mcp_execution_ssh), EXECUTION_SSH);
+        addModeButton(segment, context.getString(R.string.screen_mcp_execution_terminal_provider), EXECUTION_TERMINAL_PROVIDER);
         LinearLayout.LayoutParams segmentParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(context, 42));
         segmentParams.topMargin = LineTheme.dp(context, LineTheme.SM);
         card.addView(segment, segmentParams);
         String executionDesc;
-        if (ToolSettingsRepository.EXECUTION_LOCAL.equals(state.getExecutionMode())) {
+        if (EXECUTION_LOCAL.equals(state.getExecutionMode())) {
             executionDesc = context.getString(R.string.screen_mcp_execution_local_desc);
-        } else if (ToolSettingsRepository.EXECUTION_TERMINAL_PROVIDER.equals(state.getExecutionMode())) {
+        } else if (EXECUTION_TERMINAL_PROVIDER.equals(state.getExecutionMode())) {
             executionDesc = context.getString(R.string.screen_mcp_execution_terminal_provider_desc);
         } else {
             executionDesc = context.getString(R.string.screen_mcp_execution_ssh_desc);
@@ -107,24 +110,24 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
     }
 
     private boolean shouldShow(McpToolConfig config) {
-        if (ToolSettingsRepository.EXECUTION_LOCAL.equals(state.getExecutionMode())) {
+        if (EXECUTION_LOCAL.equals(state.getExecutionMode())) {
             return !"shell".equals(config.getId());
         }
         return "shell".equals(config.getId())
-                || "web_search".equals(config.getId())
-                || "image_understanding".equals(config.getId())
-                || "image_generation".equals(config.getId())
+                || cn.lineai.tool.builtin.WebSearchTool.NAME.equals(config.getId())
+                || cn.lineai.tool.builtin.ImageUnderstandingTool.NAME.equals(config.getId())
+                || cn.lineai.tool.builtin.ImageGenerationTool.NAME.equals(config.getId())
                 || "todo".equals(config.getId())
-                || "agent".equals(config.getId());
+                || cn.lineai.tool.builtin.AgentTool.NAME.equals(config.getId());
     }
 
     private int iconFor(String id) {
-        if ("file_ops".equals(id) || "http_server".equals(id)) return IconButtonView.MCP;
+        if ("file_ops".equals(id) || cn.lineai.tool.builtin.HttpServerTool.NAME.equals(id)) return IconButtonView.MCP;
         if ("shell".equals(id)) return IconButtonView.TERMINAL;
-        if ("web_search".equals(id)) return IconButtonView.SEARCH;
-        if ("image_understanding".equals(id)) return IconButtonView.PAINTBRUSH;
-        if ("image_generation".equals(id)) return IconButtonView.SPARKLES;
-        if ("agent".equals(id)) return IconButtonView.BRAIN;
+        if (cn.lineai.tool.builtin.WebSearchTool.NAME.equals(id)) return IconButtonView.SEARCH;
+        if (cn.lineai.tool.builtin.ImageUnderstandingTool.NAME.equals(id)) return IconButtonView.PAINTBRUSH;
+        if (cn.lineai.tool.builtin.ImageGenerationTool.NAME.equals(id)) return IconButtonView.SPARKLES;
+        if (cn.lineai.tool.builtin.AgentTool.NAME.equals(id)) return IconButtonView.BRAIN;
         if ("todo".equals(id)) return IconButtonView.SCROLL_TEXT;
         return IconButtonView.MCP;
     }

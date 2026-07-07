@@ -4,6 +4,7 @@ import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolArgs;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -11,9 +12,11 @@ import java.nio.charset.StandardCharsets;
 import org.json.JSONObject;
 
 public final class FileWriteTool extends BaseTool {
+    public static final String NAME = "file_write";
+
     @Override
     public String getName() {
-        return "file_write";
+        return NAME;
     }
 
     @Override
@@ -24,6 +27,11 @@ public final class FileWriteTool extends BaseTool {
     @Override
     public ToolCategory getCategory() {
         return ToolCategory.WRITE;
+    }
+
+    @Override
+    public ToolDisplayCategory getDisplayCategory() {
+        return ToolDisplayCategory.WRITE;
     }
 
     @Override

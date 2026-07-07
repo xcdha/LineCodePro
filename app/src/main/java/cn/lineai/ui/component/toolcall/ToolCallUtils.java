@@ -2,16 +2,24 @@ package cn.lineai.ui.component.toolcall;
 
 import android.content.Context;
 import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolCategory;
+import cn.lineai.tool.ToolDisplayCategory;
 import org.json.JSONObject;
 
 /**
  * 工具调用工具集合的门面：聚合 {@link ToolCallInputParser}、
- * {@link ToolCallPathDisplay}、{@link ToolCallJsonFormatter}、
- * {@link ToolCategory} 的静态方法，调用方只需 import 这一个类。
+ * {@link ToolCallPathDisplay}、{@link ToolCallJsonFormatter} 的静态方法，
+ * 调用方只需 import 这一个类。
  */
-final class ToolCallUtils {
+public final class ToolCallUtils {
     private ToolCallUtils() {
+    }
+
+    public static ToolDisplayCategory getDisplayCategory(String name) {
+        cn.lineai.tool.ToolDisplayResolver resolver = cn.lineai.tool.ToolDisplayResolver.getDefault();
+        if (resolver != null) {
+            return resolver.getDisplayCategory(name);
+        }
+        return cn.lineai.tool.ToolDisplayResolver.fallbackDisplayCategory(name);
     }
 
     static JSONObject parseInput(ToolCall toolCall) {
@@ -35,50 +43,50 @@ final class ToolCallUtils {
     }
 
     static boolean isImageGenerationTool(String name) {
-        return ToolCategory.isImageGenerationType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.IMAGE_GENERATION;
     }
 
     static boolean isReadTool(String name) {
-        return ToolCategory.isReadType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.READ;
     }
 
     static boolean isWriteTool(String name) {
-        return ToolCategory.isWriteType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.WRITE;
     }
 
     static boolean isDeleteTool(String name) {
-        return ToolCategory.isDeleteType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.DELETE;
     }
 
     static boolean isHttpTool(String name) {
-        return ToolCategory.isHttpType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.HTTP;
     }
 
     static boolean isCustomMcpTool(String name) {
-        return ToolCategory.isCustomMcpType(name);
+        return name != null && name.startsWith("mcpx_");
     }
 
     static boolean isCustomAgentTool(String name) {
-        return ToolCategory.isCustomAgentType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.AGENT && name != null && name.startsWith("agentx_");
     }
 
     static boolean isShellTool(String name) {
-        return ToolCategory.isShellType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.SHELL;
     }
 
     static boolean isAgentTool(String name) {
-        return ToolCategory.isAgentType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.AGENT && (name == null || !name.startsWith("agentx_"));
     }
 
     static boolean isAgentPipelineTool(String name) {
-        return ToolCategory.isAgentPipelineType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.AGENT_PIPELINE;
     }
 
     static boolean isTodoTool(String name) {
-        return ToolCategory.isTodoType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.TODO;
     }
 
     static boolean isPhoneControlTool(String name) {
-        return ToolCategory.isPhoneControlType(name);
+        return getDisplayCategory(name) == ToolDisplayCategory.PHONE_CONTROL;
     }
 }

@@ -17,7 +17,7 @@ import cn.lineai.ui.component.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
 import org.json.JSONObject;
 
-public final class ToolCallShellView extends BaseToolCallView {
+public final class ToolCallShellView extends BaseToolCallView implements ToolCallCardView {
     private static final int COLLAPSED_LINE_COUNT = 4;
     private static final int EXPANDED_OUTPUT_LIMIT = 64 * 1024;
     private static final int EXPANDED_HEAD_LIMIT = 24 * 1024;
@@ -179,7 +179,7 @@ public final class ToolCallShellView extends BaseToolCallView {
 
         int headerColor = error ? LineTheme.DANGER : streaming ? LineTheme.ACCENT : LineTheme.TEXT_TERTIARY;
         terminalIcon.setIconColor(headerColor);
-        commandView.setText(command.length() == 0 ? "shell_execute" : command);
+        commandView.setText(command.length() == 0 ? cn.lineai.tool.builtin.ShellExecuteTool.NAME : command);
         commandView.setTextColor(headerColor);
         progressBar.setVisibility(streaming ? VISIBLE : GONE);
         viewCommandButton.setVisibility(command.length() > 0 ? VISIBLE : GONE);
@@ -193,8 +193,14 @@ public final class ToolCallShellView extends BaseToolCallView {
         }
     }
 
+    @Override
     public void setToolReviewListener(ToolReviewListener listener) {
         toolReviewListener = listener;
+    }
+
+    @Override
+    public void setProjectPath(String projectPath) {
+        // Shell view does not use project path
     }
 
     private LinearLayout buildConfirmSection(Context context) {

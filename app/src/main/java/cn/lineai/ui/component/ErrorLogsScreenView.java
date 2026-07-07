@@ -10,18 +10,23 @@ import android.widget.Toast;
 import cn.lineai.R;
 import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.log.ErrorLogFileProvider;
-import cn.lineai.log.ErrorLogRepository;
 import cn.lineai.ui.theme.LineTheme;
 import java.util.List;
 
 public final class ErrorLogsScreenView extends ScreenScaffoldView {
-    private final ErrorLogRepository repository;
+    public interface Listener {
+        void onBack();
+        List<ErrorLogEntry> onLoadLogs();
+        void onClearLogs();
+    }
 
-    public ErrorLogsScreenView(Context context, Runnable onBack) {
-        super(context, context.getString(R.string.screen_error_logs_title), onBack, clearButton(context));
-        repository = new ErrorLogRepository(context);
+    private final Listener listener;
+
+    public ErrorLogsScreenView(Context context, Listener listener) {
+        super(context, context.getString(R.string.screen_error_logs_title), listener::onBack, clearButton(context));
+        this.listener = listener;
         getRightAction().setOnClickListener(v -> {
-            repository.clear();
+            listener.onClearLogs();
             Toast.makeText(getContext(), R.string.screen_error_logs_cleared, Toast.LENGTH_SHORT).show();
             render();
         });
@@ -31,7 +36,7 @@ public final class ErrorLogsScreenView extends ScreenScaffoldView {
     private void render() {
         LinearLayout content = getContent();
         content.removeAllViews();
-        List<ErrorLogEntry> logs = repository.list();
+        List<ErrorLogEntry> logs = listener.onLoadLogs();
         if (logs.isEmpty()) {
             TextView empty = LineTheme.text(getContext(), getContext().getString(R.string.screen_error_logs_empty), LineTheme.FONT_MD, LineTheme.TEXT_TERTIARY, android.graphics.Typeface.NORMAL);
             empty.setGravity(Gravity.CENTER);

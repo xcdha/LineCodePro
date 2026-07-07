@@ -51,6 +51,9 @@ public final class SettingsScreenView extends LinearLayout {
                 new RowSpec("theme", context.getString(R.string.settings_row_theme_title), context.getString(R.string.settings_row_theme_desc), IconButtonView.PALETTE),
                 new RowSpec("output", context.getString(R.string.settings_row_output_title), context.getString(R.string.settings_row_output_desc), IconButtonView.MONITOR),
         });
+        addSection(content, context.getString(R.string.screen_settings_section_security), new RowSpec[] {
+                new RowSpec("security", context.getString(R.string.screen_settings_section_security), context.getString(R.string.settings_row_security_desc), IconButtonView.SHIELD_CHECK),
+        });
         addSection(content, context.getString(R.string.screen_settings_section_data), new RowSpec[] {
                 new RowSpec("storage", context.getString(R.string.settings_row_storage_title), context.getString(R.string.settings_row_storage_desc), IconButtonView.DATABASE),
                 new RowSpec("memory", context.getString(R.string.settings_row_memory_title), context.getString(R.string.settings_row_memory_desc), IconButtonView.BOOK_OPEN),
@@ -92,7 +95,6 @@ public final class SettingsScreenView extends LinearLayout {
         item.setOrientation(HORIZONTAL);
         item.setGravity(Gravity.CENTER_VERTICAL);
         item.setClickable(true);
-        item.setOnClickListener(v -> listener.onItem(row.id));
         LineTheme.padding(item, LineTheme.LG, LineTheme.MD, LineTheme.LG, LineTheme.MD);
 
         FrameLayout iconWrap = new FrameLayout(context);
@@ -118,6 +120,7 @@ public final class SettingsScreenView extends LinearLayout {
         descParams.topMargin = LineTheme.dp(context, 2);
         labels.addView(desc, descParams);
 
+        item.setOnClickListener(v -> listener.onItem(row.id));
         IconButtonView chevron = new IconButtonView(context, IconButtonView.CHEVRON_RIGHT);
         chevron.setIconColor(LineTheme.TEXT_TERTIARY);
         chevron.setIconSizeDp(20, 16);

@@ -15,9 +15,8 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.R;
-import cn.lineai.model.ExtensionAgentConfig;
-import cn.lineai.model.ExtensionMcpConfig;
-import cn.lineai.model.ExtensionOverviewState;
+import cn.lineai.model.ExtensionItemUiModel;
+import cn.lineai.model.ExtensionKindUiModel;
 import cn.lineai.model.SkillRecord;
 import cn.lineai.ui.MainChatView;
 import cn.lineai.ui.theme.LineTheme;
@@ -47,20 +46,25 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
     }
 
     private final String kind;
-    private final ExtensionOverviewState state;
     private final Listener listener;
+    private final ExtensionKindUiModel uiModel;
 
-    public ExtensionDetailScreenView(Context context, String kind, ExtensionOverviewState state, Listener listener) {
-        super(context, titleFor(context, kind), listener::onBack, addButton(context, kind, listener));
-        this.kind = kind == null ? "" : kind;
-        this.state = state == null ? new ExtensionOverviewState(null, null, null) : state;
+    public ExtensionDetailScreenView(Context context, ExtensionKindUiModel uiModel, Listener listener) {
+        super(context, uiModel != null ? uiModel.getTitle() : context.getString(R.string.screen_extensions_section_linecode), listener::onBack, addButton(context, uiModel, listener));
+        this.kind = uiModel != null ? uiModel.getKind() : "";
         this.listener = listener;
+        this.uiModel = uiModel;
         getRightAction().setOnClickListener(v -> handleAdd());
         LinearLayout content = getContent();
         LineTheme.padding(content, 0, 0, 0, 100);
 
-        SettingsSectionView add = new SettingsSectionView(context, isSkills() ? context.getString(R.string.screen_extension_detail_section_install_skills) : context.getString(R.string.screen_extension_detail_section_install_other));
-        add.addRow(new ActionRowView(context, iconFor(this.kind), inlineTitle(context, this.kind), inlineDesc(context, this.kind), false, true, this::handleAdd), false);
+        String sectionTitle = uiModel != null ? uiModel.getSectionTitle() : context.getString(R.string.screen_extension_detail_section_install_other);
+        int sectionIcon = uiModel != null ? uiModel.getIconType() : IconButtonView.PACKAGE;
+        String sectionInlineTitle = uiModel != null ? uiModel.getInlineTitle() : context.getString(R.string.screen_extension_detail_inline_title_linecode);
+        String sectionInlineDesc = uiModel != null ? uiModel.getInlineDesc() : context.getString(R.string.screen_extension_detail_inline_desc_linecode);
+
+        SettingsSectionView add = new SettingsSectionView(context, sectionTitle);
+        add.addRow(new ActionRowView(context, sectionIcon, sectionInlineTitle, sectionInlineDesc, false, true, this::handleAdd), false);
         content.addView(add, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         SettingsSectionView installed = new SettingsSectionView(context, context.getString(R.string.screen_extension_detail_section_installed));
@@ -69,61 +73,39 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
     }
 
     private void handleAdd() {
-        if ("agent".equals(kind)) {
-            listener.onAddAgent();
-        } else if ("mcp".equals(kind)) {
-            listener.onAddMcp();
-        } else if ("skills".equals(kind)) {
-            showSkillActions();
-        } else {
-            Toast.makeText(getContext(), getContext().getString(R.string.screen_extension_detail_empty_linecode), Toast.LENGTH_SHORT).show();
+        if (uiModel != null) {
+            switch (uiModel.getAddActionType()) {
+                case ExtensionKindUiModel.ADD_ACTION_AGENT:
+                    listener.onAddAgent();
+                    return;
+                case ExtensionKindUiModel.ADD_ACTION_MCP:
+                    listener.onAddMcp();
+                    return;
+                case ExtensionKindUiModel.ADD_ACTION_SKILL:
+                    showSkillActions();
+                    return;
+                default:
+                    break;
+            }
         }
+        Toast.makeText(getContext(), getContext().getString(R.string.screen_extension_detail_empty_linecode), Toast.LENGTH_SHORT).show();
     }
 
     private void renderInstalled(SettingsSectionView installed) {
-        if ("agent".equals(kind)) {
-            List<ExtensionAgentConfig> agents = state.getAgents();
-            if (agents.isEmpty()) {
-                installed.addRow(empty(getContext().getString(R.string.screen_extension_detail_empty_agent)), false);
-                return;
-            }
-            for (int i = 0; i < agents.size(); i++) {
-                ExtensionAgentConfig agent = agents.get(i);
-                installed.addRow(extensionRow("agent", agent.getId(), IconButtonView.BRAIN, agent.getName(),
-                        agent.getSlug() + " · " + count(agent.getToolNames().size(), "tools"),
-                        agent.isEnabled()), i < agents.size() - 1);
-            }
+        if (uiModel == null) {
+            installed.addRow(empty(getContext().getString(R.string.screen_extension_detail_empty_linecode)), false);
             return;
         }
-        if ("mcp".equals(kind)) {
-            List<ExtensionMcpConfig> mcps = state.getMcps();
-            if (mcps.isEmpty()) {
-                installed.addRow(empty(getContext().getString(R.string.screen_extension_detail_empty_mcp)), false);
-                return;
-            }
-            for (int i = 0; i < mcps.size(); i++) {
-                ExtensionMcpConfig mcp = mcps.get(i);
-                installed.addRow(extensionRow("mcp", mcp.getId(), IconButtonView.MCP, mcp.getName(),
-                        count(mcp.getTools().size(), "tools") + " · " + mcp.getUrl(),
-                        mcp.isEnabled()), i < mcps.size() - 1);
-            }
+        List<ExtensionItemUiModel> items = uiModel.getInstalledItems();
+        if (items == null || items.isEmpty()) {
+            installed.addRow(empty(uiModel.getEmptyMessage()), false);
             return;
         }
-        if ("skills".equals(kind)) {
-            List<SkillRecord> skills = state.getSkills();
-            if (skills.isEmpty()) {
-                installed.addRow(empty(getContext().getString(R.string.screen_extension_detail_empty_skills)), false);
-                return;
-            }
-            for (int i = 0; i < skills.size(); i++) {
-                SkillRecord skill = skills.get(i);
-                installed.addRow(extensionRow("skills", skill.getId(), IconButtonView.ARCHIVE, skill.getName(),
-                        skill.getLocationLabel() + " · " + skill.getSkillMdPath(),
-                        skill.isEnabled()), i < skills.size() - 1);
-            }
-            return;
+        for (int i = 0; i < items.size(); i++) {
+            ExtensionItemUiModel item = items.get(i);
+            installed.addRow(extensionRow(uiModel.getKind(), item.getId(), uiModel.getIconType(), item.getName(),
+                    item.getDescription(), item.isEnabled()), i < items.size() - 1);
         }
-        installed.addRow(empty(getContext().getString(R.string.screen_extension_detail_empty_linecode)), false);
     }
 
     private LinearLayout extensionRow(String rowKind, String id, int iconType, String title, String desc, boolean enabled) {
@@ -278,7 +260,7 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
     }
 
     private void confirmDelete(String rowKind, String id, String title) {
-        if ("agent".equals(rowKind) || "mcp".equals(rowKind)) {
+        if (uiModel != null && uiModel.hasModifyAction()) {
             Dialog dialog = createBottomDialog();
             LinearLayout panel = createBottomPanel();
             addHandle(panel);
@@ -286,7 +268,7 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
             addDivider(panel);
             addActionRow(panel, getContext().getString(R.string.screen_extension_detail_modify), getContext().getString(R.string.screen_extension_detail_modify_desc), () -> {
                 dialog.dismiss();
-                if ("agent".equals(rowKind)) {
+                if (uiModel.getAddActionType() == ExtensionKindUiModel.ADD_ACTION_AGENT) {
                     listener.onEditAgent(id);
                 } else {
                     listener.onEditMcp(id);
@@ -445,56 +427,27 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
         return field == null ? "" : field.getInput().getText().toString().trim();
     }
 
-    private boolean isSkills() {
-        return "skills".equals(kind);
-    }
-
-    private static IconButtonView addButton(Context context, String kind, Listener listener) {
+    private static IconButtonView addButton(Context context, ExtensionKindUiModel uiModel, Listener listener) {
         IconButtonView button = new IconButtonView(context, IconButtonView.PLUS);
         button.setIconColor(LineTheme.ACCENT);
         button.setIconSizeDp(36, 19);
         button.setBackground(LineTheme.rounded(context, LineTheme.ACCENT_MUTED, 18));
         button.setOnClickListener(v -> {
-            if ("agent".equals(kind)) {
-                listener.onAddAgent();
-            } else if ("mcp".equals(kind)) {
-                listener.onAddMcp();
-            } else if ("skills".equals(kind)) {
-                Toast.makeText(context, context.getString(R.string.screen_extension_detail_add_button_toast), Toast.LENGTH_SHORT).show();
+            if (uiModel == null) return;
+            switch (uiModel.getAddActionType()) {
+                case ExtensionKindUiModel.ADD_ACTION_AGENT:
+                    listener.onAddAgent();
+                    break;
+                case ExtensionKindUiModel.ADD_ACTION_MCP:
+                    listener.onAddMcp();
+                    break;
+                case ExtensionKindUiModel.ADD_ACTION_SKILL:
+                    Toast.makeText(context, context.getString(R.string.screen_extension_detail_add_button_toast), Toast.LENGTH_SHORT).show();
+                    break;
+                default:
+                    break;
             }
         });
         return button;
-    }
-
-    private static String titleFor(Context context, String kind) {
-        if ("agent".equals(kind)) return context.getString(R.string.screen_extensions_section_agent);
-        if ("mcp".equals(kind)) return context.getString(R.string.screen_extensions_section_mcp);
-        if ("skills".equals(kind)) return context.getString(R.string.screen_extensions_section_skills);
-        return context.getString(R.string.screen_extensions_section_linecode);
-    }
-
-    private static int iconFor(String kind) {
-        if ("agent".equals(kind)) return IconButtonView.BRAIN;
-        if ("mcp".equals(kind)) return IconButtonView.MCP;
-        if ("skills".equals(kind)) return IconButtonView.ARCHIVE;
-        return IconButtonView.PACKAGE;
-    }
-
-    private static String inlineTitle(Context context, String kind) {
-        if ("skills".equals(kind)) return context.getString(R.string.screen_extension_detail_inline_title_skills);
-        if ("linecode".equals(kind)) return context.getString(R.string.screen_extension_detail_inline_title_linecode);
-        if ("agent".equals(kind)) return context.getString(R.string.screen_extension_detail_inline_title_agent);
-        return context.getString(R.string.screen_extension_detail_inline_title_mcp);
-    }
-
-    private static String inlineDesc(Context context, String kind) {
-        if ("skills".equals(kind)) return context.getString(R.string.screen_extension_detail_inline_desc_skills);
-        if ("linecode".equals(kind)) return context.getString(R.string.screen_extension_detail_inline_desc_linecode);
-        if ("agent".equals(kind)) return context.getString(R.string.screen_extension_detail_inline_desc_agent);
-        return context.getString(R.string.screen_extension_detail_inline_desc_mcp);
-    }
-
-    private static String count(int value, String suffix) {
-        return value + " " + suffix;
     }
 }

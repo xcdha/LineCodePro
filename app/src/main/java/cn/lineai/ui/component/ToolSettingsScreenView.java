@@ -10,7 +10,6 @@ import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.WebSearchConfig;
 import cn.lineai.ui.theme.LineTheme;
@@ -40,7 +39,7 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
     ) {
         super(context, context.getString(R.string.screen_tools_title), listener::onBack, null);
         this.listener = listener;
-        this.state = state == null ? new McpSettingsState(ToolSettingsRepository.EXECUTION_LOCAL, null) : state;
+        this.state = state == null ? new McpSettingsState("local", null) : state;
         this.imageUnderstandingModelLabel = imageUnderstandingModelLabel == null ? "" : imageUnderstandingModelLabel.trim();
         this.imageGenerationModelLabel = imageGenerationModelLabel == null ? "" : imageGenerationModelLabel.trim();
         LinearLayout content = getContent();

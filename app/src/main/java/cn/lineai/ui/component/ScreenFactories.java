@@ -3,13 +3,16 @@ package cn.lineai.ui.component;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Toast;
 import cn.lineai.R;
-import cn.lineai.data.repository.PhoneControlRepository;
+import cn.lineai.model.KeepAliveSettings;
+import cn.lineai.model.StorageStatsUiModel;
 import cn.lineai.ipc.IpcProviderConfig;
-import cn.lineai.ipc.ScannedProvider;
+import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
 import cn.lineai.model.ExtensionOverviewState;
@@ -19,8 +22,10 @@ import cn.lineai.model.McpToolSummary;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProviderPreset;
 import cn.lineai.model.ModelProviderPresets;
+import cn.lineai.model.SshConfig;
 import cn.lineai.model.WebSearchConfig;
 import cn.lineai.mvp.MainUiController;
+import cn.lineai.ssh.TermuxHelper;
 import cn.lineai.ui.MainChatView;
 import java.util.List;
 import java.util.Map;
@@ -79,6 +84,34 @@ public final class ScreenFactories {
             }
         }
         return null;
+    }
+
+    private static cn.lineai.model.ExtensionKindUiModel buildExtensionKindUiModel(
+            Context context, String kind, cn.lineai.model.ExtensionOverviewState state) {
+        cn.lineai.mvp.ExtensionKindDescriptor d = cn.lineai.mvp.ExtensionKindRegistry.getInstance().get(kind);
+        if (d == null) {
+            return null;
+        }
+        java.util.List<cn.lineai.model.ExtensionItemUiModel> items = new java.util.ArrayList<>();
+        java.util.List<cn.lineai.mvp.ExtensionItem> mvpItems = d.getInstalledItems(state);
+        if (mvpItems != null) {
+            for (cn.lineai.mvp.ExtensionItem item : mvpItems) {
+                items.add(new cn.lineai.model.ExtensionItemUiModel(
+                        item.getId(), item.getName(), item.getDescription(), item.isEnabled()));
+            }
+        }
+        return new cn.lineai.model.ExtensionKindUiModel(
+                d.kind(),
+                d.title(context),
+                d.iconType(),
+                d.sectionTitle(context),
+                d.inlineTitle(context),
+                d.inlineDesc(context),
+                d.addActionType(),
+                d.hasModifyAction(),
+                d.emptyMessage(context),
+                items
+        );
     }
 
     private static View newModelAddScreen(Context context, MainChatView view, MainUiController controller,
@@ -329,6 +362,33 @@ public final class ScreenFactories {
         }
     }
 
+    public static final class SecuritySettingsScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new SecuritySettingsScreenView(context, controller.getOutputSettings(), new SecuritySettingsScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public void onAllowAnyHttpChanged(boolean enabled) {
+                    controller.onAllowAnyHttpChanged(enabled);
+                }
+
+                @Override
+                public void onBrowserJavaScriptChanged(boolean enabled) {
+                    controller.onBrowserJavaScriptChanged(enabled);
+                }
+            });
+        }
+
+        @Override
+        public String screenId() {
+            return "security";
+        }
+    }
+
     public static final class ThemeSettingsScreenFactory implements ScreenFactory {
         @Override
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
@@ -401,6 +461,11 @@ public final class ScreenFactories {
                 public void onClearChatHistory() {
                     controller.onClearChatHistory();
                 }
+
+                @Override
+                public StorageStatsUiModel onLoadStats() {
+                    return controller.getStorageStats();
+                }
             });
         }
 
@@ -445,7 +510,22 @@ public final class ScreenFactories {
     public static final class ErrorLogsScreenFactory implements ScreenFactory {
         @Override
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
-            return new ErrorLogsScreenView(context, view::handleScreenBack);
+            return new ErrorLogsScreenView(context, new ErrorLogsScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public List<ErrorLogEntry> onLoadLogs() {
+                    return controller.getErrorLogs();
+                }
+
+                @Override
+                public void onClearLogs() {
+                    controller.clearErrorLogs();
+                }
+            });
         }
 
         @Override
@@ -469,6 +549,45 @@ public final class ScreenFactories {
                 @Override
                 public void onSettingsChanged() {
                     controller.onKeepAliveSettingsChanged();
+                }
+
+                @Override
+                public KeepAliveSettings onLoadSettings() {
+                    return controller.getKeepAliveSettings();
+                }
+
+                @Override
+                public void onSetWakeLockEnabled(boolean enabled) {
+                    controller.setKeepAliveWakeLockEnabled(enabled);
+                }
+
+                @Override
+                public void onSetForegroundEnabled(boolean enabled) {
+                    controller.setKeepAliveForegroundEnabled(enabled);
+                }
+
+                @Override
+                public void onSetFakeAudioEnabled(boolean enabled) {
+                    controller.setKeepAliveFakeAudioEnabled(enabled);
+                }
+
+                @Override
+                public void onUpdateService() {
+                    controller.updateKeepAliveService();
+                }
+
+                @Override
+                public void onUpdateServiceStatus(String status) {
+                    controller.updateKeepAliveServiceStatus(status);
+                }
+
+                @Override
+                public void onRequestIgnoreBatteryOptimizations() {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                        intent.setData(Uri.parse("package:" + context.getPackageName()));
+                        context.startActivity(intent);
+                    }
                 }
             }, permissionUiHelper);
         }
@@ -506,9 +625,8 @@ public final class ScreenFactories {
     public static final class PhoneControlScreenFactory implements ScreenFactory {
         @Override
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
-            PhoneControlRepository repository = new PhoneControlRepository(context);
-            boolean accessibilityEnabled = repository.isAccessibilityEnabled();
-            boolean disclaimerAccepted = repository.isDisclaimerAccepted();
+            boolean accessibilityEnabled = controller.isPhoneControlAccessibilityEnabled();
+            boolean disclaimerAccepted = controller.isPhoneControlDisclaimerAccepted();
             return new PhoneControlScreenView(context, accessibilityEnabled, disclaimerAccepted,
                     new PhoneControlScreenView.Listener() {
                 @Override
@@ -529,6 +647,21 @@ public final class ScreenFactories {
                 @Override
                 public void onPermissionEnabledChanged(String permissionId, boolean enabled) {
                     controller.onPhoneControlPermissionEnabledChanged(permissionId, enabled);
+                }
+
+                @Override
+                public boolean isPermissionEnabled(String permissionId) {
+                    return controller.isPhoneControlPermissionEnabled(permissionId);
+                }
+
+                @Override
+                public void onSetPermissionEnabled(String permissionId, boolean enabled) {
+                    controller.onPhoneControlSetPermissionEnabled(permissionId, enabled);
+                }
+
+                @Override
+                public void onAcceptDisclaimer() {
+                    controller.onPhoneControlAcceptDisclaimer();
                 }
             });
         }
@@ -552,6 +685,21 @@ public final class ScreenFactories {
                 public void onOpenTermuxIntegration() {
                     controller.onSettingsItemSelected("termuxIntegration");
                 }
+
+                @Override
+                public SshConfig onLoadConfig() {
+                    return controller.getSshConfig();
+                }
+
+                @Override
+                public void onSaveConfig(SshConfig config) {
+                    controller.saveSshConfig(config);
+                }
+
+                @Override
+                public String onTestConnection(SshConfig config) throws Exception {
+                    return controller.testSshConnection(config);
+                }
             });
         }
 
@@ -564,7 +712,27 @@ public final class ScreenFactories {
     public static final class TermuxIntegrationScreenFactory implements ScreenFactory {
         @Override
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
-            return new TermuxIntegrationScreenView(context, view::handleScreenBack);
+            return new TermuxIntegrationScreenView(context, new TermuxIntegrationScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public void onOpenTermux() throws Exception {
+                    controller.openTermux();
+                }
+
+                @Override
+                public TermuxHelper.TermuxSetupResult onSetupTermuxSsh(int timeoutMs) throws Exception {
+                    return controller.setupTermuxSsh(timeoutMs);
+                }
+
+                @Override
+                public String onTestConnection(SshConfig config) throws Exception {
+                    return controller.testSshConnection(config);
+                }
+            });
         }
 
         @Override
@@ -1009,7 +1177,8 @@ public final class ScreenFactories {
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
             String id = currentScreenId(view);
             String kind = id.substring(PREFIX.length());
-            return new ExtensionDetailScreenView(context, kind, controller.getExtensionOverview(), new ExtensionDetailScreenView.Listener() {
+            cn.lineai.model.ExtensionKindUiModel uiModel = buildExtensionKindUiModel(context, kind, controller.getExtensionOverview());
+            return new ExtensionDetailScreenView(context, uiModel, new ExtensionDetailScreenView.Listener() {
                 @Override
                 public void onBack() {
                     view.handleScreenBack();

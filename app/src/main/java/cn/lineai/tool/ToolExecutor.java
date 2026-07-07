@@ -1,8 +1,13 @@
 package cn.lineai.tool;
 
+import cn.lineai.ai.ModelClient;
+import cn.lineai.ai.protocol.ModelProtocolFactory;
 import cn.lineai.data.repository.DiffRecord;
 import cn.lineai.data.repository.DiffStore;
+import cn.lineai.data.repository.PromptTemplateRepository;
+import cn.lineai.data.repository.SshFileTreeStore;
 import cn.lineai.data.repository.ToolSettingsStore;
+import cn.lineai.model.ModelStore;
 import cn.lineai.tool.builtin.FileIo;
 import cn.lineai.tool.builtin.FileToolPathPolicy;
 import java.io.File;
@@ -12,15 +17,38 @@ public final class ToolExecutor {
     private final ToolRegistry registry;
     private final ToolSettingsStore settingsRepository;
     private final DiffStore diffRepository;
+    private final ModelStore modelRepository;
+    private final SshFileTreeStore sshFileTreeRepository;
+    private final ModelProtocolFactory modelProtocolFactory;
+    private final ModelClient modelClient;
+    private final PromptTemplateRepository promptTemplateRepository;
 
     public ToolExecutor(ToolRegistry registry, ToolSettingsStore settingsRepository) {
-        this(registry, settingsRepository, null);
+        this(registry, settingsRepository, null, null, null, null, null, null);
     }
 
     public ToolExecutor(ToolRegistry registry, ToolSettingsStore settingsRepository, DiffStore diffRepository) {
+        this(registry, settingsRepository, diffRepository, null, null, null, null, null);
+    }
+
+    public ToolExecutor(
+            ToolRegistry registry,
+            ToolSettingsStore settingsRepository,
+            DiffStore diffRepository,
+            ModelStore modelRepository,
+            SshFileTreeStore sshFileTreeRepository,
+            ModelProtocolFactory modelProtocolFactory,
+            ModelClient modelClient,
+            PromptTemplateRepository promptTemplateRepository
+    ) {
         this.registry = registry;
         this.settingsRepository = settingsRepository;
         this.diffRepository = diffRepository;
+        this.modelRepository = modelRepository;
+        this.sshFileTreeRepository = sshFileTreeRepository;
+        this.modelProtocolFactory = modelProtocolFactory;
+        this.modelClient = modelClient;
+        this.promptTemplateRepository = promptTemplateRepository;
     }
 
     public ToolResult execute(ToolCall toolCall, ToolContext context) {
@@ -35,7 +63,11 @@ public final class ToolExecutor {
         if (toolCall == null) {
             return new ToolResult("", "", "工具调用为空", true);
         }
-        ToolContext callContext = (context == null ? new ToolContext("") : context).withToolCallId(toolCall.getId());
+        ToolContext baseContext = context == null ? new ToolContext("") : context;
+        if (context == null || needsInjection(context)) {
+            baseContext = injectDependencies(baseContext);
+        }
+        ToolContext callContext = baseContext.withToolCallId(toolCall.getId());
         BaseTool tool = registry.get(toolCall.getName());
         if (tool == null) {
             return new ToolResult(toolCall.getId(), toolCall.getName(), "未知工具: " + toolCall.getName(), true);
@@ -69,6 +101,29 @@ public final class ToolExecutor {
 
     private boolean shouldRecordDiff(BaseTool tool) {
         return diffRepository != null && tool.shouldRecordDiff();
+    }
+
+    private boolean needsInjection(ToolContext context) {
+        return context.getToolSettingsStore() == null
+                || context.getModelRepository() == null
+                || context.getModelProtocolFactory() == null;
+    }
+
+    private ToolContext injectDependencies(ToolContext context) {
+        return new ToolContext(
+                context.getHomePath(),
+                context.getExtraWriteRoots(),
+                context.getAgentRunner(),
+                context.getToolCallId(),
+                null,
+                context.getTodoStateStore(),
+                context.getToolSettingsStore() != null ? context.getToolSettingsStore() : settingsRepository,
+                context.getModelRepository() != null ? context.getModelRepository() : modelRepository,
+                context.getSshFileTreeRepository() != null ? context.getSshFileTreeRepository() : sshFileTreeRepository,
+                context.getModelProtocolFactory() != null ? context.getModelProtocolFactory() : modelProtocolFactory,
+                context.getModelClient() != null ? context.getModelClient() : modelClient,
+                context.getPromptTemplateRepository() != null ? context.getPromptTemplateRepository() : promptTemplateRepository
+        );
     }
 
     private ToolResult executeWithDiff(BaseTool tool, JSONObject input, ToolContext context) {

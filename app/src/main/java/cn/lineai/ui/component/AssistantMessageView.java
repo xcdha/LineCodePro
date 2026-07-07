@@ -61,10 +61,9 @@ public final class AssistantMessageView extends LinearLayout {
         addView(toolCallsContainer, toolParams);
 
         actionBar = new MessageActionBarView(context, MessageActionBarView.ALIGN_LEFT, false);
-        actionBar.setListener(new MessageActionBarView.Listener() {
+        actionBar.setActionListener(new MessageActionBarView.ActionListener() {
             @Override
             public void onCopy() {
-                android.widget.Toast.makeText(context, "[DEBUG] onCopy", android.widget.Toast.LENGTH_SHORT).show();
                 if (actionListener != null && currentMessage != null) {
                     actionListener.onCopyMessage(currentMessage);
                 }
@@ -72,7 +71,6 @@ public final class AssistantMessageView extends LinearLayout {
 
             @Override
             public void onQuote() {
-                android.widget.Toast.makeText(context, "[DEBUG] onQuote", android.widget.Toast.LENGTH_SHORT).show();
                 if (actionListener != null && currentMessage != null) {
                     actionListener.onQuoteMessage(currentMessage);
                 }
@@ -80,29 +78,24 @@ public final class AssistantMessageView extends LinearLayout {
 
             @Override
             public void onShare() {
-                android.widget.Toast.makeText(context, "[DEBUG] onShare", android.widget.Toast.LENGTH_SHORT).show();
                 if (actionListener != null && currentMessage != null) {
                     actionListener.onShareMessage(currentMessage);
                 }
             }
-
+        });
+        actionBar.setSelectListener(new MessageActionBarView.SelectListener() {
             @Override
             public void onSelect() {
-                android.widget.Toast.makeText(context, "[DEBUG] onSelect: listener=" + (actionListener != null) + " msg=" + (currentMessage != null), android.widget.Toast.LENGTH_SHORT).show();
                 if (actionListener != null && currentMessage != null) {
-                    actionListener.onSelectMessage(currentMessage, AssistantMessageView.this);
+                    actionListener.onSelectText(currentMessage);
                 }
             }
 
             @Override
             public void onMultiSelect() {
-                if (actionListener != null && currentMessage != null) {
-                    actionListener.onMultiSelectMessage(currentMessage);
+                if (actionListener != null) {
+                    actionListener.onMultiSelectToggle();
                 }
-            }
-
-            @Override
-            public void onRecall() {
             }
         });
         LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LineTheme.dp(context, 22));
@@ -266,7 +259,7 @@ public final class AssistantMessageView extends LinearLayout {
 
     private boolean isHiddenSuccessfulImageGeneration(ToolCall call, ToolResult result) {
         return call != null
-                && "image_generation".equals(call.getName())
+                && cn.lineai.tool.builtin.ImageGenerationTool.NAME.equals(call.getName())
                 && result != null
                 && !result.isError()
                 && result.getContent().trim().length() > 0

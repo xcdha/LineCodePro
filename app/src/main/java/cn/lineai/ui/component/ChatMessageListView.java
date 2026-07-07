@@ -9,7 +9,6 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.AbsListView;
-import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -38,15 +37,14 @@ public final class ChatMessageListView extends FrameLayout {
     private final MessageAdapter adapter;
     private final IconButtonView scrollToBottomButton;
     private boolean followTailEnabled;
-    private boolean programmaticScroll; // 程序触发的滚动不关闭 followTail
     private ToolReviewListener toolReviewListener;
     private MarkdownLinkHandler markdownLinkHandler;
     private MessageActionListener messageActionListener;
+    private boolean multiSelectMode = false;
+    private final Set<String> selectedMessageIds = new HashSet<>();
+    private LinearLayout multiSelectBar;
+    private TextView multiSelectCountText;
     private MultiSelectListener multiSelectListener;
-
-    public interface MultiSelectListener {
-        void onMultiSelectTriggered(int position);
-    }
 
     public ChatMessageListView(Context context) {
         super(context);
@@ -63,7 +61,7 @@ public final class ChatMessageListView extends FrameLayout {
         listView.setDividerHeight(0);
         listView.setFadingEdgeLength(0);
         listView.setFastScrollEnabled(false);
-        listView.setFocusable(true);
+        listView.setFocusable(false);
         listView.setOverScrollMode(OVER_SCROLL_IF_CONTENT_SCROLLS);
         listView.setPadding(0, LineTheme.dp(context, LineTheme.SM), 0, LineTheme.dp(context, LineTheme.SM));
         listView.setSelector(new ColorDrawable(Color.TRANSPARENT));
@@ -88,16 +86,11 @@ public final class ChatMessageListView extends FrameLayout {
         addView(scrollToBottomButton, buttonParams);
         addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
                 post(this::updateScrollToBottomVisibility));
+        buildMultiSelectBar();
 
         listView.setOnScrollListener(new AbsListView.OnScrollListener() {
             @Override
             public void onScrollStateChanged(AbsListView view, int scrollState) {
-                if (programmaticScroll) {
-                    if (scrollState == AbsListView.OnScrollListener.SCROLL_STATE_IDLE) {
-                        programmaticScroll = false;
-                    }
-                    return;
-                }
                 if (scrollState == AbsListView.OnScrollListener.SCROLL_STATE_TOUCH_SCROLL
                         || scrollState == AbsListView.OnScrollListener.SCROLL_STATE_FLING) {
                     followTailEnabled = false;
@@ -109,13 +102,6 @@ public final class ChatMessageListView extends FrameLayout {
             public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
                 updateScrollToBottomVisibility();
             }
-        });
-
-        listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            if (multiSelectListener != null) {
-                multiSelectListener.onMultiSelectTriggered(position);
-            }
-            return true;
         });
     }
 
@@ -151,8 +137,124 @@ public final class ChatMessageListView extends FrameLayout {
         multiSelectListener = listener;
     }
 
-    public List<ChatMessage> getMessages() {
-        return adapter.getMessages();
+    public boolean isMultiSelectMode() {
+        return multiSelectMode;
+    }
+
+    public boolean isSelected(String messageId) {
+        return messageId != null && selectedMessageIds.contains(messageId);
+    }
+
+    public void toggleSelection(String messageId) {
+        if (messageId == null || messageId.isEmpty()) {
+            return;
+        }
+        if (selectedMessageIds.contains(messageId)) {
+            selectedMessageIds.remove(messageId);
+        } else {
+            selectedMessageIds.add(messageId);
+        }
+        updateMultiSelectCount();
+        adapter.notifyDataSetChanged();
+    }
+
+    public void enterMultiSelectMode() {
+        multiSelectMode = true;
+        selectedMessageIds.clear();
+        if (multiSelectBar != null) {
+            multiSelectBar.setVisibility(VISIBLE);
+        }
+        updateMultiSelectCount();
+        updateScrollToBottomVisibility();
+        invalidate();
+        requestLayout();
+        adapter.notifyDataSetChanged();
+    }
+
+    public void exitMultiSelectMode() {
+        multiSelectMode = false;
+        selectedMessageIds.clear();
+        if (multiSelectBar != null) {
+            multiSelectBar.setVisibility(GONE);
+        }
+        updateMultiSelectCount();
+        updateScrollToBottomVisibility();
+        invalidate();
+        requestLayout();
+        adapter.notifyDataSetChanged();
+    }
+
+    public List<ChatMessage> getSelectedMessages() {
+        List<ChatMessage> result = new ArrayList<>();
+        if (selectedMessageIds.isEmpty()) {
+            return result;
+        }
+        for (ChatMessage message : adapter.getVisibleMessages()) {
+            String id = message.getId();
+            if (id != null && selectedMessageIds.contains(id)) {
+                result.add(message);
+            }
+        }
+        return result;
+    }
+
+    private void buildMultiSelectBar() {
+        Context context = getContext();
+        multiSelectBar = new LinearLayout(context);
+        multiSelectBar.setOrientation(LinearLayout.HORIZONTAL);
+        multiSelectBar.setGravity(Gravity.CENTER_VERTICAL);
+        multiSelectBar.setBackgroundColor(LineTheme.SURFACE_ELEVATED);
+        LineTheme.padding(multiSelectBar, LineTheme.LG, LineTheme.SM, LineTheme.LG, LineTheme.SM);
+        multiSelectBar.setElevation(LineTheme.dp(context, 8));
+        multiSelectBar.setVisibility(GONE);
+
+        multiSelectCountText = LineTheme.text(context,
+                context.getString(R.string.screen_models_selected_count, 0),
+                LineTheme.FONT_MD, LineTheme.TEXT, Typeface.NORMAL);
+        multiSelectBar.addView(multiSelectCountText, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        IconButtonView exportButton = new IconButtonView(context, IconButtonView.DOWNLOAD);
+        exportButton.setContentDescription(context.getString(R.string.export_button_label));
+        exportButton.setIconColor(LineTheme.TEXT_ON_COLOR);
+        exportButton.setIconSizeDp(44, 20);
+        exportButton.setBackground(LineTheme.roundedStroke(context, LineTheme.ACCENT, 22, LineTheme.ACCENT));
+        exportButton.setOnClickListener(v -> {
+            if (multiSelectListener != null) {
+                multiSelectListener.onExportRequested(getSelectedMessages());
+            }
+        });
+        LinearLayout.LayoutParams exportParams = new LinearLayout.LayoutParams(
+                LineTheme.dp(context, 44), LineTheme.dp(context, 44));
+        exportParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
+        multiSelectBar.addView(exportButton, exportParams);
+
+        IconButtonView closeButton = new IconButtonView(context, IconButtonView.CLOSE);
+        closeButton.setContentDescription(context.getString(R.string.common_close));
+        closeButton.setIconColor(LineTheme.TEXT_SECONDARY);
+        closeButton.setIconSizeDp(44, 20);
+        closeButton.setOnClickListener(v -> {
+            exitMultiSelectMode();
+            if (multiSelectListener != null) {
+                multiSelectListener.onMultiSelectExit();
+            }
+        });
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(
+                LineTheme.dp(context, 44), LineTheme.dp(context, 44));
+        closeParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
+        multiSelectBar.addView(closeButton, closeParams);
+
+        FrameLayout.LayoutParams barParams = new FrameLayout.LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+        addView(multiSelectBar, barParams);
+    }
+
+    private void updateMultiSelectCount() {
+        if (multiSelectCountText == null) {
+            return;
+        }
+        int count = selectedMessageIds.size();
+        multiSelectCountText.setText(getContext().getString(R.string.screen_models_selected_count, count));
     }
 
     private void scrollToBottom() {
@@ -167,45 +269,27 @@ public final class ChatMessageListView extends FrameLayout {
             return;
         }
         int target = count - 1;
-        if (!animated) {
-            // streaming跟随模式：先确保最后一项可见，然后平滑滚到底部
-            if (listView.getLastVisiblePosition() < target) {
-                listView.setSelection(target);
+        listView.setSelection(target);
+        listView.post(() -> {
+            int childIndex = target - listView.getFirstVisiblePosition();
+            if (childIndex >= 0 && childIndex < listView.getChildCount()) {
+                View child = listView.getChildAt(childIndex);
+                int viewportBottom = listView.getHeight() - listView.getPaddingBottom();
+                int delta = child.getBottom() - viewportBottom;
+                if (delta > 0) {
+                    if (animated) {
+                        listView.smoothScrollBy(delta, 180);
+                    } else {
+                        listView.setSelectionFromTop(target, viewportBottom - child.getHeight());
+                    }
+                }
             }
-            listView.post(() -> {
-                int childIndex = target - listView.getFirstVisiblePosition();
-                if (childIndex >= 0 && childIndex < listView.getChildCount()) {
-                    View child = listView.getChildAt(childIndex);
-                    int viewportBottom = listView.getHeight() - listView.getPaddingBottom();
-                    int delta = child.getBottom() - viewportBottom;
-                    if (delta > 0) {
-                        programmaticScroll = true;
-                        listView.smoothScrollBy(delta, 120);
-                    }
-                }
-                updateScrollToBottomVisibility();
-            });
-        } else {
-            // 用户点击按钮：平滑滚动到底部
-            listView.setSelection(target);
-            listView.post(() -> {
-                int childIndex = target - listView.getFirstVisiblePosition();
-                if (childIndex >= 0 && childIndex < listView.getChildCount()) {
-                    View child = listView.getChildAt(childIndex);
-                    int viewportBottom = listView.getHeight() - listView.getPaddingBottom();
-                    int delta = child.getBottom() - viewportBottom;
-                    if (delta > 0) {
-                        programmaticScroll = true;
-                        listView.smoothScrollBy(delta, 250);
-                    }
-                }
-                updateScrollToBottomVisibility();
-            });
-        }
+            updateScrollToBottomVisibility();
+        });
     }
 
     private void updateScrollToBottomVisibility() {
-        boolean show = adapter.getCount() > 0 && !isAtBottom();
+        boolean show = !multiSelectMode && adapter.getCount() > 0 && !isAtBottom();
         scrollToBottomButton.setVisibility(show ? VISIBLE : GONE);
         if (show) {
             scrollToBottomButton.bringToFront();
@@ -300,10 +384,6 @@ public final class ChatMessageListView extends FrameLayout {
 
         MessageAdapter(Context context) {
             this.context = context;
-        }
-
-        List<ChatMessage> getMessages() {
-            return new ArrayList<>(visibleMessages);
         }
 
         boolean render(ChatUiState state) {
@@ -480,6 +560,10 @@ public final class ChatMessageListView extends FrameLayout {
                     ((AssistantMessageView) view).setMessageActionListener(listener);
                 }
             }
+        }
+
+        List<ChatMessage> getVisibleMessages() {
+            return new ArrayList<>(visibleMessages);
         }
 
         private boolean canReturnCachedView(View cached, View convertView, android.view.ViewGroup parent) {
@@ -660,5 +744,11 @@ public final class ChatMessageListView extends FrameLayout {
         public boolean performClick() {
             return super.performClick();
         }
+    }
+
+    public interface MultiSelectListener {
+        void onExportRequested(List<ChatMessage> selectedMessages);
+
+        void onMultiSelectExit();
     }
 }

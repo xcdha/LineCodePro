@@ -8,10 +8,17 @@ import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.data.repository.PhoneControlRepository;
 import cn.lineai.ui.theme.LineTheme;
 
 public final class PhoneControlScreenView extends ScreenScaffoldView {
+
+    private static final String PERMISSION_SCREENSHOT = "screenshot";
+    private static final String PERMISSION_CLICK = "click";
+    private static final String PERMISSION_SWIPE = "swipe";
+    private static final String PERMISSION_LONG_PRESS = "longPress";
+    private static final String PERMISSION_VIEW_HIERARCHY = "viewHierarchy";
+    private static final String PERMISSION_VIEW_ACTION = "viewAction";
+    private static final String PERMISSION_GLOBAL_ACTION = "globalAction";
 
     public interface Listener {
         void onBack();
@@ -19,12 +26,17 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
         void onOpenAccessibilitySettings();
 
         void onPermissionEnabledChanged(String permissionId, boolean enabled);
+
+        boolean isPermissionEnabled(String permissionId);
+
+        void onSetPermissionEnabled(String permissionId, boolean enabled);
+
+        void onAcceptDisclaimer();
     }
 
     private final boolean accessibilityEnabled;
     private final boolean disclaimerAccepted;
     private final Listener listener;
-    private final PhoneControlRepository phoneControlRepository;
 
     public PhoneControlScreenView(Context context, boolean accessibilityEnabled,
                                   boolean disclaimerAccepted, Listener listener) {
@@ -32,7 +44,6 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
         this.accessibilityEnabled = accessibilityEnabled;
         this.disclaimerAccepted = disclaimerAccepted;
         this.listener = listener;
-        this.phoneControlRepository = new PhoneControlRepository(context);
 
         LinearLayout content = getContent();
         LineTheme.padding(content, LineTheme.LG, 0, LineTheme.LG, 0);
@@ -46,25 +57,25 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
             list.setOrientation(VERTICAL);
             addPermissionSwitch(context, list, R.string.screen_phone_control_permission_screenshot,
                     R.string.screen_phone_control_permission_screenshot_desc, IconButtonView.ZAP,
-                    PhoneControlRepository.PERMISSION_SCREENSHOT, true);
+                    PERMISSION_SCREENSHOT, true);
             addPermissionSwitch(context, list, R.string.screen_phone_control_permission_click,
                     R.string.screen_phone_control_permission_click_desc, IconButtonView.PLAY,
-                    PhoneControlRepository.PERMISSION_CLICK, true);
+                    PERMISSION_CLICK, true);
             addPermissionSwitch(context, list, R.string.screen_phone_control_permission_swipe,
                     R.string.screen_phone_control_permission_swipe_desc, IconButtonView.SLIDERS_HORIZONTAL,
-                    PhoneControlRepository.PERMISSION_SWIPE, true);
+                    PERMISSION_SWIPE, true);
             addPermissionSwitch(context, list, R.string.screen_phone_control_permission_long_press,
                     R.string.screen_phone_control_permission_long_press_desc, IconButtonView.CLOCK_3,
-                    PhoneControlRepository.PERMISSION_LONG_PRESS, true);
+                    PERMISSION_LONG_PRESS, true);
             addPermissionSwitch(context, list, R.string.screen_phone_control_permission_view_hierarchy,
                     R.string.screen_phone_control_permission_view_hierarchy_desc, IconButtonView.SQUARE_FUNCTION,
-                    PhoneControlRepository.PERMISSION_VIEW_HIERARCHY, true);
+                    PERMISSION_VIEW_HIERARCHY, true);
             addPermissionSwitch(context, list, R.string.screen_phone_control_permission_view_action,
                     R.string.screen_phone_control_permission_view_action_desc, IconButtonView.WRENCH,
-                    PhoneControlRepository.PERMISSION_VIEW_ACTION, false);
+                    PERMISSION_VIEW_ACTION, false);
             addPermissionSwitch(context, list, R.string.screen_phone_control_permission_global_action,
                     R.string.screen_phone_control_permission_global_action_desc, IconButtonView.SMARTPHONE,
-                    PhoneControlRepository.PERMISSION_GLOBAL_ACTION, false);
+                    PERMISSION_GLOBAL_ACTION, false);
             content.addView(list, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
     }
@@ -137,7 +148,7 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
                 context.getString(R.string.screen_phone_control_disclaimer_agree),
                 context.getString(R.string.screen_phone_control_disclaimer_disagree),
                 () -> {
-                    phoneControlRepository.setDisclaimerAccepted(true);
+                    listener.onAcceptDisclaimer();
                     listener.onOpenAccessibilitySettings();
                 },
                 null
@@ -146,13 +157,11 @@ public final class PhoneControlScreenView extends ScreenScaffoldView {
 
     private void addPermissionSwitch(Context context, LinearLayout list, int labelRes, int descRes,
                                      int iconType, String permissionId, boolean divider) {
-        boolean checked = phoneControlRepository.isPermissionEnabled(permissionId);
+        boolean checked = listener.isPermissionEnabled(permissionId);
         SwitchRowView row = new SwitchRowView(context, iconType, context.getString(labelRes),
                 context.getString(descRes), checked, (buttonView, isChecked) -> {
-            phoneControlRepository.setPermissionEnabled(permissionId, isChecked);
-            if (listener != null) {
-                listener.onPermissionEnabledChanged(permissionId, isChecked);
-            }
+            listener.onSetPermissionEnabled(permissionId, isChecked);
+            listener.onPermissionEnabledChanged(permissionId, isChecked);
         });
         list.addView(row, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         if (divider) {

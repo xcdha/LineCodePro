@@ -11,8 +11,11 @@ import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.ai.message.SystemModelMessage;
 import cn.lineai.ai.message.ToolModelMessage;
 import cn.lineai.ai.message.UserModelMessage;
+import cn.lineai.ai.prompt.StringTemplate;
+import cn.lineai.ai.protocol.ModelProtocolFactory;
 import cn.lineai.data.repository.AiBehaviorSettingsRepository;
 import cn.lineai.data.repository.ExtensionRepository;
+import cn.lineai.data.repository.PromptTemplateRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsStore;
 import cn.lineai.model.AiBehaviorSettings;
@@ -26,14 +29,21 @@ import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolRegistry;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.tool.builtin.AgentTool;
+import cn.lineai.tool.builtin.AgentPipelineTool;
+import cn.lineai.tool.builtin.FileDeleteTool;
+import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileToolPathPolicy;
+import cn.lineai.tool.builtin.FileWriteTool;
+import cn.lineai.tool.builtin.HttpServerTool;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,6 +63,8 @@ public final class AgentExecutionController {
     private final ToolExecutor toolExecutor;
     private final ToolRegistry toolRegistry;
     private final ExtensionRepository extensionRepository;
+    private final PromptTemplateRepository promptTemplateRepository;
+    private final ModelProtocolFactory modelProtocolFactory = new ModelProtocolFactory();
     private ToolReviewAwaiter toolReviewAwaiter;
 
     public interface Host {
@@ -97,7 +109,8 @@ public final class AgentExecutionController {
             ToolSettingsStore toolSettingsRepository,
             ToolExecutor toolExecutor,
             ToolRegistry toolRegistry,
-            ExtensionRepository extensionRepository
+            ExtensionRepository extensionRepository,
+            PromptTemplateRepository promptTemplateRepository
     ) {
         this.modelClient = modelClient;
         this.aiBehaviorSettingsRepository = aiBehaviorSettingsRepository;
@@ -105,6 +118,7 @@ public final class AgentExecutionController {
         this.toolExecutor = toolExecutor;
         this.toolRegistry = toolRegistry;
         this.extensionRepository = extensionRepository;
+        this.promptTemplateRepository = promptTemplateRepository;
     }
 
     public void setToolReviewAwaiter(ToolReviewAwaiter toolReviewAwaiter) {
@@ -121,10 +135,10 @@ public final class AgentExecutionController {
             int usedToolCallCount
     ) {
         if (selectedModel == null) {
-            return new ToolResult("", "agent", "当前没有可用模型，无法运行 Agent。", true);
+            return new ToolResult("", AgentTool.NAME, "当前没有可用模型，无法运行 Agent。", true);
         }
         if (cancellationToken != null && cancellationToken.isCancelled()) {
-            return new ToolResult("", "agent", AGENT_TERMINATED_MESSAGE, true);
+            return new ToolResult("", AgentTool.NAME, AGENT_TERMINATED_MESSAGE, true);
         }
         String type = AgentTool.normalizeType(input.optString("type"));
         String description = input.optString("description").trim();
@@ -137,7 +151,7 @@ public final class AgentExecutionController {
         AgentProgressSession progress = new AgentProgressSession(
                 generationId,
                 parentContext == null ? "" : parentContext.getToolCallId(),
-                "agent",
+                AgentTool.NAME,
                 type,
                 description
         );
@@ -166,7 +180,7 @@ public final class AgentExecutionController {
         progress.setFinished(result.isError() ? "error" : "done", result.isError(), builder.toString().trim());
         host.addOrReplaceToolResult(progress.snapshotResult());
         host.render();
-        return new ToolResult("", "agent", progress.snapshotResult().getContent(), result.isError());
+        return new ToolResult("", AgentTool.NAME, progress.snapshotResult().getContent(), result.isError());
     }
 
     public ToolResult runAgentPipelineTool(
@@ -179,22 +193,22 @@ public final class AgentExecutionController {
             int usedToolCallCount
     ) {
         if (selectedModel == null) {
-            return new ToolResult("", "agent_pipeline", "当前没有可用模型，无法运行 Agent 流水线。", true);
+            return new ToolResult("", AgentPipelineTool.NAME, "当前没有可用模型，无法运行 Agent 流水线。", true);
         }
         if (cancellationToken != null && cancellationToken.isCancelled()) {
-            return new ToolResult("", "agent_pipeline", AGENT_TERMINATED_MESSAGE, true);
+            return new ToolResult("", AgentPipelineTool.NAME, AGENT_TERMINATED_MESSAGE, true);
         }
         ArrayList<PipelineAgent> agents = parsePipelineAgents(input.optJSONArray("agents"));
         if (agents.isEmpty()) {
-            return new ToolResult("", "agent_pipeline", "agent_pipeline.agents 不能为空。", true);
+            return new ToolResult("", AgentPipelineTool.NAME, "agent_pipeline.agents 不能为空。", true);
         }
         String dependencyError = validatePipelineDependencies(agents);
         if (dependencyError.length() > 0) {
-            return new ToolResult("", "agent_pipeline", dependencyError, true);
+            return new ToolResult("", AgentPipelineTool.NAME, dependencyError, true);
         }
         ArrayList<ArrayList<PipelineAgent>> levels = dependencyLevels(agents);
         if (levels.isEmpty()) {
-            return new ToolResult("", "agent_pipeline", "Agent 流水线存在循环依赖或重复 id，无法执行。", true);
+            return new ToolResult("", AgentPipelineTool.NAME, "Agent 流水线存在循环依赖或重复 id，无法执行。", true);
         }
 
         LinkedHashMap<String, AgentRunResult> results = new LinkedHashMap<>();
@@ -252,7 +266,7 @@ public final class AgentExecutionController {
                 AgentProgressSession agentProgress = new AgentProgressSession(
                         generationId,
                         "",
-                        "agent",
+                        AgentTool.NAME,
                         agent.getType(),
                         agent.getDescription(),
                         (payload, progressError) -> pipelineProgress.updateAgent(agent, payload, progressError)
@@ -310,11 +324,11 @@ public final class AgentExecutionController {
     ) {
         String toolCallId = parentContext == null ? "" : parentContext.getToolCallId();
         if (toolCallId.length() == 0) {
-            return new ToolResult("", "agent_pipeline", summary, error);
+            return new ToolResult("", AgentPipelineTool.NAME, summary, error);
         }
         return new ToolResult(
                 toolCallId,
-                "agent_pipeline",
+                AgentPipelineTool.NAME,
                 pipelineProgress.payload(),
                 error,
                 "",
@@ -383,7 +397,7 @@ public final class AgentExecutionController {
                     host.scheduleAgentProgressRender(progress);
                 }
                 AiBehaviorSettings aiSettings = aiBehaviorSettingsRepository.get();
-                List<BaseTool> nativeTools = supportsNativeTools(selectedModel) ? agentTools : new ArrayList<>();
+                List<BaseTool> nativeTools = modelProtocolFactory.create(selectedModel.getProtocolType()).supportsNativeTools(selectedModel) ? agentTools : new ArrayList<>();
                 ModelRequestOptions options = new ModelRequestOptions(
                         aiSettings.getReasoningEffort(),
                         aiSettings.isPreserveReasoningEnabled(),
@@ -497,7 +511,7 @@ public final class AgentExecutionController {
 
     public boolean isAgentToolAllowed(BaseTool tool, String type, Set<String> customToolNames, Set<String> allowedMcpToolNames) {
         String name = tool.getName();
-        if ("agent".equals(name) || "agent_pipeline".equals(name)) {
+        if (AgentTool.NAME.equals(name) || AgentPipelineTool.NAME.equals(name)) {
             return false;
         }
         if (!allowedMcpToolNames.isEmpty() && allowedMcpToolNames.contains(name)) {
@@ -509,18 +523,19 @@ public final class AgentExecutionController {
         if (isRemoteExecutionMode()) {
             return true;
         }
-        if ("file_delete".equals(name)) {
+        if (tool.needsConfirmation() && tool.getCategory() == ToolCategory.WRITE
+                && tool.getDisplayCategory() == ToolDisplayCategory.DELETE) {
             return false;
         }
         if (AgentTool.TYPE_EXPLORE.equals(type)) {
             return tool.getCategory() == ToolCategory.READ;
         }
-        if ("shell_execute".equals(name)) {
+        if (tool.isAllowedInReadonlyMode()) {
             return true;
         }
         return tool.getCategory() == ToolCategory.READ
                 || tool.getCategory() == ToolCategory.WRITE
-                || "http_server".equals(name);
+                || HttpServerTool.NAME.equals(name);
     }
 
     private boolean isRemoteExecutionMode() {
@@ -641,7 +656,7 @@ public final class AgentExecutionController {
                 && tool.requiresConfirmation()
                 && !toolReviewAwaiter.isAutoConfirmed(call)
                 && toolSettingsRepository.canExecuteTool(tool.getName(), tool.getCategory()).isAllowed()
-                && ("file_delete".equals(tool.getName()) || toolSettingsRepository.needsConfirmation(tool.getName()));
+                && (FileDeleteTool.NAME.equals(tool.getName()) || toolSettingsRepository.needsConfirmation(tool.getName()));
     }
 
     public String agentSystemPrompt(
@@ -656,12 +671,14 @@ public final class AgentExecutionController {
     ) {
         host.syncModePermission();
         boolean remoteMode = host != null && (host.isSshExecutionMode() || host.isTerminalProviderExecutionMode());
-        return agentRolePrompt(type, remoteMode)
-                + "\n\n你的任务: " + description
-                + "\n\n" + agentWorkspacePrompt(homePath, host, remoteMode)
-                + "\n\n" + agentScopePrompt(type, readScope, writeScope, remoteMode)
-                + "\n\n" + extensionRepository.buildExtensionPrompt(homePath)
-                + "\n\n" + toolSettingsRepository.buildToolPrompt(agentTools, supportsNativeTools(selectedModel));
+        HashMap<String, String> values = new HashMap<>();
+        values.put("ROLE_PROMPT", agentRolePrompt(type, remoteMode));
+        values.put("TASK_DESCRIPTION", description);
+        values.put("WORKSPACE_CONTEXT", agentWorkspacePrompt(homePath, host, remoteMode));
+        values.put("SCOPE_CONTEXT", agentScopePrompt(type, readScope, writeScope, remoteMode));
+        values.put("EXTENSIONS_CONTEXT", extensionRepository.buildExtensionPrompt(homePath));
+        values.put("TOOLS_CONTEXT", toolSettingsRepository.buildToolPrompt(agentTools, modelProtocolFactory.create(selectedModel.getProtocolType()).supportsNativeTools(selectedModel)));
+        return new StringTemplate(promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_AGENT_SYSTEM_PROMPT)).render(values);
     }
 
     public String agentRolePrompt(String type) {
@@ -669,45 +686,33 @@ public final class AgentExecutionController {
     }
 
     public String agentRolePrompt(String type, boolean remoteMode) {
+        String templateId;
         if (remoteMode) {
-            if (AgentTool.TYPE_EXPLORE.equals(type)) {
-                return "你是一个远程 Shell 环境下的代码探索 Agent（当前工作区位于 SSH 远端或终端提供者容器内，本地 file_read / file_write / file_edit / glob / list_dir 不一定可用）。\n"
-                        + "规则：\n"
-                        + "- 必须通过 shell_execute 调用 pwd、ls、find、grep、rg、cat、head、tail、git diff、git status 等命令完成只读探查，不要假设 file_read 等本地文件工具可用。\n"
-                        + "- shell_execute 禁止执行写入、删除、移动、安装、启动服务、修改权限、重定向写文件或其它有副作用的命令。\n"
-                        + "- 写操作类工具（file_write、file_edit、file_delete 等）即使注册了也不在当前 Agent 的允许范围，禁止调用。\n"
-                        + "- 给出简洁准确的中文回答，并标注文件路径和必要的行号。";
-            }
-            return "你是一个远程 Shell 环境下的编程 Agent（当前工作区位于 SSH 远端或终端提供者容器内，本地 file_read / file_write / file_edit / glob / list_dir 不一定可用）。\n"
-                    + "规则：\n"
-                    + "- 必须通过 shell_execute 完成绝大多数工作：先 cat/ls/grep 读取，写入用 sed/awk/python heredoc 或 tee，确认 cat 验证。\n"
-                    + "- 只负责用户明确分派给你的任务区域，不要修改无关文件。\n"
-                    + "- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件，只能汇报需要主模型重新分配。\n"
-                    + "- 使用 shell_execute 时，命令的写入、修改、副作用同样视为对 write_scope 内文件操作；禁止读取、修改、删除或影响 write_scope 外的文件、目录、环境变量、依赖、服务和进程。\n"
-                    + "- 写操作类工具（file_write、file_edit、file_delete 等）即使注册了也不在当前 Agent 的允许范围，禁止调用。\n"
-                    + "- 如果发现必须修改 write_scope 外的文件，停止写入并在输出中说明需要扩大或重新分配范围。\n"
-                    + "- 修改前先读取目标文件，完成后做最小可行验证。\n"
-                    + "- 如果工具失败，先重新读取和分析，不要盲目重复。\n"
-                    + "- 用中文总结完成内容、验证结果和剩余风险。";
+            templateId = AgentTool.TYPE_EXPLORE.equals(type)
+                    ? PromptTemplateRepository.ID_AGENT_ROLE_EXPLORE_REMOTE
+                    : PromptTemplateRepository.ID_AGENT_ROLE_CODING_REMOTE;
+        } else {
+            templateId = AgentTool.TYPE_EXPLORE.equals(type)
+                    ? PromptTemplateRepository.ID_AGENT_ROLE_EXPLORE_LOCAL
+                    : PromptTemplateRepository.ID_AGENT_ROLE_CODING_LOCAL;
         }
-        if (AgentTool.TYPE_EXPLORE.equals(type)) {
-            return "你是一个代码探索 Agent。你的任务是快速定位和分析代码，回答用户的问题。\n"
-                    + "规则：\n"
-                    + "- 只读取代码，不做任何修改，不调用任何写入类工具。\n"
-                    + "- 优先使用只读工具搜索和读取关键文件；在 SSH Shell 或终端提供者模式下，可以使用 shell_execute 执行 pwd、ls、find、grep、rg、cat、head、tail、git diff、git status 等只读命令。\n"
-                    + "- 使用 shell_execute 时禁止执行写入、删除、移动、安装、启动服务、修改权限、重定向写文件或其它有副作用的命令。\n"
-                    + "- 给出简洁准确的中文回答，并标注文件路径和必要的行号。";
+        if (promptTemplateRepository != null) {
+            return promptTemplateRepository.getTemplateText(templateId);
         }
-        return "你是一个编程 Agent。你的任务是完成边界清晰的编程子任务。\n"
-                + "规则：\n"
-                + "- 只负责用户明确分派给你的任务区域，不要修改无关文件。\n"
-                + "- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件，只能汇报需要主模型重新分配。\n"
-                + "- 使用 shell_execute 时，命令的写入、修改、副作用同样视为对 write_scope 内文件操作；禁止读取、修改、删除或影响 write_scope 外的文件、目录、环境变量、依赖、服务和进程。\n"
-                + "- 优先使用 file_read / file_write / file_edit / glob / list_dir 完成工作；只有 file 类工具确实无法满足时（如 SSH 环境、运行构建或验证脚本）才使用 shell_execute。\n"
-                + "- 如果发现必须修改 write_scope 外的文件，停止写入并在输出中说明需要扩大或重新分配范围。\n"
-                    + "- 修改前先读取目标文件，完成后做最小可行验证。\n"
-                    + "- 如果工具失败，先重新读取和分析，不要盲目重复。\n"
-                    + "- 用中文总结完成内容、验证结果和剩余风险。";
+        // fallback for tests without PromptTemplateRepository
+        return fallbackRolePrompt(type, remoteMode);
+    }
+
+    private static String fallbackRolePrompt(String type, boolean remoteMode) {
+        if (remoteMode) {
+            return AgentTool.TYPE_EXPLORE.equals(type)
+                    ? "你是一个远程 Shell 环境下的探索 Agent。可以使用 shell_execute 执行只读命令。\n规则：\n- 只读取代码，不做任何修改。\n- 优先使用只读工具搜索和读取关键文件；可以使用 shell_execute 执行只读命令。"
+                    : "你是一个远程 Shell 环境下的编程 Agent（当前工作区位于 SSH 远端或终端提供者容器内，本地 file_read / file_write / file_edit / glob / list_dir 不一定可用）。\n规则：\n- 必须通过 shell_execute 完成绝大多数工作：先 cat/ls/grep 读取，写入用 sed/awk/python heredoc 或 tee，确认 cat 验证。\n- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件。";
+        } else {
+            return AgentTool.TYPE_EXPLORE.equals(type)
+                    ? "你是一个代码探索 Agent。你的任务是快速定位和分析代码。\n规则：\n- 只读取代码，不做任何修改，不调用任何写入类工具。\n- 优先使用只读工具搜索和读取关键文件；可以使用 shell_execute 执行只读命令。\n- 给出简洁准确的中文回答。"
+                    : "你是一个编程 Agent。你的任务是完成边界清晰的编程子任务。\n规则：\n- 只能修改 write_scope 中列出的文件或目录；没有 write_scope 时禁止写入文件。\n- 优先使用 file_read / file_write / file_edit / glob / list_dir 完成工作；只有 file 类工具确实无法满足时才使用 shell_execute。";
+        }
     }
 
     public String agentWorkspacePrompt(String homePath, Host host) {
@@ -788,7 +793,13 @@ public final class AgentExecutionController {
     }
 
     public boolean isFileWriteTool(String name) {
-        return "file_write".equals(name) || "file_edit".equals(name);
+        BaseTool tool = toolRegistry != null ? toolRegistry.get(name) : null;
+        if (tool != null) {
+            return tool.getCategory() == ToolCategory.WRITE
+                    && (tool.getDisplayCategory() == ToolDisplayCategory.WRITE
+                        || tool.getDisplayCategory() == ToolDisplayCategory.DELETE);
+        }
+        return FileWriteTool.NAME.equals(name) || FileEditTool.NAME.equals(name);
     }
 
     public boolean isInsidePath(File root, File target) throws java.io.IOException {
@@ -952,18 +963,6 @@ public final class AgentExecutionController {
             }
         }
         return dependencies;
-    }
-
-    public boolean supportsNativeTools(ModelConfig selectedModel) {
-        if (selectedModel == null) {
-            return false;
-        }
-        cn.lineai.model.ModelProtocolType type = selectedModel.getProtocolType();
-        if (type == cn.lineai.model.ModelProtocolType.OPENAI_COMPATIBLE) {
-            return cn.lineai.ai.protocol.OpenAiCompatibleCapabilities.supportsNativeTools(selectedModel);
-        }
-        return type == cn.lineai.model.ModelProtocolType.ANTHROPIC_MESSAGES
-                || type == cn.lineai.model.ModelProtocolType.CODEX_RESPONSES;
     }
 
     public List<ToolCall> mergeToolCalls(List<ToolCall> nativeCalls, List<ToolCall> textCalls) {

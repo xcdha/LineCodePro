@@ -3,6 +3,7 @@ package cn.lineai.tool.builtin;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
 import java.io.File;
 import java.util.ArrayList;
@@ -10,9 +11,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class FileDeleteTool extends BaseTool {
+    public static final String NAME = "file_delete";
+
     @Override
     public String getName() {
-        return "file_delete";
+        return NAME;
     }
 
     @Override
@@ -26,7 +29,17 @@ public final class FileDeleteTool extends BaseTool {
     }
 
     @Override
+    public ToolDisplayCategory getDisplayCategory() {
+        return ToolDisplayCategory.DELETE;
+    }
+
+    @Override
     public boolean requiresConfirmation() {
+        return true;
+    }
+
+    @Override
+    public boolean needsConfirmation() {
         return true;
     }
 

@@ -168,6 +168,8 @@ public final class ConversationRepository extends BaseRepository implements Conv
         } finally {
             db.endTransaction();
         }
+        // 事务成功落库后，后台触发一次自动备份，防止后续损坏导致聊天记录丢失。
+        database.backupAsync();
     }
 
     public synchronized void setCurrentConversationId(String id) {

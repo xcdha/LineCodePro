@@ -4,10 +4,11 @@ import android.content.Context;
 import cn.lineai.ai.ImageInputPayload;
 import cn.lineai.ai.ModelClient;
 import cn.lineai.ai.ModelCompletionResponse;
+import cn.lineai.ai.protocol.ModelProtocolFactory;
 import cn.lineai.ai.message.ModelMessage;
 import cn.lineai.ai.message.SystemModelMessage;
 import cn.lineai.ai.message.UserModelMessage;
-import cn.lineai.data.repository.SshFileTreeRepository;
+import cn.lineai.data.repository.PromptTemplateRepository;
 import cn.lineai.data.repository.SshFileTreeStore;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsStore;
@@ -15,12 +16,11 @@ import cn.lineai.ipc.IpcProviderManager;
 import cn.lineai.ipc.IpcProviderType;
 import cn.lineai.ipc.terminal.TerminalIpcProvider;
 import cn.lineai.model.ModelConfig;
-import cn.lineai.model.ModelProtocolType;
-import cn.lineai.model.ModelRepository;
-import cn.lineai.ssh.SshService;
+import cn.lineai.model.ModelStore;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -29,12 +29,9 @@ import java.util.ArrayList;
 import org.json.JSONObject;
 
 public final class ImageUnderstandingTool extends BaseTool {
+    public static final String NAME = "image_understanding";
     private static final long MAX_IMAGE_BYTES = 10L * 1024L * 1024L;
 
-    private final ToolSettingsStore settingsRepository;
-    private final ModelRepository modelRepository;
-    private final SshFileTreeStore sshFileTreeRepository;
-    private final ModelClient modelClient;
     private final IpcProviderManager ipcProviderManager;
     private final Context context;
 
@@ -47,18 +44,21 @@ public final class ImageUnderstandingTool extends BaseTool {
     }
 
     public ImageUnderstandingTool(Context context, IpcProviderManager ipcProviderManager) {
-        Context appContext = context == null ? null : context.getApplicationContext();
-        this.context = appContext;
-        settingsRepository = appContext == null ? null : new ToolSettingsRepository(appContext);
-        modelRepository = appContext == null ? null : new ModelRepository(appContext);
-        sshFileTreeRepository = appContext == null ? null : new SshFileTreeRepository(new SshService(appContext));
-        modelClient = new ModelClient();
+        this.context = context == null ? null : context.getApplicationContext();
         this.ipcProviderManager = ipcProviderManager;
     }
 
     @Override
     public String getName() {
-        return "image_understanding";
+        return NAME;
+    }
+
+    @Override
+    public String promptSupplement(String executionMode, boolean isSsh) {
+        if (isSsh) {
+            return "image_understanding 通过 SFTP 读取 SSH 工作区图片，再由应用侧视觉模型配置执行。";
+        }
+        return "image_understanding 通过 IPC 读取终端提供者环境图片，再由应用侧视觉模型配置执行。";
     }
 
     @Override
@@ -69,6 +69,11 @@ public final class ImageUnderstandingTool extends BaseTool {
     @Override
     public ToolCategory getCategory() {
         return ToolCategory.READ;
+    }
+
+    @Override
+    public ToolDisplayCategory getDisplayCategory() {
+        return ToolDisplayCategory.READ;
     }
 
     @Override
@@ -87,6 +92,12 @@ public final class ImageUnderstandingTool extends BaseTool {
 
     @Override
     public ToolResult execute(JSONObject input, ToolContext context) {
+        ToolSettingsStore settingsRepository = context != null ? context.getToolSettingsStore() : null;
+        ModelStore modelRepository = context != null ? context.getModelRepository() : null;
+        ModelProtocolFactory modelProtocolFactory = context != null ? context.getModelProtocolFactory() : null;
+        ModelClient modelClient = context != null ? context.getModelClient() : null;
+        PromptTemplateRepository promptTemplateRepository = context != null ? context.getPromptTemplateRepository() : null;
+        SshFileTreeStore sshFileTreeRepository = context != null ? context.getSshFileTreeRepository() : null;
         if (settingsRepository == null || modelRepository == null) {
             return error("图片理解工具未接入应用上下文。");
         }
@@ -98,23 +109,29 @@ public final class ImageUnderstandingTool extends BaseTool {
         if (prompt.length() == 0) {
             prompt = "请描述这张图片的内容。";
         }
-        ModelConfig model = selectedModel();
+        ModelConfig model = selectedModel(settingsRepository, modelRepository);
         if (model == null) {
             return error("图片理解未选择模型。请在 设置 -> 工具设置 -> 图片操作 中选择视觉模型。");
         }
-        if (model.getProtocolType() == ModelProtocolType.LOCAL_GGUF) {
+        if (modelProtocolFactory == null) {
+            modelProtocolFactory = new ModelProtocolFactory();
+        }
+        if (!modelProtocolFactory.create(model.getProtocolType()).supportsImageUnderstanding()) {
             return error("本地 GGUF 协议暂不支持图片理解工具。请选择 OpenAI、Codex 或 Anthropic 协议模型。");
         }
         try {
-            ImageBytes image = readImageBytes(path, context);
+            ImageBytes image = readImageBytes(path, context, sshFileTreeRepository, settingsRepository);
             String mimeType = mimeType(image.path);
             if (!ImageInputPayload.isSupportedMimeType(mimeType)) {
                 return error("不支持的图片格式: " + image.path + "。支持 PNG、JPEG、WebP 和 GIF。");
             }
             String rawInput = ImageInputPayload.rawInputJson(prompt, mimeType, android.util.Base64.encodeToString(image.bytes, android.util.Base64.NO_WRAP));
             ArrayList<ModelMessage> messages = new ArrayList<>();
-            messages.add(new SystemModelMessage("你是 LineCode 的图片理解工具。根据用户提示分析图片，只返回与图片和提示相关的内容。不要提及工具调用、base64 或文件路径；无法确定时说明不确定。"));
+            messages.add(new SystemModelMessage(systemPrompt(promptTemplateRepository)));
             messages.add(new UserModelMessage(prompt, rawInput));
+            if (modelClient == null) {
+                modelClient = new ModelClient();
+            }
             ModelCompletionResponse response = modelClient.complete(model, messages);
             String text = response.getText().trim();
             return ok(text.length() == 0 ? "视觉模型没有返回内容。" : text);
@@ -123,7 +140,14 @@ public final class ImageUnderstandingTool extends BaseTool {
         }
     }
 
-    private ModelConfig selectedModel() {
+    private String systemPrompt(PromptTemplateRepository promptTemplateRepository) {
+        if (promptTemplateRepository != null) {
+            return promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_IMAGE_UNDERSTANDING_TOOL_SYSTEM);
+        }
+        return "你是 LineCode 的图片理解工具。根据用户提示分析图片，只返回与图片和提示相关的内容。不要提及工具调用、base64 或文件路径；无法确定时说明不确定。";
+    }
+
+    private ModelConfig selectedModel(ToolSettingsStore settingsRepository, ModelStore modelRepository) {
         String modelId = settingsRepository.getImageUnderstandingModelId();
         return modelId.length() == 0 ? null : modelRepository.getModel(modelId);
     }
@@ -143,8 +167,8 @@ public final class ImageUnderstandingTool extends BaseTool {
         }
     }
 
-    private ImageBytes readImageBytes(String path, ToolContext context) throws Exception {
-        if (isTerminalProviderMode()) {
+    private ImageBytes readImageBytes(String path, ToolContext context, SshFileTreeStore sshFileTreeRepository, ToolSettingsStore settingsRepository) throws Exception {
+        if (isTerminalProviderMode(settingsRepository)) {
             if (ipcProviderManager == null) {
                 throw new IllegalStateException("终端提供者图片理解未接入应用上下文。");
             }
@@ -160,7 +184,7 @@ public final class ImageUnderstandingTool extends BaseTool {
             }
             return new ImageBytes(remotePath, provider.readFile(remotePath));
         }
-        if (isSshMode()) {
+        if (isSshMode(settingsRepository)) {
             if (sshFileTreeRepository == null) {
                 throw new IllegalStateException("SSH 图片理解未接入应用上下文。");
             }
@@ -191,12 +215,12 @@ public final class ImageUnderstandingTool extends BaseTool {
         return FileToolPathPolicy.resolve(context, path);
     }
 
-    private boolean isSshMode() {
+    private boolean isSshMode(ToolSettingsStore settingsRepository) {
         return settingsRepository != null
                 && ToolSettingsRepository.EXECUTION_SSH.equals(settingsRepository.getExecutionMode());
     }
 
-    private boolean isTerminalProviderMode() {
+    private boolean isTerminalProviderMode(ToolSettingsStore settingsRepository) {
         return settingsRepository != null
                 && ToolSettingsRepository.EXECUTION_TERMINAL_PROVIDER.equals(settingsRepository.getExecutionMode());
     }

@@ -25,6 +25,14 @@ public final class PromptTemplateRepository {
     public static final String ID_MODEL_IDENTITY = "modelIdentity";
     public static final String ID_TODO_STATE = "todoState";
     public static final String ID_TODO_USAGE = "todoUsage";
+    public static final String ID_AGENT_ROLE_EXPLORE_REMOTE = "agentRoleExploreRemote";
+    public static final String ID_AGENT_ROLE_CODING_REMOTE = "agentRoleCodingRemote";
+    public static final String ID_AGENT_ROLE_EXPLORE_LOCAL = "agentRoleExploreLocal";
+    public static final String ID_AGENT_ROLE_CODING_LOCAL = "agentRoleCodingLocal";
+    public static final String ID_AGENT_SYSTEM_PROMPT = "agentSystemPrompt";
+    public static final String ID_IMAGE_UNDERSTANDING_TOOL_SYSTEM = "imageUnderstandingToolSystem";
+    public static final String ID_CONTEXT_COMPACTION_SUMMARY_PREFIX = "contextCompactionSummaryPrefix";
+    public static final String ID_CONTEXT_COMPACTION_RESPONSES_FALLBACK = "contextCompactionResponsesFallback";
 
     private static final String KEY_PREFIX = "@linecode_prompt_template_";
     private static final List<Definition> DEFINITIONS = buildDefinitions();
@@ -217,6 +225,56 @@ public final class PromptTemplateRepository {
                 "TODO 使用引导模板",
                 "在当前 TODO 列表为空时注入到 system prompt，推荐 Plan/Agent 模式使用 todo_update 拆分任务，并解释跨轮次持续维护的语义。",
                 "prompts/todo-usage-template.txt"
+        ));
+        definitions.add(new Definition(
+                ID_AGENT_ROLE_EXPLORE_REMOTE,
+                "Agent 远程探索角色提示词",
+                "SSH 远端或终端提供者模式下 explore 类型 Agent 的角色定义和规则约束。",
+                "prompts/agent-role-explore-remote.txt"
+        ));
+        definitions.add(new Definition(
+                ID_AGENT_ROLE_CODING_REMOTE,
+                "Agent 远程编码角色提示词",
+                "SSH 远端或终端提供者模式下 coding 类型 Agent 的角色定义和规则约束。",
+                "prompts/agent-role-coding-remote.txt"
+        ));
+        definitions.add(new Definition(
+                ID_AGENT_ROLE_EXPLORE_LOCAL,
+                "Agent 本地探索角色提示词",
+                "本地模式下 explore 类型 Agent 的角色定义和规则约束。",
+                "prompts/agent-role-explore-local.txt"
+        ));
+        definitions.add(new Definition(
+                ID_AGENT_ROLE_CODING_LOCAL,
+                "Agent 本地编码角色提示词",
+                "本地模式下 coding 类型 Agent 的角色定义和规则约束。",
+                "prompts/agent-role-coding-local.txt"
+        ));
+        definitions.add(new Definition(
+                ID_AGENT_SYSTEM_PROMPT,
+                "Agent 系统提示词模板",
+                "Agent 系统提示词的组合模板，将角色、任务、工作区、范围、扩展和工具上下文拼接为完整 system prompt。",
+                "prompts/agent-system-prompt-template.txt",
+                "ROLE_PROMPT", "TASK_DESCRIPTION", "WORKSPACE_CONTEXT", "SCOPE_CONTEXT", "EXTENSIONS_CONTEXT", "TOOLS_CONTEXT"
+        ));
+        definitions.add(new Definition(
+                ID_IMAGE_UNDERSTANDING_TOOL_SYSTEM,
+                "图片理解工具系统提示词",
+                "图片理解工具发送给视觉模型的 system prompt，约束模型只返回与图片和提示相关的分析内容。",
+                "prompts/image-understanding-tool-system.txt"
+        ));
+        definitions.add(new Definition(
+                ID_CONTEXT_COMPACTION_SUMMARY_PREFIX,
+                "上下文压缩摘要前缀",
+                "上下文压缩后注入的摘要前缀，包含格式化的摘要内容，指示模型从上一段对话继续。",
+                "prompts/context-compaction-summary-prefix.txt",
+                "SUMMARY"
+        ));
+        definitions.add(new Definition(
+                ID_CONTEXT_COMPACTION_RESPONSES_FALLBACK,
+                "上下文压缩 Responses 回退前缀",
+                "使用 OpenAI Responses compact API 压缩后注入的回退前缀，指示模型从上一段对话继续。",
+                "prompts/context-compaction-responses-fallback.txt"
         ));
         return Collections.unmodifiableList(definitions);
     }

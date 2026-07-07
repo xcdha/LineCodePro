@@ -5,11 +5,13 @@ import cn.lineai.model.WebSearchConfig;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
 import java.util.List;
 import org.json.JSONObject;
 
 public final class WebSearchTool extends BaseTool {
+    public static final String NAME = "web_search";
     private final WebSearchConfigRepository configRepository;
     private final WebSearchService webSearchService = new WebSearchService();
 
@@ -23,7 +25,15 @@ public final class WebSearchTool extends BaseTool {
 
     @Override
     public String getName() {
-        return "web_search";
+        return NAME;
+    }
+
+    @Override
+    public String promptSupplement(String executionMode, boolean isSsh) {
+        if (isSsh) {
+            return "web_search 和 web_fetch 由应用侧网络配置执行，不依赖 SSH 主机环境。";
+        }
+        return "web_search 和 web_fetch 由应用侧网络配置执行，不依赖终端提供者环境。";
     }
 
     @Override
@@ -34,6 +44,11 @@ public final class WebSearchTool extends BaseTool {
     @Override
     public ToolCategory getCategory() {
         return ToolCategory.READ;
+    }
+
+    @Override
+    public ToolDisplayCategory getDisplayCategory() {
+        return ToolDisplayCategory.READ;
     }
 
     @Override
@@ -59,13 +74,13 @@ public final class WebSearchTool extends BaseTool {
         }
         int limit = input.optInt("limit", 5);
         try {
-            List<WebSearchService.SearchResultItem> results = webSearchService.search(config(), query, limit);
+            List<SearchResultItem> results = webSearchService.search(config(), query, limit);
             if (results.isEmpty()) {
                 return ok("未搜索到与 \"" + query + "\" 相关的网页结果。");
             }
             StringBuilder content = new StringBuilder();
             for (int i = 0; i < results.size(); i++) {
-                WebSearchService.SearchResultItem item = results.get(i);
+                SearchResultItem item = results.get(i);
                 if (i > 0) {
                     content.append("\n\n");
                 }

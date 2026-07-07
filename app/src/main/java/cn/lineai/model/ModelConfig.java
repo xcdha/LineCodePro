@@ -20,14 +20,17 @@ public final class ModelConfig {
     private final boolean compressionModelAuto;
     private final String compressionModelId;
 
+    @Deprecated
     public ModelConfig(String id, String name, ModelProtocolType protocolType, String providerLabel, String baseUrl, String apiKey, String modelId) {
         this(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId, DEFAULT_TOOL_CALL_LIMIT);
     }
 
+    @Deprecated
     public ModelConfig(String id, String name, ModelProtocolType protocolType, String providerLabel, String baseUrl, String apiKey, String modelId, int toolCallLimit) {
         this(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit, false, DEFAULT_COMPRESSION_MODEL_AUTO, "");
     }
 
+    @Deprecated
     public ModelConfig(
             String id,
             String name,
@@ -52,6 +55,79 @@ public final class ModelConfig {
         this.compressionModelEnabled = compressionModelEnabled && supportsDedicatedCompression(this.protocolType);
         this.compressionModelAuto = compressionModelAuto;
         this.compressionModelId = compressionModelId == null ? "" : compressionModelId.trim();
+    }
+
+    private ModelConfig(Builder builder) {
+        this.id = builder.id == null ? "" : builder.id;
+        this.name = builder.name == null ? "" : builder.name;
+        this.protocolType = builder.protocolType == null ? ModelProtocolType.OPENAI_COMPATIBLE : builder.protocolType;
+        this.providerLabel = builder.providerLabel == null ? this.protocolType.getLabel() : builder.providerLabel;
+        this.baseUrl = builder.baseUrl == null ? "" : builder.baseUrl;
+        this.apiKey = builder.apiKey == null ? "" : builder.apiKey;
+        this.modelId = builder.modelId == null ? "" : builder.modelId;
+        this.toolCallLimit = normalizeToolCallLimit(builder.toolCallLimit);
+        this.compressionModelEnabled = builder.compressionModelEnabled && supportsDedicatedCompression(this.protocolType);
+        this.compressionModelAuto = builder.compressionModelAuto;
+        this.compressionModelId = builder.compressionModelId == null ? "" : builder.compressionModelId.trim();
+    }
+
+    public static Builder builder(String id, String name, ModelProtocolType protocolType,
+                                   String providerLabel, String baseUrl, String apiKey, String modelId) {
+        return new Builder(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId);
+    }
+
+    public static final class Builder {
+        private final String id;
+        private final String name;
+        private final ModelProtocolType protocolType;
+        private String providerLabel;
+        private final String baseUrl;
+        private final String apiKey;
+        private final String modelId;
+        private int toolCallLimit = DEFAULT_TOOL_CALL_LIMIT;
+        private boolean compressionModelEnabled = false;
+        private boolean compressionModelAuto = DEFAULT_COMPRESSION_MODEL_AUTO;
+        private String compressionModelId = "";
+
+        private Builder(String id, String name, ModelProtocolType protocolType,
+                        String providerLabel, String baseUrl, String apiKey, String modelId) {
+            this.id = id;
+            this.name = name;
+            this.protocolType = protocolType;
+            this.providerLabel = providerLabel;
+            this.baseUrl = baseUrl;
+            this.apiKey = apiKey;
+            this.modelId = modelId;
+        }
+
+        public Builder providerLabel(String providerLabel) {
+            this.providerLabel = providerLabel;
+            return this;
+        }
+
+        public Builder toolCallLimit(int toolCallLimit) {
+            this.toolCallLimit = toolCallLimit;
+            return this;
+        }
+
+        public Builder compressionModelEnabled(boolean compressionModelEnabled) {
+            this.compressionModelEnabled = compressionModelEnabled;
+            return this;
+        }
+
+        public Builder compressionModelAuto(boolean compressionModelAuto) {
+            this.compressionModelAuto = compressionModelAuto;
+            return this;
+        }
+
+        public Builder compressionModelId(String compressionModelId) {
+            this.compressionModelId = compressionModelId;
+            return this;
+        }
+
+        public ModelConfig build() {
+            return new ModelConfig(this);
+        }
     }
 
     public String getId() {
@@ -182,6 +258,7 @@ public final class ModelConfig {
         return Math.max(0, limit);
     }
 
+    @Deprecated
     public static boolean supportsDedicatedCompression(ModelProtocolType type) {
         return type == ModelProtocolType.OPENAI_COMPATIBLE || type == ModelProtocolType.CODEX_RESPONSES;
     }

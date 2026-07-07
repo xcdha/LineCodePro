@@ -24,7 +24,7 @@ public final class MessageContentSanitizer {
         if (content == null || content.trim().length() == 0) {
             return "";
         }
-        if ("image_generation".equals(message.getToolName()) && !message.isError()) {
+        if (cn.lineai.tool.builtin.ImageGenerationTool.NAME.equals(message.getToolName()) && !message.isError()) {
             try {
                 JSONObject object = new JSONObject(content);
                 if (object.optBoolean("linecode_image_generation")) {

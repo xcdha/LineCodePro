@@ -3,6 +3,7 @@ package cn.lineai.tool.builtin;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
+import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -10,9 +11,16 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class AgentPipelineTool extends BaseTool {
+    public static final String NAME = "agent_pipeline";
+
     @Override
     public String getName() {
-        return "agent_pipeline";
+        return NAME;
+    }
+
+    @Override
+    public boolean isAllowedInReadonlyMode() {
+        return true;
     }
 
     @Override
@@ -23,6 +31,11 @@ public final class AgentPipelineTool extends BaseTool {
     @Override
     public ToolCategory getCategory() {
         return ToolCategory.SYSTEM;
+    }
+
+    @Override
+    public ToolDisplayCategory getDisplayCategory() {
+        return ToolDisplayCategory.AGENT_PIPELINE;
     }
 
     @Override

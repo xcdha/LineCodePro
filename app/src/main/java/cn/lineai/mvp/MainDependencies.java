@@ -24,26 +24,43 @@ import cn.lineai.data.repository.IpcFileTreeRepository;
 import cn.lineai.data.repository.IpcFileTreeStore;
 import cn.lineai.data.repository.IpcProviderRepository;
 import cn.lineai.data.repository.IpcProviderStore;
+import cn.lineai.data.repository.KeepAliveRepository;
 import cn.lineai.data.repository.LearningContextRepository;
 import cn.lineai.data.repository.LearningContextStore;
 import cn.lineai.data.repository.OutputSettingsRepository;
+import cn.lineai.data.repository.PhoneControlRepository;
 import cn.lineai.data.repository.ProjectRepository;
 import cn.lineai.data.repository.ProjectStore;
 import cn.lineai.data.repository.PromptTemplateRepository;
 import cn.lineai.data.repository.SshFileTreeRepository;
 import cn.lineai.data.repository.SshFileTreeStore;
+import cn.lineai.data.repository.StorageStatsRepository;
 import cn.lineai.data.repository.ThemeSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsRepository;
 import cn.lineai.data.repository.ToolSettingsStore;
+import cn.lineai.log.ErrorLogRepository;
 import cn.lineai.ipc.IpcProviderManager;
 import cn.lineai.ipc.IpcProviderScanner;
 import cn.lineai.model.ModelRepository;
 import cn.lineai.model.ModelStore;
+import cn.lineai.share.ExportFormatResolver;
 import cn.lineai.ssh.SshService;
 import cn.lineai.state.TodoStateStore;
 import cn.lineai.tool.ToolExecutionCoordinator;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolRegistry;
+import cn.lineai.ui.component.toolcall.AgentPipelineToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.AgentToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.DeleteToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.GenericToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.HttpToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.ImageGenerationToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.PhoneControlToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.ReadToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.ShellToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.TodoToolCallViewFactory;
+import cn.lineai.ui.component.toolcall.ToolCallViewFactoryRegistry;
+import cn.lineai.ui.component.toolcall.WriteToolCallViewFactory;
 import cn.lineai.workspace.SafPathResolver;
 import cn.lineai.workspace.StoragePermissionManager;
 
@@ -83,6 +100,16 @@ public final class MainDependencies {
     final BackgroundTaskRunner backgroundTaskRunner;
     final LineCodeArchiveService lineCodeArchiveService;
     final TodoStateStore todoStateStore;
+    final ToolCallViewFactoryRegistry toolCallViewFactoryRegistry;
+    final PhoneControlRepository phoneControlRepository;
+    final ErrorLogRepository errorLogRepository;
+    final StorageStatsRepository storageStatsRepository;
+    final KeepAliveRepository keepAliveRepository;
+    final PhoneControlController phoneControlController;
+    final ErrorLogController errorLogController;
+    public final ExportFormatResolver exportFormatResolver;
+    public final ShareController shareController;
+    public final QuoteController quoteController;
 
     public MainDependencies(Context context) {
         this.context = context;
@@ -91,6 +118,7 @@ public final class MainDependencies {
         chatModeRepository = new ChatModeRepository(context);
         inputSettingsRepository = new InputSettingsRepository(context);
         outputSettingsRepository = new OutputSettingsRepository(context);
+        cn.lineai.security.UrlPolicy.setRelaxedHttpEnabled(outputSettingsRepository.get().isAllowAnyHttp());
         themeSettingsRepository = new ThemeSettingsRepository(context);
         promptTemplateRepository = new PromptTemplateRepository(context);
         themeSettingsRepository.applyCurrentTheme();
@@ -111,13 +139,18 @@ public final class MainDependencies {
         contextManager = new ContextManager();
         modelClient = new ModelClient();
         contextCompactionService = new ContextCompactionService(
-                context,
                 modelClient,
                 new OpenAiResponsesCompactionProtocol(),
                 new CodexResponsesProtocol(),
                 promptTemplateRepository);
         toolRegistry = new ToolRegistry(context, ipcProviderManager);
-        toolExecutor = new ToolExecutor(toolRegistry, toolSettingsRepository, diffRepository);
+        ((ToolSettingsRepository) toolSettingsRepository).setToolRegistry(toolRegistry);
+        cn.lineai.tool.ToolDisplayResolver.setDefault(new cn.lineai.tool.ToolDisplayResolver(toolRegistry));
+        toolCallViewFactoryRegistry = createToolCallViewFactoryRegistry();
+        cn.lineai.ui.component.toolcall.ToolCallViewFactoryRegistry.setDefault(toolCallViewFactoryRegistry);
+        toolExecutor = new ToolExecutor(toolRegistry, toolSettingsRepository, diffRepository,
+                (ModelStore) modelRepository, sshFileTreeRepository, new cn.lineai.ai.protocol.ModelProtocolFactory(),
+                modelClient, promptTemplateRepository);
         toolExecutionCoordinator = new ToolExecutionCoordinator(toolRegistry);
         systemPromptProvider = new SystemPromptProvider(context, promptTemplateRepository);
         storagePermissionManager = new StoragePermissionManager(context);
@@ -127,5 +160,36 @@ public final class MainDependencies {
         lineCodeArchiveService = new LineCodeArchiveService(context);
         todoStateStore = new TodoStateStore();
         chatModeRepository.initialize(toolSettingsRepository);
+        phoneControlRepository = new PhoneControlRepository(context);
+        errorLogRepository = new ErrorLogRepository(context);
+        storageStatsRepository = new StorageStatsRepository(context);
+        keepAliveRepository = new KeepAliveRepository(context);
+        phoneControlController = new PhoneControlController(phoneControlRepository);
+        errorLogController = new ErrorLogController(errorLogRepository);
+        this.exportFormatResolver = new ExportFormatResolver();
+        this.shareController = new ShareController(exportFormatResolver);
+        this.quoteController = new QuoteController();
+    }
+
+    private ToolCallViewFactoryRegistry createToolCallViewFactoryRegistry() {
+        cn.lineai.ui.component.toolcall.DiffLoader diffLoader =
+                diffId -> {
+                    cn.lineai.data.repository.DiffRecord r = diffRepository.getDiff(diffId);
+                    if (r == null) return null;
+                    return new cn.lineai.model.DiffUiModel(r.getId(), r.getFilePath(), r.getOldContent(), r.getNewContent(), r.isReverted());
+                };
+        ToolCallViewFactoryRegistry registry = new ToolCallViewFactoryRegistry();
+        registry.register(new ShellToolCallViewFactory());
+        registry.register(new TodoToolCallViewFactory());
+        registry.register(new AgentToolCallViewFactory());
+        registry.register(new AgentPipelineToolCallViewFactory());
+        registry.register(new ReadToolCallViewFactory());
+        registry.register(new ImageGenerationToolCallViewFactory());
+        registry.register(new PhoneControlToolCallViewFactory());
+        registry.register(new WriteToolCallViewFactory(diffLoader));
+        registry.register(new DeleteToolCallViewFactory());
+        registry.register(new HttpToolCallViewFactory());
+        registry.register(new GenericToolCallViewFactory());
+        return registry;
     }
 }

@@ -98,6 +98,8 @@
     <string name="settings_row_theme_desc">主题模式、自定义颜色和高对比外观</string>
     <string name="settings_row_output_title">输出与浏览</string>
     <string name="settings_row_output_desc">代码换行、网页打开方式和内置浏览器 JS</string>
+    <string name="settings_row_security_allow_any_http_title">无视 HTTP 限制</string>
+    <string name="settings_row_security_allow_any_http_desc">开启后允许使用任意 HTTP 地址,而非锁定为 HTTPS</string>
     <string name="settings_row_storage_title">存储管理</string>
     <string name="settings_row_storage_desc">聊天、配置、diff 和工作区占用</string>
     <string name="settings_row_memory_title">记忆</string>
@@ -211,7 +213,13 @@
     <string name="screen_settings_section_ai">AI 与模型</string>
     <string name="screen_settings_section_tools">工具与执行</string>
     <string name="screen_settings_section_ui">界面与输出</string>
+    <string name="screen_settings_section_security">安全</string>
     <string name="screen_settings_section_data">数据与系统</string>
+
+    <string name="screen_security_title">安全</string>
+    <string name="screen_security_section_http">HTTP 限制</string>
+    <string name="screen_security_section_browser">内置浏览器</string>
+    <string name="settings_row_security_desc">HTTP 限制与内置浏览器脚本执行</string>
     <string name="screen_settings_section_info">信息</string>
 
     <string name="screen_llm_title">AI 行为</string>
@@ -881,6 +889,15 @@
 
     <string name="message_action_copy_desc">复制消息</string>
     <string name="message_action_recall_desc">撤回消息</string>
+    <string name="message_action_quote_desc">引用消息</string>
+    <string name="message_action_share_desc">分享消息</string>
+    <string name="message_action_select_desc">选中文字</string>
+    <string name="message_action_multi_select_desc">多选</string>
+    <string name="dialog_export_format_title">导出格式</string>
+    <string name="dialog_select_text_title">长按选中文字</string>
+    <string name="quote_preview_label">引用</string>
+    <string name="export_button_label">导出</string>
+    <string name="toast_clipboard_large">内容较长，仅部分可能被复制</string>
 
     <string name="message_list_scroll_to_bottom_desc">滚动到底部</string>
     <string name="message_list_configure_title">请先配置模型</string>

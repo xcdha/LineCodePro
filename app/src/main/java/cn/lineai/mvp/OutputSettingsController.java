@@ -10,4 +10,6 @@ public interface OutputSettingsController {
     void onBrowserModeChanged(String mode);
 
     void onBrowserJavaScriptChanged(boolean enabled);
+
+    void onAllowAnyHttpChanged(boolean enabled);
 }

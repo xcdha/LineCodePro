@@ -212,6 +212,10 @@ public final class SettingsManagementControllerTest {
         }
 
         @Override
+        public void setAllowAnyHttp(boolean enabled) {
+        }
+
+        @Override
         public ThemeSettingsState getThemeSettings() {
             return new ThemeSettingsState(themeMode, themeMode, Collections.emptyMap(), null);
         }
