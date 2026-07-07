@@ -496,40 +496,52 @@ public final class ChatMessageListView extends FrameLayout {
             ChatMessage message = visibleMessages.get(position);
 
             if (message.isModelSwitchNotification()) {
+                if (convertView != null) {
+                    return convertView;
+                }
                 String ck = cacheKey(message);
                 View cached = rowCache.get(ck);
-                if (cached != null && canReturnCachedView(cached, convertView, parent)) {
+                if (cached != null && cached.getParent() == null) {
                     return cached;
                 }
                 View notice = createModelSwitchNotice(context, message.getModelSwitchNotification());
-                rowCache.put(ck, notice);
-                trimCache();
+                putCache(ck, notice);
                 return notice;
             }
 
             String cacheKey = cacheKey(message);
-            View cached = rowCache.get(cacheKey);
-            if (cached != null && canReturnCachedView(cached, convertView, parent)) {
-                bindCachedView(cached, message);
-                return cached;
+            boolean isUser = message.getRole() == ChatMessage.Role.USER;
+
+            if (convertView != null) {
+                if (isUser && convertView instanceof UserMessageView) {
+                    UserMessageView view = (UserMessageView) convertView;
+                    view.setMessageActionListener(messageActionListener);
+                    view.bind(message);
+                    return view;
+                }
+                if (!isUser && convertView instanceof AssistantMessageView) {
+                    AssistantMessageView view = (AssistantMessageView) convertView;
+                    view.setToolReviewListener(toolReviewListener);
+                    view.setMarkdownLinkHandler(markdownLinkHandler);
+                    view.setMessageActionListener(messageActionListener);
+                    view.setProjectPath(projectPath);
+                    view.bind(message, thinkingAutoExpand, thinkingScroll, codeWrapEnabled);
+                    return view;
+                }
             }
 
-            if (message.getRole() == ChatMessage.Role.USER) {
-                UserMessageView view = cached instanceof UserMessageView ? (UserMessageView) cached : new UserMessageView(context);
+            if (isUser) {
+                UserMessageView view = obtain(UserMessageView.class, cacheKey, new UserMessageView(context));
                 view.setMessageActionListener(messageActionListener);
                 view.bind(message);
-                rowCache.put(cacheKey, view);
-                trimCache();
                 return view;
             }
-            AssistantMessageView view = cached instanceof AssistantMessageView ? (AssistantMessageView) cached : new AssistantMessageView(context);
+            AssistantMessageView view = obtain(AssistantMessageView.class, cacheKey, new AssistantMessageView(context));
             view.setToolReviewListener(toolReviewListener);
             view.setMarkdownLinkHandler(markdownLinkHandler);
             view.setMessageActionListener(messageActionListener);
             view.setProjectPath(projectPath);
             view.bind(message, thinkingAutoExpand, thinkingScroll, codeWrapEnabled);
-            rowCache.put(cacheKey, view);
-            trimCache();
             return view;
         }
 
@@ -566,28 +578,6 @@ public final class ChatMessageListView extends FrameLayout {
             return new ArrayList<>(visibleMessages);
         }
 
-        private boolean canReturnCachedView(View cached, View convertView, android.view.ViewGroup parent) {
-            if (cached.getParent() == null || cached == convertView) {
-                return true;
-            }
-            return cached.getParent() == parent && cached == convertView;
-        }
-
-        private void bindCachedView(View cached, ChatMessage message) {
-            if (cached instanceof UserMessageView) {
-                ((UserMessageView) cached).setMessageActionListener(messageActionListener);
-                ((UserMessageView) cached).bind(message);
-                return;
-            }
-            if (cached instanceof AssistantMessageView) {
-                ((AssistantMessageView) cached).setToolReviewListener(toolReviewListener);
-                ((AssistantMessageView) cached).setMarkdownLinkHandler(markdownLinkHandler);
-                ((AssistantMessageView) cached).setMessageActionListener(messageActionListener);
-                ((AssistantMessageView) cached).setProjectPath(projectPath);
-                ((AssistantMessageView) cached).bind(message, thinkingAutoExpand, thinkingScroll, codeWrapEnabled);
-            }
-        }
-
         private String cacheKey(ChatMessage message) {
             return conversationId + ":" + message.getRole().name() + ":" + (message.getId() == null ? "" : message.getId());
         }
@@ -618,6 +608,23 @@ public final class ChatMessageListView extends FrameLayout {
                     iterator.remove();
                 }
             }
+        }
+
+        private <T extends View> T obtain(Class<T> type, String key, T created) {
+            View cached = rowCache.get(key);
+            if (type.isInstance(cached) && cached.getParent() == null) {
+                return type.cast(cached);
+            }
+            putCache(key, created);
+            return created;
+        }
+
+        private void putCache(String key, View view) {
+            View old = rowCache.put(key, view);
+            if (old != null && old != view && old.getParent() == null) {
+                old.setTag(null);
+            }
+            trimCache();
         }
 
         private boolean sameMessages(ArrayList<ChatMessage> nextMessages) {
