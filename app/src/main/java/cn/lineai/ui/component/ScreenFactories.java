@@ -139,7 +139,7 @@ public final class ScreenFactories {
     public static final class SettingsScreenFactory implements ScreenFactory {
         @Override
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
-            return new SettingsScreenView(context, new SettingsScreenView.Listener() {
+            return new SettingsScreenView(context, controller.getOutputSettings(), new SettingsScreenView.Listener() {
                 @Override
                 public void onBack() {
                     view.handleScreenBack();
@@ -148,6 +148,16 @@ public final class ScreenFactories {
                 @Override
                 public void onItem(String id) {
                     controller.onSettingsItemSelected(id);
+                }
+
+                @Override
+                public void onAllowAnyHttpChanged(boolean enabled) {
+                    controller.onAllowAnyHttpChanged(enabled);
+                }
+
+                @Override
+                public void onBrowserJavaScriptChanged(boolean enabled) {
+                    controller.onBrowserJavaScriptChanged(enabled);
                 }
             });
         }

@@ -98,6 +98,8 @@
     <string name="settings_row_theme_desc">Theme mode, custom colors and high-contrast appearance</string>
     <string name="settings_row_output_title">Output &amp; browser</string>
     <string name="settings_row_output_desc">Code wrap, page opening method and built-in browser JS</string>
+    <string name="settings_row_security_allow_any_http_title">Ignore HTTP restrictions</string>
+    <string name="settings_row_security_allow_any_http_desc">When on, any HTTP address is allowed instead of being locked to HTTPS</string>
     <string name="settings_row_storage_title">Storage management</string>
     <string name="settings_row_storage_desc">Chats, config, diff and workspace usage</string>
     <string name="settings_row_memory_title">Memory</string>
@@ -211,6 +213,7 @@
     <string name="screen_settings_section_ai">AI &amp; Models</string>
     <string name="screen_settings_section_tools">Tools &amp; Execution</string>
     <string name="screen_settings_section_ui">UI &amp; Output</string>
+    <string name="screen_settings_section_security">Security</string>
     <string name="screen_settings_section_data">Data &amp; System</string>
     <string name="screen_settings_section_info">Info</string>
 

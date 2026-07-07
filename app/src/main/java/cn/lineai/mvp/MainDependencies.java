@@ -118,6 +118,7 @@ public final class MainDependencies {
         chatModeRepository = new ChatModeRepository(context);
         inputSettingsRepository = new InputSettingsRepository(context);
         outputSettingsRepository = new OutputSettingsRepository(context);
+        cn.lineai.security.UrlPolicy.setRelaxedHttpEnabled(outputSettingsRepository.get().isAllowAnyHttp());
         themeSettingsRepository = new ThemeSettingsRepository(context);
         promptTemplateRepository = new PromptTemplateRepository(context);
         themeSettingsRepository.applyCurrentTheme();

@@ -98,6 +98,8 @@
     <string name="settings_row_theme_desc">主题模式、自定义颜色和高对比外观</string>
     <string name="settings_row_output_title">输出与浏览</string>
     <string name="settings_row_output_desc">代码换行、网页打开方式和内置浏览器 JS</string>
+    <string name="settings_row_security_allow_any_http_title">无视 HTTP 限制</string>
+    <string name="settings_row_security_allow_any_http_desc">开启后允许使用任意 HTTP 地址,而非锁定为 HTTPS</string>
     <string name="settings_row_storage_title">存储管理</string>
     <string name="settings_row_storage_desc">聊天、配置、diff 和工作区占用</string>
     <string name="settings_row_memory_title">记忆</string>
@@ -211,6 +213,7 @@
     <string name="screen_settings_section_ai">AI 与模型</string>
     <string name="screen_settings_section_tools">工具与执行</string>
     <string name="screen_settings_section_ui">界面与输出</string>
+    <string name="screen_settings_section_security">安全</string>
     <string name="screen_settings_section_data">数据与系统</string>
     <string name="screen_settings_section_info">信息</string>
 

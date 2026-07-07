@@ -399,6 +399,11 @@ abstract class MainCoordinatorDelegates implements MainUiController {
     }
 
     @Override
+    public void onAllowAnyHttpChanged(boolean enabled) {
+        settingsDelegate().setAllowAnyHttp(enabled);
+    }
+
+    @Override
     public ThemeSettingsState getThemeSettings() {
         return settingsDelegate().getThemeSettings();
     }

@@ -94,6 +94,32 @@ public final class LineCodeDatabaseArchive {
         return root;
     }
 
+    /**
+     * 完整导出（保留 messages 正文），供本地自动备份使用。
+     * 与 {@link #exportSnapshot} 的区别：后者出于隐私考虑将消息正文置空，
+     * 而本方法导出 messages / message_text_chunks 的全部内容，确保备份可完整恢复聊天记录。
+     */
+    public JSONObject exportFullSnapshot(LineCodeDatabase database) throws Exception {
+        JSONObject root = new JSONObject();
+        root.put("format", "linecode-database");
+        root.put("schemaVersion", LineCodeSchema.VERSION);
+        root.put("full", true);
+        JSONObject tables = new JSONObject();
+        SQLiteDatabase db = database.getReadableDatabase();
+        for (String table : TABLES) {
+            tables.put(table, exportFullTable(db, table));
+        }
+        root.put("tables", tables);
+        return root;
+    }
+
+    private JSONObject exportFullTable(SQLiteDatabase db, String table) throws Exception {
+        if (LineCodeSchema.TABLE_MESSAGE_TEXT_CHUNKS.equals(table)) {
+            return exportMessageTextChunksTable(db);
+        }
+        return exportTable(db, table);
+    }
+
     public boolean hasSnapshot(File payloadDir) {
         return new File(payloadDir, LineCodeArchiveCodec.ENTRY_DATABASE).isFile();
     }

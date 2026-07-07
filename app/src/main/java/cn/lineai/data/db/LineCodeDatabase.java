@@ -2,15 +2,20 @@ package cn.lineai.data.db;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Log;
 import cn.lineai.data.db.migration.DatabaseMigration;
 import cn.lineai.data.db.migration.Migrations;
+import java.io.File;
 
 public final class LineCodeDatabase extends SQLiteOpenHelper {
     private static final String TAG = "LineCodeDatabase";
     private static volatile LineCodeDatabase instance;
+
+    private final Context context;
+    private final LineCodeDatabaseBackup backup;
 
     public static LineCodeDatabase getInstance(Context context) {
         if (instance == null) {
@@ -24,7 +29,10 @@ public final class LineCodeDatabase extends SQLiteOpenHelper {
     }
 
     private LineCodeDatabase(Context context) {
-        super(context, LineCodeSchema.DATABASE_NAME, null, LineCodeSchema.VERSION);
+        super(context, LineCodeSchema.DATABASE_NAME, null, LineCodeSchema.VERSION,
+                new LineCodeDatabaseErrorHandler(context));
+        this.context = context;
+        this.backup = new LineCodeDatabaseBackup(context);
     }
 
     @Override
@@ -75,6 +83,64 @@ public final class LineCodeDatabase extends SQLiteOpenHelper {
                 Log.w(TAG, "FTS schema unavailable on open, continuing without it: " + sql, e);
             }
         }
+        // 若上次因损坏而重建了空库，则尝试从最近备份恢复聊天记录，避免永久丢失。
+        maybeRestoreFromBackup(db);
+        // 诊断性完整性校验：若仍损坏（且非由 needs-restore 触发的正常空库），仅记录日志，
+        // 真正的恢复交由 LineCodeDatabaseErrorHandler 在下次写入时处理，避免向坏库写数据。
+        if (!integrityOk(db)) {
+            Log.w(TAG, "数据库完整性校验未通过，将在下次写入时由错误处理器恢复");
+        }
+        // 冷启动兜底备份：确保结构变更/首次打开后也存在可用备份。
+        backup.saveAsync(this);
+    }
+
+    /**
+     * 当存在 {@code linecode.db.needs-restore} 标志（由 {@link LineCodeDatabaseErrorHandler}
+     * 在损坏时写入）且存在最近备份时，将备份数据导入当前（空）库，随后清除标志。
+     * 任何异常都被吞掉，降级为保留空库，绝不崩溃。
+     */
+    private void maybeRestoreFromBackup(SQLiteDatabase db) {
+        File dbFile = context.getDatabasePath(LineCodeSchema.DATABASE_NAME);
+        if (dbFile == null) {
+            return;
+        }
+        File flag = new File(dbFile.getAbsolutePath() + LineCodeDatabaseErrorHandler.NEEDS_RESTORE_SUFFIX);
+        if (!flag.exists()) {
+            return;
+        }
+        Log.i(TAG, "检测到 needs-restore 标志，尝试从备份恢复");
+        try {
+            boolean restored = backup.restoreLatest(this);
+            if (restored) {
+                Log.i(TAG, "已从备份恢复聊天记录");
+            } else {
+                Log.w(TAG, "无可用备份，保留空库");
+            }
+        } catch (Throwable e) {
+            Log.e(TAG, "从备份恢复失败（保留空库）: " + e.getMessage(), e);
+        } finally {
+            if (!flag.delete()) {
+                Log.w(TAG, "删除 needs-restore 标志失败: " + flag.getName());
+            }
+        }
+    }
+
+    private boolean integrityOk(SQLiteDatabase db) {
+        try (Cursor cursor = db.rawQuery("PRAGMA integrity_check(1)", null)) {
+            if (cursor.moveToFirst()) {
+                return "ok".equalsIgnoreCase(cursor.getString(0));
+            }
+        } catch (Throwable e) {
+            Log.w(TAG, "integrity_check 执行失败: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 供 Repository 在写入成功后触发一次异步自动备份。
+     */
+    public void backupAsync() {
+        backup.saveAsync(this);
     }
 
     @Override

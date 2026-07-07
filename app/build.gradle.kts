@@ -101,7 +101,7 @@ android {
 
     defaultConfig {
         applicationId = "cn.lineai"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         versionCode = 21
         versionName = releaseVersionName

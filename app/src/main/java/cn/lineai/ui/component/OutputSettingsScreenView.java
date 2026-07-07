@@ -61,10 +61,7 @@ public final class OutputSettingsScreenView extends ScreenScaffoldView {
                 OutputSettings.BROWSER_EXTERNAL.equals(browserMode),
                 () -> setBrowserMode(OutputSettings.BROWSER_EXTERNAL));
         browser.addRow(builtinBrowserRow, true, 52);
-        browser.addRow(externalBrowserRow, true, 52);
-        browser.addRow(new SwitchRowView(context, IconButtonView.CODE, context.getString(R.string.screen_output_browser_js_label), context.getString(R.string.screen_output_browser_js_desc),
-                browserJavaScriptEnabled,
-                (buttonView, isChecked) -> listener.onBrowserJavaScriptChanged(isChecked)), false);
+        browser.addRow(externalBrowserRow, false, 52);
         content.addView(browser, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         SettingsSectionView preview = new SettingsSectionView(context, context.getString(R.string.screen_output_section_preview));

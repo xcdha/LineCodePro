@@ -7,6 +7,20 @@ public final class UrlPolicy {
     private UrlPolicy() {
     }
 
+    /**
+     * 当为 true 时,放宽 HTTP 限制:任意 http:// 地址(不限于 localhost 白名单)都将被放行,
+     * 由用户在设置中"无视 HTTP 限制"开关控制。默认关闭。
+     */
+    private static volatile boolean relaxedHttpEnabled = false;
+
+    public static void setRelaxedHttpEnabled(boolean enabled) {
+        relaxedHttpEnabled = enabled;
+    }
+
+    public static boolean isRelaxedHttpEnabled() {
+        return relaxedHttpEnabled;
+    }
+
     public static String normalizeHttpOrHttpsUrl(String rawUrl) {
         String value = rawUrl == null ? "" : rawUrl.trim();
         if (value.length() == 0) {
@@ -17,6 +31,9 @@ public final class UrlPolicy {
             return "";
         }
         String scheme = lower(uri.getScheme());
+        if (relaxedHttpEnabled) {
+            return "https".equals(scheme) || "http".equals(scheme) ? value : "";
+        }
         return "https".equals(scheme) || "http".equals(scheme) ? value : "";
     }
 
@@ -32,7 +49,7 @@ public final class UrlPolicy {
         if ("https".equals(lower(uri.getScheme()))) {
             return value;
         }
-        return isAllowedCleartextHttpHost(uri.getHost()) ? value : "";
+        return relaxedHttpEnabled || isAllowedCleartextHttpHost(uri.getHost()) ? value : "";
     }
 
     public static String requireHttpOrLocalCleartextUrl(String rawUrl, String label) {
@@ -42,7 +59,7 @@ public final class UrlPolicy {
             throw new IllegalArgumentException(name + " 必须以 http:// 或 https:// 开头。");
         }
         URI uri = parse(normalized);
-        if (uri != null && "http".equals(lower(uri.getScheme())) && !isAllowedCleartextHttpHost(uri.getHost())) {
+        if (uri != null && "http".equals(lower(uri.getScheme())) && !relaxedHttpEnabled && !isAllowedCleartextHttpHost(uri.getHost())) {
             throw new IllegalArgumentException(name + " 使用 HTTP 明文时仅允许 localhost、127.0.0.1 或 10.0.2.2。");
         }
         return normalized;
@@ -56,7 +73,7 @@ public final class UrlPolicy {
         URI uri = parse(value);
         return uri != null
                 && "http".equals(lower(uri.getScheme()))
-                && isAllowedCleartextHttpHost(uri.getHost());
+                && (relaxedHttpEnabled || isAllowedCleartextHttpHost(uri.getHost()));
     }
 
     private static boolean isAllowedCleartextHttpHost(String host) {
