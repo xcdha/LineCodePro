@@ -7,10 +7,8 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.Switch;
 import android.widget.TextView;
 import cn.lineai.R;
-import cn.lineai.model.OutputSettings;
 import cn.lineai.ui.theme.LineTheme;
 
 public final class SettingsScreenView extends LinearLayout {
@@ -18,19 +16,13 @@ public final class SettingsScreenView extends LinearLayout {
         void onBack();
 
         void onItem(String id);
-
-        void onAllowAnyHttpChanged(boolean enabled);
-
-        void onBrowserJavaScriptChanged(boolean enabled);
     }
 
     private final Listener listener;
 
-    public SettingsScreenView(Context context, OutputSettings outputSettings, Listener listener) {
+    public SettingsScreenView(Context context, Listener listener) {
         super(context);
         this.listener = listener;
-        boolean allowAnyHttp = outputSettings != null && outputSettings.isAllowAnyHttp();
-        boolean browserJavaScriptEnabled = outputSettings != null && outputSettings.isBrowserJavaScriptEnabled();
         setOrientation(VERTICAL);
         setBackgroundColor(LineTheme.BG);
 
@@ -60,8 +52,7 @@ public final class SettingsScreenView extends LinearLayout {
                 new RowSpec("output", context.getString(R.string.settings_row_output_title), context.getString(R.string.settings_row_output_desc), IconButtonView.MONITOR),
         });
         addSection(content, context.getString(R.string.screen_settings_section_security), new RowSpec[] {
-                new RowSpec(context.getString(R.string.settings_row_security_allow_any_http_title), context.getString(R.string.settings_row_security_allow_any_http_desc), IconButtonView.SHIELD_CHECK, allowAnyHttp, enabled -> listener.onAllowAnyHttpChanged(enabled)),
-                new RowSpec(context.getString(R.string.screen_output_browser_js_label), context.getString(R.string.screen_output_browser_js_desc), IconButtonView.CODE, browserJavaScriptEnabled, enabled -> listener.onBrowserJavaScriptChanged(enabled)),
+                new RowSpec("security", context.getString(R.string.screen_settings_section_security), context.getString(R.string.settings_row_security_desc), IconButtonView.SHIELD_CHECK),
         });
         addSection(content, context.getString(R.string.screen_settings_section_data), new RowSpec[] {
                 new RowSpec("storage", context.getString(R.string.settings_row_storage_title), context.getString(R.string.settings_row_storage_desc), IconButtonView.DATABASE),
@@ -129,25 +120,12 @@ public final class SettingsScreenView extends LinearLayout {
         descParams.topMargin = LineTheme.dp(context, 2);
         labels.addView(desc, descParams);
 
-        if (row.toggle) {
-            Switch toggle = new Switch(context);
-            toggle.setChecked(row.toggleValue);
-            tintSwitch(toggle);
-            toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                if (row.onToggle != null) {
-                    row.onToggle.onToggle(isChecked);
-                }
-            });
-            item.setOnClickListener(v -> toggle.setChecked(!toggle.isChecked()));
-            item.addView(toggle, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-        } else {
-            item.setOnClickListener(v -> listener.onItem(row.id));
-            IconButtonView chevron = new IconButtonView(context, IconButtonView.CHEVRON_RIGHT);
-            chevron.setIconColor(LineTheme.TEXT_TERTIARY);
-            chevron.setIconSizeDp(20, 16);
-            chevron.setClickable(false);
-            item.addView(chevron, new LayoutParams(LineTheme.dp(context, 20), LineTheme.dp(context, 20)));
-        }
+        item.setOnClickListener(v -> listener.onItem(row.id));
+        IconButtonView chevron = new IconButtonView(context, IconButtonView.CHEVRON_RIGHT);
+        chevron.setIconColor(LineTheme.TEXT_TERTIARY);
+        chevron.setIconSizeDp(20, 16);
+        chevron.setClickable(false);
+        item.addView(chevron, new LayoutParams(LineTheme.dp(context, 20), LineTheme.dp(context, 20)));
 
         if (!divider) {
             return item;
@@ -164,44 +142,17 @@ public final class SettingsScreenView extends LinearLayout {
         return wrapper;
     }
 
-    private void tintSwitch(Switch toggle) {
-        int[][] states = new int[][] {
-                new int[] {android.R.attr.state_checked},
-                new int[] {-android.R.attr.state_checked}
-        };
-        toggle.setThumbTintList(new android.content.res.ColorStateList(states, new int[] {LineTheme.ACCENT, LineTheme.TEXT_TERTIARY}));
-        toggle.setTrackTintList(new android.content.res.ColorStateList(states, new int[] {LineTheme.ACCENT_DIM, LineTheme.SURFACE_LIGHT}));
-    }
-
-    private interface ToggleListener {
-        void onToggle(boolean enabled);
-    }
-
     private static final class RowSpec {
         final String id;
         final String label;
         final String desc;
         final int icon;
-        final boolean toggle;
-        final boolean toggleValue;
-        final ToggleListener onToggle;
 
         RowSpec(String id, String label, String desc, int icon) {
-            this(id, label, desc, icon, false, false, null);
-        }
-
-        RowSpec(String label, String desc, int icon, boolean toggleValue, ToggleListener onToggle) {
-            this(null, label, desc, icon, true, toggleValue, onToggle);
-        }
-
-        RowSpec(String id, String label, String desc, int icon, boolean toggle, boolean toggleValue, ToggleListener onToggle) {
             this.id = id;
             this.label = label;
             this.desc = desc;
             this.icon = icon;
-            this.toggle = toggle;
-            this.toggleValue = toggleValue;
-            this.onToggle = onToggle;
         }
     }
 }

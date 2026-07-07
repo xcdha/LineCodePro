@@ -215,6 +215,11 @@
     <string name="screen_settings_section_ui">UI &amp; Output</string>
     <string name="screen_settings_section_security">Security</string>
     <string name="screen_settings_section_data">Data &amp; System</string>
+
+    <string name="screen_security_title">Security</string>
+    <string name="screen_security_section_http">HTTP restrictions</string>
+    <string name="screen_security_section_browser">Built-in browser</string>
+    <string name="settings_row_security_desc">HTTP restrictions and built-in browser script execution</string>
     <string name="screen_settings_section_info">Info</string>
 
     <string name="screen_llm_title">AI behavior</string>

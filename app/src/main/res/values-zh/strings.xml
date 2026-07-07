@@ -215,6 +215,11 @@
     <string name="screen_settings_section_ui">界面与输出</string>
     <string name="screen_settings_section_security">安全</string>
     <string name="screen_settings_section_data">数据与系统</string>
+
+    <string name="screen_security_title">安全</string>
+    <string name="screen_security_section_http">HTTP 限制</string>
+    <string name="screen_security_section_browser">内置浏览器</string>
+    <string name="settings_row_security_desc">HTTP 限制与内置浏览器脚本执行</string>
     <string name="screen_settings_section_info">信息</string>
 
     <string name="screen_llm_title">AI 行为</string>

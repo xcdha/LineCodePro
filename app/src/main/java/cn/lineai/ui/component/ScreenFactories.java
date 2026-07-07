@@ -139,7 +139,7 @@ public final class ScreenFactories {
     public static final class SettingsScreenFactory implements ScreenFactory {
         @Override
         public View createScreen(MainChatView view, MainUiController controller, Context context) {
-            return new SettingsScreenView(context, controller.getOutputSettings(), new SettingsScreenView.Listener() {
+            return new SettingsScreenView(context, new SettingsScreenView.Listener() {
                 @Override
                 public void onBack() {
                     view.handleScreenBack();
@@ -148,16 +148,6 @@ public final class ScreenFactories {
                 @Override
                 public void onItem(String id) {
                     controller.onSettingsItemSelected(id);
-                }
-
-                @Override
-                public void onAllowAnyHttpChanged(boolean enabled) {
-                    controller.onAllowAnyHttpChanged(enabled);
-                }
-
-                @Override
-                public void onBrowserJavaScriptChanged(boolean enabled) {
-                    controller.onBrowserJavaScriptChanged(enabled);
                 }
             });
         }
@@ -369,6 +359,33 @@ public final class ScreenFactories {
         @Override
         public String screenId() {
             return "output";
+        }
+    }
+
+    public static final class SecuritySettingsScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new SecuritySettingsScreenView(context, controller.getOutputSettings(), new SecuritySettingsScreenView.Listener() {
+                @Override
+                public void onBack() {
+                    view.handleScreenBack();
+                }
+
+                @Override
+                public void onAllowAnyHttpChanged(boolean enabled) {
+                    controller.onAllowAnyHttpChanged(enabled);
+                }
+
+                @Override
+                public void onBrowserJavaScriptChanged(boolean enabled) {
+                    controller.onBrowserJavaScriptChanged(enabled);
+                }
+            });
+        }
+
+        @Override
+        public String screenId() {
+            return "security";
         }
     }
 
