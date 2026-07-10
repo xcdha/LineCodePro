@@ -1,5 +1,35 @@
 # 更新日志
 
+## v1.2.0
+
+### 切后台稳定性
+
+- **生命周期钩子补全** - `MainUiController` 新增 `onEnterBackground()` 回调；`MainActivity.onPause` 在 `super.onPause()` 之前调用 `presenter.onEnterBackground()`，经 `MainCoordinatorDelegates` 转发到 `delegateView().hideOverlays()`，在应用切到后台时统一收起所有浮层。
+- **斜杠命令弹窗后台清理** - `ComposerView.dismissSlashPopup()` 由 `private` 提升为 `public`，并在 `MainChatView.hideOverlays()` 中调用；修复 1.1.8 引入的 `SlashCommandPopup` 在输入框含 `/` 文本时切后台不 dismiss，导致 Window Token 失效回前台后整屏黑屏的问题。
+
+### 错误信息 UTF 解码
+
+- **`StringUtils.decodeUnicodeEscapes`** - 新增 `cn.lineai.util.StringUtils.decodeUnicodeEscapes`，把 Java 风格 `\uXXXX` 转义解码为对应字符；仅解码严格匹配 `\u` 后接 4 位十六进制（0-9a-fA-F）的片段，不完整的 `\u` 与 Windows 路径（`\Users`）等原样保留，避免误伤正常内容。
+- **聊天内错误文本解码** - `GenerationFlowController.failGeneration` 在错误文本进入 `ChatMessage`、渲染到聊天前统一 `decodeUnicodeEscapes`，覆盖模型通信失败、流式输出失败、HTTP 404/500 等所有聊天内错误展示；`describeException` 对异常 message 同样解码，覆盖工具执行等错误文本。
+- **SSE 流式错误乱码修复** - `OpenAiCompatibleProtocol` 新增 `describeError(Object)`，当 SSE 返回 `error` 为 JSON 对象时优先读取 `message` / `type` / `code` 字段（不再触发 `JSONObject.toString()` 把中文转义成 `\uXXXX`），并对结果兜底解码，修复流式错误在聊天里显示为一串 `\u` 转义符的问题。
+
+### 日志脱敏 OOM 安全
+
+- **超大负载截断脱敏** - `ErrorLogRedactor` 新增 `MAX_SAFE_LENGTH = 1MB` 上限，输入超过该长度时先取前缀脱敏、剩余以 `\n... [REDACTED_TRUNCATED]` 标注丢弃；避免模型协议层在记录含大段 base64 的错误响应时对几十 MB 字符串反复 `replaceAll` 复制导致 `OutOfMemoryError`（峰值内存由数十 MB 降为恒定 ~2MB，峰值内存不再随日志体膨胀）。
+
+### 多选消息交互补全
+
+- **列表项点击勾选** - `ChatMessageListView` 的 `ListView` 新增 `OnItemClickListener`，多选模式下点击消息即切换该条目的选中态（调用 `toggleSelection`），无需仅依赖操作条按钮。
+- **选中态高亮描边** - `MessageAdapter.applyMultiSelectStyle` 在多选模式下为已选中消息绘制 `LineTheme.ACCENT` 圆角描边（`roundedStroke` 12dp）+ 4dp 内边距；`multiSelectMode` / `selectedMessageIds` 下沉到 adapter，随 `enterMultiSelectMode` / `exitMultiSelectMode` / `toggleSelection` 同步，逐条 `bind` 时应用样式。
+- **底部操作条避让** - 进入多选模式时 `listView` 底部追加 `MULTI_SELECT_BAR_EXTRA_PADDING`（64dp）内边距，退出时还原，避免底部多选操作条遮挡最后一条消息。
+
+### 测试
+
+- **`ErrorLogRedactorTest.redactsLargePayloadWithoutOom`** - 验证 200 万字符超大输入不再 OOM，且头部 secret（Authorization）与长 base64 仍被脱敏、并标记 `[REDACTED_TRUNCATED]`。
+- **`StringUtilsTest`** - 新增 `cn.lineai.util.StringUtilsTest`，覆盖基础 `\u` 解码、纯文本不变、不完整转义保留、Windows 路径不误解码、`null`/短输入、混合内容共 6 例。
+
+---
+
 ## v1.1.9
 
 ### 消息引用与多选分享
