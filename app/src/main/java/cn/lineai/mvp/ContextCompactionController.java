@@ -15,6 +15,7 @@ import cn.lineai.model.ModelContextParser;
 import cn.lineai.model.ModelStore;
 import cn.lineai.model.SheetOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 
@@ -94,6 +95,10 @@ final class ContextCompactionController {
         HashSet<String> preservedIds = messageIdSet(preservedTail);
         for (ChatMessage message : messages) {
             if (preservedIds.contains(message.getId()) || message.isExcludeFromContext()) {
+                continue;
+            }
+            // 已压缩产生的隐藏摘要不再计入"可压缩内容"，避免对摘要反复压缩。
+            if (message.isHidden() && message.getResponseInputItemJson().length() > 0) {
                 continue;
             }
             if (message.getContent().trim().length() > 0 || message.getReasoningContent().trim().length() > 0 || message.hasToolCalls()) {
@@ -229,9 +234,27 @@ final class ContextCompactionController {
             }
             compacted.add(baseIds.contains(message.getId()) ? message.withExcludeFromContext(true) : message);
         }
-        ChatMessage summaryMessage = new ChatMessage(host.nextId(), ChatMessage.Role.USER,
-                result.getSummaryContent(), "", false, true, false)
-                .withResponseInputItemJson(result.getResponseInputItemJson());
+        // 摘要必须进入上下文（excludeFromContext=false），否则模型侧会像"上下文被清空"一样丢失历史。
+        // 注意：不能用 .withResponseInputItemJson(...) 链式构造，它会基于当前 excludeFromContext 副本，
+        // 这里显式传 false 保证摘要一定进上下文。
+        ChatMessage summaryMessage = new ChatMessage(
+                host.nextId(),
+                ChatMessage.Role.USER,
+                result.getSummaryContent(),
+                "",
+                false,
+                true,
+                false,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                "",
+                "",
+                false,
+                "",
+                "",
+                "",
+                "",
+                result.getResponseInputItemJson());
         compacted.add(summaryMessage);
         for (ChatMessage message : messages) {
             if (preservedIds.contains(message.getId())) {
@@ -330,6 +353,13 @@ final class ContextCompactionController {
         }
         for (ChatMessage message : source) {
             if (message == null || message.isExcludeFromContext()) {
+                continue;
+            }
+            // 已压缩产生的隐藏摘要不是"待压缩"内容。
+            if (message.isHidden() && message.getResponseInputItemJson().length() > 0) {
+                continue;
+            }
+            if (message.isCompactBlock()) {
                 continue;
             }
             if (message.getContent().trim().length() > 0
