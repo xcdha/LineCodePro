@@ -461,17 +461,46 @@ final class GenerationFlowController {
             if (toolCallId == null || toolCallId.length() == 0) {
                 return;
             }
+            String reviewState = resolveProgressReviewState(content, error);
+            // 不回退保护：若该工具已有"完成/失败"等终态结果，进度发布不应把它拉回运行中，
+            // 否则异步进度会覆盖同步的最终结果，导致进度圈永不消失。
+            String existing = toolMessageController.currentReviewState(toolCallId);
+            boolean existingIsFinal = existing.length() > 0
+                    && !"running".equals(existing)
+                    && !"pending".equals(existing)
+                    && !"accepted".equals(existing);
+            if (existingIsFinal && "running".equals(reviewState)) {
+                return;
+            }
             addOrReplaceToolResult(new ToolResult(
                     toolCallId,
                     toolName,
                     content,
                     error,
                     "",
-                    "running",
+                    reviewState,
                     ""
             ));
             host.render();
         });
+    }
+
+    private static String resolveProgressReviewState(String content, boolean error) {
+        if (content == null || content.trim().length() == 0) {
+            return error ? "error" : "running";
+        }
+        try {
+            JSONObject object = new JSONObject(content);
+            if (object.has("status")) {
+                String status = object.optString("status", "running");
+                if (status.length() > 0) {
+                    return status;
+                }
+            }
+        } catch (Exception ignored) {
+            // 非 JSON 进度内容（如 shell/image 的纯文本进度），保持 running
+        }
+        return error ? "error" : "running";
     }
 
     void flushPendingAssistantDelta() {

@@ -15,6 +15,10 @@ public final class UserMessageView extends LinearLayout {
     private final TextView contentText;
     private final LinearLayout attachmentList;
     private final MessageActionBarView actionBar;
+    private final int defaultPaddingLeft;
+    private final int defaultPaddingTop;
+    private final int defaultPaddingRight;
+    private final int defaultPaddingBottom;
     private String lastContent = "";
     private ChatMessage currentMessage;
     private MessageActionListener actionListener;
@@ -24,6 +28,10 @@ public final class UserMessageView extends LinearLayout {
         setOrientation(VERTICAL);
         setGravity(Gravity.END);
         LineTheme.padding(this, LineTheme.LG, 0, LineTheme.LG, 6);
+        defaultPaddingLeft = getPaddingLeft();
+        defaultPaddingTop = getPaddingTop();
+        defaultPaddingRight = getPaddingRight();
+        defaultPaddingBottom = getPaddingBottom();
 
         contentText = LineTheme.text(context, "", 16, LineTheme.TEXT_ON_COLOR, Typeface.NORMAL);
         contentText.setLineSpacing(LineTheme.dp(context, 2), 1.0f);
@@ -94,6 +102,10 @@ public final class UserMessageView extends LinearLayout {
 
     public void setMessageActionListener(MessageActionListener listener) {
         actionListener = listener;
+    }
+
+    public void restoreDefaultPadding() {
+        setPadding(defaultPaddingLeft, defaultPaddingTop, defaultPaddingRight, defaultPaddingBottom);
     }
 
     public void bind(ChatMessage message) {

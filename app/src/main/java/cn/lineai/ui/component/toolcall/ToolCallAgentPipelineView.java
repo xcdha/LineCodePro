@@ -48,8 +48,12 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         int total = agents == null ? 0 : agents.length();
         JSONObject progress = progressPayload(result);
         boolean runningProgress = progress != null && "running".equals(progress.optString("status", "running"));
-        boolean complete = result != null && !runningProgress && !"running".equals(result.getReviewState());
         boolean error = result != null && (result.isError() || (progress != null && "error".equals(progress.optString("status"))));
+        // 完成判定优先以 progress 携带的权威 status 为准：done 且非 error 即完成。
+        // 这样即使 reviewState 因时序异常，也能正确驱动进度圈消失。
+        boolean complete = progress != null
+                ? ("done".equals(progress.optString("status")) && !error)
+                : (result != null && !"running".equals(result.getReviewState()) && !"pending".equals(result.getReviewState()));
         HashMap<String, AgentSummary> summaryById = progress != null ? parseProgress(progress) : parseResult(result);
         int failed = error ? Math.max(progress == null ? 1 : 0, failedCount(summaryById)) : failedCount(summaryById);
         int pendingReview = pendingReviewCount(summaryById);

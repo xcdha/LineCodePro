@@ -122,7 +122,6 @@ public final class MCPSettingsScreenView extends ScreenScaffoldView {
     }
 
     private int iconFor(String id) {
-        if ("file_ops".equals(id) || cn.lineai.tool.builtin.HttpServerTool.NAME.equals(id)) return IconButtonView.MCP;
         if ("shell".equals(id)) return IconButtonView.TERMINAL;
         if (cn.lineai.tool.builtin.WebSearchTool.NAME.equals(id)) return IconButtonView.SEARCH;
         if (cn.lineai.tool.builtin.ImageUnderstandingTool.NAME.equals(id)) return IconButtonView.PAINTBRUSH;

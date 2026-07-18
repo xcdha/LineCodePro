@@ -154,6 +154,15 @@ public final class ContextCompactionService {
             if (message == null || message.isExcludeFromContext() || !hasCompactableContent(message)) {
                 continue;
             }
+            // 已压缩产生的隐藏摘要（hidden 且带响应项 JSON）不再参与下一次压缩，
+            // 否则旧摘要会被当成普通消息重新总结，导致历史摘要被覆盖/丢失。
+            if (message.isHidden() && message.getResponseInputItemJson().length() > 0) {
+                continue;
+            }
+            // 压缩进度块（compactStatus 非空）也不是可压缩内容。
+            if (message.isCompactBlock()) {
+                continue;
+            }
             result.add(message);
         }
         return result;

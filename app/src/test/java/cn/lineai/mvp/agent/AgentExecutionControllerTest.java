@@ -97,11 +97,6 @@ public final class AgentExecutionControllerTest {
                 AgentTool.TYPE_SUB_CODING,
                 Collections.emptySet(),
                 Collections.emptySet()));
-        assertTrue(controller.isAgentToolAllowed(
-                new FakeTool("http_server", ToolCategory.SYSTEM),
-                AgentTool.TYPE_SUB_CODING,
-                Collections.emptySet(),
-                Collections.emptySet()));
     }
 
     @Test
@@ -374,7 +369,6 @@ public final class AgentExecutionControllerTest {
             if ("agent_pipeline".equals(name)) return cn.lineai.tool.ToolDisplayCategory.AGENT_PIPELINE;
             if ("file_read".equals(name) || "web_search".equals(name)) return cn.lineai.tool.ToolDisplayCategory.READ;
             if ("file_write".equals(name) || "file_edit".equals(name)) return cn.lineai.tool.ToolDisplayCategory.WRITE;
-            if ("http_server".equals(name)) return cn.lineai.tool.ToolDisplayCategory.HTTP;
             return cn.lineai.tool.ToolDisplayCategory.GENERIC;
         }
 

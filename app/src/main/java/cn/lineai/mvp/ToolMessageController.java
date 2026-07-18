@@ -103,6 +103,14 @@ final class ToolMessageController {
         return MessageContentSanitizer.imageGenerationDisplayMarkdown(content);
     }
 
+    String currentReviewState(String toolCallId) {
+        int index = findToolMessageIndex(toolCallId);
+        if (index < 0) {
+            return "";
+        }
+        return messages.get(index).getReviewState();
+    }
+
     int findToolMessageIndex(String toolCallId) {
         if (toolCallId == null || toolCallId.length() == 0) {
             return -1;

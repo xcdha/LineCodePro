@@ -8,7 +8,6 @@ import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileReadTool;
 import cn.lineai.tool.builtin.FileWriteTool;
 import cn.lineai.tool.builtin.GlobTool;
-import cn.lineai.tool.builtin.HttpServerTool;
 import cn.lineai.tool.builtin.ImageGenerationTool;
 import cn.lineai.tool.builtin.ImageUnderstandingTool;
 import cn.lineai.tool.builtin.ListDirectoryTool;
@@ -79,7 +78,6 @@ public final class ToolDisplayResolver {
                 || ImageUnderstandingTool.NAME.equals(name)) return ToolDisplayCategory.READ;
         if (FileWriteTool.NAME.equals(name) || FileEditTool.NAME.equals(name)) return ToolDisplayCategory.WRITE;
         if (FileDeleteTool.NAME.equals(name)) return ToolDisplayCategory.DELETE;
-        if (HttpServerTool.NAME.equals(name)) return ToolDisplayCategory.HTTP;
         if (ShellExecuteTool.NAME.equals(name)) return ToolDisplayCategory.SHELL;
         if (AgentTool.NAME.equals(name)) return ToolDisplayCategory.AGENT;
         if (AgentPipelineTool.NAME.equals(name)) return ToolDisplayCategory.AGENT_PIPELINE;

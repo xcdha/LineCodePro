@@ -96,7 +96,7 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
     private int iconFor(String name) {
         ToolDisplayCategory category = ToolCallUtils.getDisplayCategory(name);
         if (category == ToolDisplayCategory.SHELL) return IconButtonView.TERMINAL;
-        if (category == ToolDisplayCategory.HTTP || ToolCallUtils.isCustomMcpTool(name)) return IconButtonView.MCP;
+        if (ToolCallUtils.isCustomMcpTool(name)) return IconButtonView.MCP;
         if (category == ToolDisplayCategory.DELETE) return IconButtonView.TRASH_2;
         return IconButtonView.MCP;
     }

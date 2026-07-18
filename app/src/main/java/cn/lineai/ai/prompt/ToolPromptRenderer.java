@@ -98,15 +98,17 @@ public class ToolPromptRenderer {
         StringBuilder builder = new StringBuilder();
         builder.append("## 可用工具\n");
         if (isSsh) {
-            builder.append("当前执行目标是 SSH Shell。本地文件读写、文件搜索和 HTTP 服务器已禁用。\n")
+            builder.append("当前执行目标是 SSH Shell。本地文件读写和文件搜索已禁用。\n")
                     .append("Agent、Agent Pipeline、任务清单仍可用，子 Agent 只能通过 shell_execute 在 SSH 环境内完成文件操作。\n")
                     .append("图片理解会通过 SFTP 读取 SSH 工作区图片；网页搜索、图片生成和应用侧自定义 HTTP MCP 可用时仍会作为工具提供。\n")
+                    .append("当会话模式为 Control 时，手机控制工具（phone_screenshot、phone_click 等）仍然可用。\n")
                     .append("不要引用应用私有 home 工作目录；如果系统提示提供了 SSH 项目目录，必须在该目录内操作。\n")
                     .append("如需读取、写入、列目录或搜索文件，请通过 shell 命令在 SSH 环境内完成。\n\n");
         } else {
-            builder.append("当前执行目标是终端提供者（Terminal Provider）。本地文件读写、文件搜索和 HTTP 服务器已禁用。\n")
+            builder.append("当前执行目标是终端提供者（Terminal Provider）。本地文件读写和文件搜索已禁用。\n")
                     .append("Agent、Agent Pipeline、任务清单仍可用，子 Agent 只能通过 shell_execute 在终端提供者环境内完成文件操作。\n")
                     .append("图片理解会通过 IPC 读取终端提供者环境的图片；网页搜索、图片生成和应用侧自定义 HTTP MCP 可用时仍会作为工具提供。\n")
+                    .append("当会话模式为 Control 时，手机控制工具（phone_screenshot、phone_click 等）仍然可用。\n")
                     .append("不要引用应用私有 home 工作目录；如果系统提示提供了终端提供者工作目录，必须在该目录内操作。\n")
                     .append("如需读取、写入、列目录或搜索文件，请通过 shell 命令在终端提供者环境内完成。\n\n");
         }

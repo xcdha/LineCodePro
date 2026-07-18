@@ -16,7 +16,6 @@ import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileReadTool;
 import cn.lineai.tool.builtin.FileWriteTool;
 import cn.lineai.tool.builtin.GlobTool;
-import cn.lineai.tool.builtin.HttpServerTool;
 import cn.lineai.tool.builtin.ListDirectoryTool;
 import cn.lineai.tool.builtin.ImageGenerationTool;
 import cn.lineai.tool.builtin.ImageUnderstandingTool;
@@ -66,15 +65,12 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
             new McpToolConfig("file_ops", "文件操作", "读取、写入、编辑和删除文件", true,
                     new String[] {FileReadTool.NAME, FileWriteTool.NAME, FileEditTool.NAME, FileDeleteTool.NAME, GlobTool.NAME, ListDirectoryTool.NAME},
                     MODE_LOCAL),
-            new McpToolConfig(HttpServerTool.NAME, "HTTP 服务器", "启动本地 HTTP 文件服务器", true,
-                    new String[] {HttpServerTool.NAME},
-                    MODE_LOCAL),
             new McpToolConfig(AgentTool.NAME, "Agent", "分派 Agent 处理任务", true,
                     new String[] {AgentTool.NAME, AgentPipelineTool.NAME},
                     MODE_ALL),
             new McpToolConfig("phone_control", "手机控制", "通过无障碍服务控制本机操作", true,
                     new String[] {PhoneScreenshotTool.NAME, PhoneClickTool.NAME, PhoneSwipeTool.NAME, PhoneLongPressTool.NAME, PhoneViewHierarchyTool.NAME, PhoneClickViewTool.NAME, PhoneGlobalActionTool.NAME},
-                    MODE_LOCAL),
+                    MODE_ALL),
             new McpToolConfig("todo", "任务清单", "维护当前会话的 TODO 列表，状态会注入到 system prompt", true,
                     new String[] {TodoUpdateTool.NAME},
                     MODE_ALL),

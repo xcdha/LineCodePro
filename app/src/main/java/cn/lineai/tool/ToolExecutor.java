@@ -81,9 +81,8 @@ public final class ToolExecutor {
         }
         JSONObject input;
         try {
-            input = toolCall.getArguments().trim().length() == 0
-                    ? new JSONObject()
-                    : new JSONObject(toolCall.getArguments());
+            String args = ToolArgsCleaner.clean(toolCall.getArguments());
+            input = args.trim().length() == 0 ? new JSONObject() : new JSONObject(args);
         } catch (Exception e) {
             restoreInterrupt(e);
             return new ToolResult(toolCall.getId(), tool.getName(), "参数解析失败: " + describeException(e), true);

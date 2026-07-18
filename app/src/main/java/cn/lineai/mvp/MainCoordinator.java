@@ -45,7 +45,6 @@ import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.tool.ToolExecutor;
 import cn.lineai.tool.ToolExecutionCoordinator;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.builtin.HttpServerTool;
 import cn.lineai.workspace.SafPathResolver;
 import cn.lineai.workspace.StoragePermissionManager;
 import java.util.ArrayList;
@@ -701,7 +700,6 @@ public final class MainCoordinator extends MainCoordinatorDelegates {
         detachView();
         generationLifecycleController.cancelActiveGeneration();
         generationLifecycleController.stopKeepAlive();
-        HttpServerTool.stopActiveServer();
         backgroundTasks.shutdownNow();
     }
 

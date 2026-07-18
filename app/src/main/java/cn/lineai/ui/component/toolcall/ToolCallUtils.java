@@ -58,10 +58,6 @@ public final class ToolCallUtils {
         return getDisplayCategory(name) == ToolDisplayCategory.DELETE;
     }
 
-    static boolean isHttpTool(String name) {
-        return getDisplayCategory(name) == ToolDisplayCategory.HTTP;
-    }
-
     static boolean isCustomMcpTool(String name) {
         return name != null && name.startsWith("mcpx_");
     }

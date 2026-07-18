@@ -576,7 +576,7 @@ public final class ChatMessageListView extends FrameLayout {
         private void applyMultiSelectStyle(View view, ChatMessage message) {
             if (message == null || message.getId() == null) {
                 view.setBackground(null);
-                view.setPadding(0, 0, 0, 0);
+                restoreMessagePadding(view);
                 return;
             }
             if (multiSelectMode && selectedMessageIds.contains(message.getId())) {
@@ -586,6 +586,16 @@ public final class ChatMessageListView extends FrameLayout {
                         LineTheme.dp(context, 4), LineTheme.dp(context, 4));
             } else {
                 view.setBackground(null);
+                restoreMessagePadding(view);
+            }
+        }
+
+        private void restoreMessagePadding(View view) {
+            if (view instanceof UserMessageView) {
+                ((UserMessageView) view).restoreDefaultPadding();
+            } else if (view instanceof AssistantMessageView) {
+                ((AssistantMessageView) view).restoreDefaultPadding();
+            } else {
                 view.setPadding(0, 0, 0, 0);
             }
         }

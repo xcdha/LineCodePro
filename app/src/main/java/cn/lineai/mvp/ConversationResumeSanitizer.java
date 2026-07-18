@@ -88,12 +88,13 @@ final class ConversationResumeSanitizer {
                 error = true;
                 changed = true;
             }
-            if (isUnfinishedReviewState(reviewState) || payload.error) {
+            boolean reviewStateUnfinished = isUnfinishedReviewState(reviewState, content);
+            if (reviewStateUnfinished) {
                 if (!error) {
                     error = true;
                     changed = true;
                 }
-                if (content.trim().length() == 0) {
+                if (!payload.error && !terminatedMessage.equals(content)) {
                     content = terminatedMessage;
                     changed = true;
                 }
@@ -213,7 +214,7 @@ final class ConversationResumeSanitizer {
                         .put("review_state", "")
                         .put("review_message", ""));
                 changed = true;
-            } else if (result != null && isUnfinishedReviewState(result.optString("review_state"))) {
+            } else if (result != null && isUnfinishedReviewState(result.optString("review_state"), result.optString("content"))) {
                 result.put("content", terminatedMessage);
                 result.put("is_error", true);
                 result.put("review_state", "");
@@ -317,8 +318,9 @@ final class ConversationResumeSanitizer {
         return ChatMessage.COMPACT_STATUS_RUNNING.equals(readRawString(rawJson, "compact_status"));
     }
 
-    private static boolean isUnfinishedReviewState(String state) {
-        return "running".equals(state) || "pending".equals(state);
+    private static boolean isUnfinishedReviewState(String state, String content) {
+        return "running".equals(state) || "pending".equals(state)
+                || ("accepted".equals(state) && (content == null ? "" : content).trim().length() == 0);
     }
 
     private static boolean isUnfinishedAgentStatus(String status) {

@@ -53,7 +53,6 @@ import cn.lineai.ui.component.toolcall.AgentPipelineToolCallViewFactory;
 import cn.lineai.ui.component.toolcall.AgentToolCallViewFactory;
 import cn.lineai.ui.component.toolcall.DeleteToolCallViewFactory;
 import cn.lineai.ui.component.toolcall.GenericToolCallViewFactory;
-import cn.lineai.ui.component.toolcall.HttpToolCallViewFactory;
 import cn.lineai.ui.component.toolcall.ImageGenerationToolCallViewFactory;
 import cn.lineai.ui.component.toolcall.PhoneControlToolCallViewFactory;
 import cn.lineai.ui.component.toolcall.ReadToolCallViewFactory;
@@ -188,7 +187,6 @@ public final class MainDependencies {
         registry.register(new PhoneControlToolCallViewFactory());
         registry.register(new WriteToolCallViewFactory(diffLoader));
         registry.register(new DeleteToolCallViewFactory());
-        registry.register(new HttpToolCallViewFactory());
         registry.register(new GenericToolCallViewFactory());
         return registry;
     }
