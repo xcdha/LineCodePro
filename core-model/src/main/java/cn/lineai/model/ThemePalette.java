@@ -38,17 +38,21 @@ public final class ThemePalette {
 
     public static final String[] EDITABLE_KEYS = new String[] {
             KEY_BG,
+            KEY_SURFACE,
             KEY_SURFACE_ELEVATED,
             KEY_SURFACE_LIGHT,
             KEY_INPUT_BG,
             KEY_TEXT,
             KEY_TEXT_SECONDARY,
             KEY_TEXT_TERTIARY,
+            KEY_TEXT_ON_COLOR,
             KEY_ACCENT,
             KEY_USER_BUBBLE,
             KEY_AI_BUBBLE,
             KEY_BORDER,
+            KEY_BORDER_LIGHT,
             KEY_CODE_BG,
+            KEY_CODE_BORDER,
             KEY_DANGER,
             KEY_WARNING,
             KEY_SUCCESS

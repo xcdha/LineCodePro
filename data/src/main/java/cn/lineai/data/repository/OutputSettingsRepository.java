@@ -8,6 +8,7 @@ public final class OutputSettingsRepository {
     public static final String KEY_BROWSER_MODE = "@lineai_browser_mode";
     public static final String KEY_BROWSER_JAVASCRIPT = "@lineai_browser_javascript";
     public static final String KEY_ALLOW_ANY_HTTP = "@lineai_allow_any_http";
+    public static final String KEY_BYPASS_PATH_PROTECTION = "@lineai_bypass_path_protection";
 
     private final SettingsRepository settingsRepository;
 
@@ -20,7 +21,8 @@ public final class OutputSettingsRepository {
                 settingsRepository.getBoolean(KEY_CODE_WRAP, false),
                 settingsRepository.getString(KEY_BROWSER_MODE, OutputSettings.BROWSER_BUILTIN),
                 settingsRepository.getBoolean(KEY_BROWSER_JAVASCRIPT, false),
-                settingsRepository.getBoolean(KEY_ALLOW_ANY_HTTP, false)
+                settingsRepository.getBoolean(KEY_ALLOW_ANY_HTTP, false),
+                settingsRepository.getBoolean(KEY_BYPASS_PATH_PROTECTION, false)
         );
     }
 
@@ -38,5 +40,13 @@ public final class OutputSettingsRepository {
 
     public synchronized void setAllowAnyHttp(boolean enabled) {
         settingsRepository.setBoolean(KEY_ALLOW_ANY_HTTP, enabled);
+    }
+
+    public synchronized boolean isPathProtectionBypassed() {
+        return settingsRepository.getBoolean(KEY_BYPASS_PATH_PROTECTION, false);
+    }
+
+    public synchronized void setPathProtectionBypassed(boolean bypassed) {
+        settingsRepository.setBoolean(KEY_BYPASS_PATH_PROTECTION, bypassed);
     }
 }

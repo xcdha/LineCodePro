@@ -62,7 +62,7 @@ final class ImageApiClient {
 
     JSONObject imagesRequestBody(ModelConfig model, JSONObject input, String prompt, boolean requestBase64) throws Exception {
         JSONObject body = new JSONObject()
-                .put("model", ModelContextParser.apiModelId(model.getModelId()))
+                .put("model", ModelContextParser.apiModelId(model))
                 .put("prompt", prompt)
                 .put("n", 1);
         String size = input == null ? "" : input.optString("size").trim();
@@ -77,7 +77,7 @@ final class ImageApiClient {
 
     JSONObject responsesRequestBody(ModelConfig model, JSONObject input, String prompt) throws Exception {
         return new JSONObject()
-                .put("model", ModelContextParser.apiModelId(model.getModelId()))
+                .put("model", ModelContextParser.apiModelId(model))
                 .put("input", prompt)
                 .put("tools", new JSONArray().put(responsesImageGenerationTool(input)))
                 .put("tool_choice", new JSONObject().put("type", "image_generation"))

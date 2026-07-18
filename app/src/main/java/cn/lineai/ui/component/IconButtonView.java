@@ -91,6 +91,7 @@ public final class IconButtonView extends ImageButton {
     public static final int QUOTE = 81;
     public static final int TEXT_CURSOR = 82;
     public static final int CHECK_SQUARE = 83;
+    public static final int IMAGE = 84;
 
     private static final SparseArray<Integer> ICON_MAP = new SparseArray<>();
     static {
@@ -177,6 +178,7 @@ public final class IconButtonView extends ImageButton {
         ICON_MAP.put(QUOTE, R.drawable.ic_lucide_quote);
         ICON_MAP.put(TEXT_CURSOR, R.drawable.ic_lucide_text_cursor);
         ICON_MAP.put(CHECK_SQUARE, R.drawable.ic_lucide_check_square);
+        ICON_MAP.put(IMAGE, R.drawable.ic_lucide_image);
     }
 
     private int iconType;

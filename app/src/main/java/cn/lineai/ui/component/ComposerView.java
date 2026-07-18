@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.net.Uri;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -15,6 +16,7 @@ import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
@@ -36,7 +38,12 @@ public final class ComposerView extends LinearLayout implements QuoteController.
     public interface Listener {
         void onSend(String text, List<InputAttachment> attachments);
 
+        void onSendWithImage(String text, List<InputAttachment> attachments,
+                             String imageBase64, String imageMimeType, String imageName);
+
         void onAttachClick();
+
+        void onImagePickerClick();
 
         void onModeChanged(String mode);
 
@@ -73,9 +80,17 @@ public final class ComposerView extends LinearLayout implements QuoteController.
     private HorizontalScrollView attachmentScroll;
     private LinearLayout attachmentList;
     private IconButtonView attachButton;
+    private IconButtonView imageButton;
+    private LinearLayout imagePreviewLayout;
+    private ImageView imagePreviewView;
+    private IconButtonView imagePreviewClose;
     private EditText input;
     private IconButtonView sendButton;
     private final ArrayList<InputAttachment> attachments = new ArrayList<>();
+    private Uri pendingImageUri;
+    private String pendingImageBase64 = "";
+    private String pendingImageMimeType = "";
+    private String pendingImageName = "";
     private PopupWindow modePopup;
     private PopupWindow modelPopup;
     private SlashCommandPopup slashPopup;
@@ -119,6 +134,8 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         LinearLayout.LayoutParams attachmentParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         attachmentParams.bottomMargin = LineTheme.dp(context, LineTheme.SM);
         addView(attachmentScroll, attachmentParams);
+
+        buildImagePreview();
 
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(VERTICAL);
@@ -213,6 +230,17 @@ public final class ComposerView extends LinearLayout implements QuoteController.
             }
         });
 
+        imageButton = new IconButtonView(context, IconButtonView.IMAGE);
+        imageButton.setIconColor(LineTheme.TEXT_SECONDARY);
+        imageButton.setIconSizeDp(40, 22);
+        imageButton.setBackground(LineTheme.rounded(context, LineTheme.SURFACE_LIGHT, 20));
+        imageButton.setContentDescription(context.getString(R.string.composer_image_button_desc));
+        imageButton.setOnClickListener(v -> {
+            if (!streaming && listener != null) {
+                listener.onImagePickerClick();
+            }
+        });
+
         input = new EditText(context);
         input.setTextColor(LineTheme.TEXT);
         input.setHintTextColor(LineTheme.TEXT_TERTIARY);
@@ -291,6 +319,10 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         LinearLayout.LayoutParams attachParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 40));
         attachParams.rightMargin = LineTheme.dp(context, LineTheme.SM);
         modeRow.addView(attachButton, attachParams);
+
+        LinearLayout.LayoutParams imageButtonParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 40), LineTheme.dp(context, 40));
+        imageButtonParams.rightMargin = LineTheme.dp(context, LineTheme.SM);
+        modeRow.addView(imageButton, imageButtonParams);
 
         modeSelectorButton = new LinearLayout(context);
         modeSelectorButton.setOrientation(HORIZONTAL);
@@ -382,6 +414,87 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         params.bottomMargin = LineTheme.dp(context, LineTheme.SM);
         addView(quotePreviewLayout, params);
+    }
+
+    private void buildImagePreview() {
+        Context context = getContext();
+        imagePreviewLayout = new LinearLayout(context);
+        imagePreviewLayout.setOrientation(HORIZONTAL);
+        imagePreviewLayout.setGravity(Gravity.CENTER_VERTICAL);
+        imagePreviewLayout.setBackground(LineTheme.roundedStroke(context, LineTheme.SURFACE_ELEVATED, 14, LineTheme.BORDER_LIGHT));
+        LineTheme.padding(imagePreviewLayout, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
+
+        int thumbSize = LineTheme.dp(context, 56);
+        imagePreviewView = new ImageView(context);
+        imagePreviewView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        imagePreviewView.setBackgroundColor(LineTheme.SURFACE_LIGHT);
+        LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(thumbSize, thumbSize);
+        imagePreviewLayout.addView(imagePreviewView, thumbParams);
+
+        TextView imageLabel = LineTheme.text(context, "", LineTheme.FONT_SM, LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
+        imageLabel.setSingleLine(true);
+        imageLabel.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        imageLabel.setMaxWidth(LineTheme.dp(context, 220));
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
+        labelParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
+        imagePreviewLayout.addView(imageLabel, labelParams);
+        imagePreviewView.setTag(imageLabel);
+
+        imagePreviewClose = new IconButtonView(context, IconButtonView.CLOSE);
+        imagePreviewClose.setContentDescription(context.getString(R.string.composer_image_remove_desc));
+        imagePreviewClose.setIconColor(LineTheme.TEXT_TERTIARY);
+        imagePreviewClose.setIconSizeDp(28, 16);
+        imagePreviewClose.setOnClickListener(v -> clearImage());
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(LineTheme.dp(context, 28), LineTheme.dp(context, 28));
+        closeParams.leftMargin = LineTheme.dp(context, LineTheme.SM);
+        imagePreviewLayout.addView(imagePreviewClose, closeParams);
+
+        imagePreviewLayout.setVisibility(GONE);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = LineTheme.dp(context, LineTheme.SM);
+        addView(imagePreviewLayout, params);
+    }
+
+    /**
+     * 选择图片后调用，显示缩略图预览并暂存 base64 数据。
+     */
+    public void onImagePicked(Uri uri, String base64, String mimeType, String displayName) {
+        pendingImageUri = uri;
+        pendingImageBase64 = base64 == null ? "" : base64;
+        pendingImageMimeType = mimeType == null ? "" : mimeType;
+        pendingImageName = displayName == null ? "" : displayName;
+        if (uri != null) {
+            try {
+                imagePreviewView.setImageURI(uri);
+            } catch (Exception ignored) {
+                imagePreviewView.setImageDrawable(null);
+            }
+        } else {
+            imagePreviewView.setImageDrawable(null);
+        }
+        TextView label = (TextView) imagePreviewView.getTag();
+        if (label != null) {
+            label.setText(pendingImageName.length() > 0 ? pendingImageName : "image");
+        }
+        imagePreviewLayout.setVisibility(VISIBLE);
+        updateSendButton();
+    }
+
+    /**
+     * 清除当前选中的图片。
+     */
+    public void clearImage() {
+        pendingImageUri = null;
+        pendingImageBase64 = "";
+        pendingImageMimeType = "";
+        pendingImageName = "";
+        imagePreviewView.setImageDrawable(null);
+        imagePreviewLayout.setVisibility(GONE);
+        updateSendButton();
+    }
+
+    public boolean hasPendingImage() {
+        return pendingImageBase64.length() > 0;
     }
 
     @Override
@@ -481,6 +594,8 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         input.setEnabled(true); // Allow typing while AI is streaming
         attachButton.setEnabled(!streaming);
         attachButton.setAlpha(streaming ? 0.62f : 1f);
+        imageButton.setEnabled(!streaming);
+        imageButton.setAlpha(streaming ? 0.62f : 1f);
         input.setHint(state.hasConfiguredModel()
                 ? getContext().getString(R.string.composer_hint_default)
                 : getContext().getString(R.string.composer_hint_no_model));
@@ -530,7 +645,9 @@ public final class ComposerView extends LinearLayout implements QuoteController.
     }
 
     private boolean canSend() {
-        return input.getText().toString().trim().length() > 0 || !attachments.isEmpty();
+        return input.getText().toString().trim().length() > 0
+                || !attachments.isEmpty()
+                || hasPendingImage();
     }
 
     private boolean submitCurrentInput() {
@@ -554,6 +671,7 @@ public final class ComposerView extends LinearLayout implements QuoteController.
             if (listener == null) {
                 input.setText("");
                 clearAttachments();
+                clearImage();
                 dismissSlashPopup();
                 return true;
             }
@@ -567,14 +685,21 @@ public final class ComposerView extends LinearLayout implements QuoteController.
             }
             input.setText("");
             clearAttachments();
+            clearImage();
             dismissSlashPopup();
             return true;
         }
         if (listener != null) {
-            listener.onSend(text, getAttachments());
+            if (hasPendingImage()) {
+                listener.onSendWithImage(text, getAttachments(),
+                        pendingImageBase64, pendingImageMimeType, pendingImageName);
+            } else {
+                listener.onSend(text, getAttachments());
+            }
         }
         input.setText("");
         clearAttachments();
+        clearImage();
         return true;
     }
 
@@ -1123,13 +1248,13 @@ public final class ComposerView extends LinearLayout implements QuoteController.
         LineTheme.padding(sub, 4, 4, 4, 4);
     
         // Query button
-        TextView queryBtn = LineTheme.textMedium(ctx, "\u2193 \u67e5\u8be2\u6a21\u578b", LineTheme.FONT_XS, LineTheme.ACCENT);
+        TextView queryBtn = LineTheme.textMedium(ctx, ctx.getString(R.string.composer_model_submenu_query_button), LineTheme.FONT_XS, LineTheme.ACCENT);
         queryBtn.setGravity(Gravity.CENTER);
         queryBtn.setBackground(LineTheme.roundedStroke(ctx, LineTheme.SURFACE_LIGHT, 6, LineTheme.ACCENT));
         LineTheme.padding(queryBtn, 0, 3, 0, 3);
         queryBtn.setClickable(true);
         queryBtn.setOnClickListener(v -> {
-            queryBtn.setText("\u67e5\u8be2\u4e2d...");
+            queryBtn.setText(R.string.screen_model_add_query_button_loading);
             queryModelCount(baseUrl, queryBtn, ctx);
         });
         sub.addView(queryBtn, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LineTheme.dp(ctx, 28)));
@@ -1175,13 +1300,13 @@ public final class ComposerView extends LinearLayout implements QuoteController.
             try {
                 int count = listener != null ? listener.onQueryModelCount(baseUrl) : 0;
                 post(() -> {
-                    queryBtn.setText("\u2193 " + count + "\u4e2a\u6a21\u578b");
+                    queryBtn.setText(ctx.getString(R.string.composer_model_submenu_count_label, count));
                     if (modelSubPopup != null) modelSubPopup.dismiss();
                     if (modelPopup != null) modelPopup.dismiss();
-                    android.widget.Toast.makeText(ctx, "\u67e5\u5230 " + count + " \u4e2a\u6a21\u578b\uff0c\u8bf7\u5728\u7ba1\u7406\u6a21\u578b\u4e2d\u5bfc\u5165", android.widget.Toast.LENGTH_SHORT).show();
+                    android.widget.Toast.makeText(ctx, ctx.getString(R.string.composer_model_submenu_query_done_toast, count), android.widget.Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
-                post(() -> queryBtn.setText("查询失败"));
+                post(() -> queryBtn.setText(R.string.toast_query_failed));
             }
         }, "linecode-model-query").start();
     }

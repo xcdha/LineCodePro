@@ -12,4 +12,6 @@ public interface PickerView {
     void openLineCodeImportPicker();
 
     void openLineCodeExportPicker(String fileName);
+
+    void openImagePicker();
 }

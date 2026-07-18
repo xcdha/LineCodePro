@@ -179,7 +179,7 @@ public final class ImageGenerationTool extends BaseTool {
     }
 
     private boolean shouldRequestBase64Response(ModelConfig model) {
-        String id = ModelContextParser.apiModelId(model == null ? "" : model.getModelId())
+        String id = ModelContextParser.apiModelId(model)
                 .trim()
                 .toLowerCase(java.util.Locale.ROOT);
         return !(id.startsWith("gpt-image-") || "chatgpt-image-latest".equals(id));

@@ -28,7 +28,34 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class ContextCompactionService {
+    /**
+     * 硬触发压缩比例：上下文占用达到 80% 时进行全量压缩。
+     */
     public static final double COMPACT_TRIGGER_RATIO = 0.8d;
+
+    /**
+     * 软触发压缩比例：上下文占用达到 50% 时进行增量压缩（仅压缩最早的部分消息）。
+     * <p>
+     * 参考 codex 的 auto_compact_token_limit（context_window * 0.9）与 Claude-Code 的
+     * AUTOCOMPACT_BUFFER_TOKENS 思路，但更激进一步：在 50% 时就开始把最早的历史
+     * 增量压缩成摘要，避免等到 80% 时一次性压缩大量消息导致 transcript 字符串过大。
+     */
+    public static final double SOFT_COMPACT_TRIGGER_RATIO = 0.5d;
+
+    /**
+     * 软触发压缩时，保留最近消息不动所占的比例。例如 0.3 表示保留最近 30% 的可压缩消息，
+     * 只对更早的 70% 做增量压缩。这样可以在保持近期上下文完整的同时，逐步减少总占用。
+     */
+    public static final double SOFT_COMPACT_TAIL_KEEP_RATIO = 0.3d;
+
+    /**
+     * transcript 分段时单段的最大字符数。仅用于内部 StringBuilder 缓冲控制，
+     * 不会丢弃任何内容：超出后开启下一段，最后通过 String.join 拼接。
+     * <p>
+     * 这避免了单个 StringBuilder 不断扩容时产生大量临时 char[]，也让中间段可被
+     * GC 及时回收。最终拼接后的大字符串由 largeHeap + OOM catch 兜底。
+     */
+    private static final int TRANSCRIPT_SEGMENT_MAX_CHARS = 256 * 1024;
 
     private static final Pattern ANALYSIS_PATTERN = Pattern.compile("<analysis>[\\s\\S]*?</analysis>", Pattern.CASE_INSENSITIVE);
     private static final Pattern SUMMARY_PATTERN = Pattern.compile("<summary>([\\s\\S]*?)</summary>", Pattern.CASE_INSENSITIVE);
@@ -62,20 +89,107 @@ public final class ContextCompactionService {
         if (contextMessages.isEmpty()) {
             throw new ModelCompletionException("当前上下文不足，无需压缩");
         }
-        if (shouldUseResponsesCompaction(selectedModel)) {
-            return compactWithResponsesApi(selectedModel, contextMessages, cancellationToken);
+        try {
+            if (shouldUseResponsesCompaction(selectedModel)) {
+                return compactWithResponsesApi(selectedModel, contextMessages, cancellationToken);
+            }
+            if (shouldUseOpenAiResponsesSummary(selectedModel)) {
+                return compactWithOpenAiResponsesSummary(selectedModel, contextMessages, cancellationToken);
+            }
+            return compactWithSummary(selectedModel, contextMessages, cancellationToken);
+        } catch (OutOfMemoryError oom) {
+            // 上下文压缩在后台线程构造 transcript 时仍可能因模型响应累积而触发 OOM，
+            // 这里释放本次调用中已经累积的大对象，再向上抛出可读的失败信息，
+            // 让 ContextCompactionController 走降级路径而不是进程被杀。
+            contextMessages.clear();
+            throw new ModelCompletionException("上下文过大，压缩时内存不足，请手动清理早期对话后重试", oom);
         }
-        if (shouldUseOpenAiResponsesSummary(selectedModel)) {
-            return compactWithOpenAiResponsesSummary(selectedModel, contextMessages, cancellationToken);
-        }
-        return compactWithSummary(selectedModel, contextMessages, cancellationToken);
     }
 
+    /**
+     * 判断是否达到硬触发压缩阈值（80%）。硬触发会做全量压缩：把所有可压缩消息
+     * 一次性总结为摘要。这是原有逻辑的兜底阈值。
+     */
     public boolean shouldCompact(List<ChatMessage> messages, int contextTokens, ContextManager contextManager, boolean includeReasoning) {
         if (messages == null || messages.isEmpty() || contextManager == null) {
             return false;
         }
         return contextManager.estimateTokens(messages, includeReasoning) >= Math.max(1, contextTokens) * COMPACT_TRIGGER_RATIO;
+    }
+
+    /**
+     * 判断是否达到软触发压缩阈值（50%）。软触发会做增量压缩：只对最早的一部分
+     * 消息生成摘要，保留近期消息不动，避免上下文继续增长到 80% 时才一次性处理
+     * 大量历史。
+     * <p>
+     * 软触发仅当存在足够多的可压缩消息时才会触发，避免在对话刚起步时频繁压缩。
+     */
+    public boolean shouldSoftCompact(List<ChatMessage> messages, int contextTokens, ContextManager contextManager, boolean includeReasoning) {
+        if (messages == null || messages.isEmpty() || contextManager == null) {
+            return false;
+        }
+        int contextTokensSafe = Math.max(1, contextTokens);
+        if (contextManager.estimateTokens(messages, includeReasoning) < contextTokensSafe * SOFT_COMPACT_TRIGGER_RATIO) {
+            return false;
+        }
+        // 已经达到硬触发阈值时让 shouldCompact 处理，不重复软触发。
+        if (contextManager.estimateTokens(messages, includeReasoning) >= contextTokensSafe * COMPACT_TRIGGER_RATIO) {
+            return false;
+        }
+        return compactableMessageCount(messages) >= 8;
+    }
+
+    private int compactableMessageCount(List<ChatMessage> messages) {
+        int count = 0;
+        if (messages == null) {
+            return 0;
+        }
+        for (ChatMessage message : messages) {
+            if (message == null || message.isExcludeFromContext() || !hasCompactableContent(message)) {
+                continue;
+            }
+            if (message.isHidden() && message.getResponseInputItemJson().length() > 0) {
+                continue;
+            }
+            if (message.isCompactBlock()) {
+                continue;
+            }
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * 将可压缩消息拆分为 head（待压缩）与 tail（保留）两部分。tail 保留最近
+     * SOFT_COMPACT_TAIL_KEEP_RATIO 比例的消息不动，head 用于生成增量摘要。
+     * <p>
+     * 调用方负责把 head 传入 {@link #compact(ModelConfig, List, ModelCancellationToken)}，
+     * 然后将 head 中的消息标记 excludeFromContext 并追加摘要，tail 保持原状。
+     *
+     * @return 长度为 2 的 List：{@code get(0)} 为 head，{@code get(1)} 为 tail。
+     */
+    public List<List<ChatMessage>> splitForSoftCompact(List<ChatMessage> messages) {
+        ArrayList<ChatMessage> compactable = compactableMessages(messages);
+        ArrayList<ChatMessage> head = new ArrayList<>();
+        ArrayList<ChatMessage> tail = new ArrayList<>();
+        if (compactable.isEmpty()) {
+            ArrayList<List<ChatMessage>> result = new ArrayList<>(2);
+            result.add(head);
+            result.add(tail);
+            return result;
+        }
+        int tailSize = Math.max(1, (int) Math.round(compactable.size() * SOFT_COMPACT_TAIL_KEEP_RATIO));
+        int splitIndex = Math.max(0, compactable.size() - tailSize);
+        for (int i = 0; i < splitIndex; i++) {
+            head.add(compactable.get(i));
+        }
+        for (int i = splitIndex; i < compactable.size(); i++) {
+            tail.add(compactable.get(i));
+        }
+        ArrayList<List<ChatMessage>> result = new ArrayList<>(2);
+        result.add(head);
+        result.add(tail);
+        return result;
     }
 
     private ContextCompactionResult compactWithResponsesApi(
@@ -99,7 +213,7 @@ public final class ContextCompactionService {
             List<ChatMessage> contextMessages,
             ModelCancellationToken cancellationToken
     ) throws ModelCompletionException {
-        String transcript = toCompactTranscript(contextMessages);
+        String transcript = buildTranscript(contextMessages);
         ArrayList<ModelMessage> request = new ArrayList<>();
         request.add(new UserModelMessage(prompt() + "\n\nConversation transcript:\n" + transcript));
         ModelRequestOptions options = new ModelRequestOptions(
@@ -119,7 +233,7 @@ public final class ContextCompactionService {
             List<ChatMessage> contextMessages,
             ModelCancellationToken cancellationToken
     ) throws ModelCompletionException {
-        String transcript = toCompactTranscript(contextMessages);
+        String transcript = buildTranscript(contextMessages);
         ArrayList<ModelMessage> request = new ArrayList<>();
         request.add(new UserModelMessage(prompt() + "\n\nConversation transcript:\n" + transcript));
         ModelCompletionResponse response = responsesSummaryProtocol.stream(
@@ -192,31 +306,61 @@ public final class ContextCompactionService {
         return new UserModelMessage(MessageContentSanitizer.forModel(message));
     }
 
-    private String toCompactTranscript(List<ChatMessage> messages) {
-        StringBuilder builder = new StringBuilder();
+    /**
+     * 构造压缩用 transcript。采用分段存储策略：用 {@code List<StringBuilder>} 分段累积，
+     * 每段不超过 {@link #TRANSCRIPT_SEGMENT_MAX_CHARS}，避免单个 StringBuilder 不断扩容
+     * 时产生大量临时 char[]。最后通过 {@code String.join} 一次性拼接为完整 transcript。
+     * <p>
+     * 与之前的粗暴截断（MAX_TRANSCRIPT_CHARS=1MB / MAX_MESSAGE_CONTENT_CHARS=64KB）
+     * 不同，这里不丢弃任何内容：超长内容由 largeHeap + OOM catch 兜底，而不是
+     * 静默截断导致模型丢失早期历史。
+     */
+    private String buildTranscript(List<ChatMessage> messages) {
+        ArrayList<String> segments = new ArrayList<>();
+        StringBuilder current = new StringBuilder(TRANSCRIPT_SEGMENT_MAX_CHARS);
         for (int i = 0; i < messages.size(); i++) {
             ChatMessage message = messages.get(i);
-            if (builder.length() > 0) {
-                builder.append("\n\n---\n\n");
+            if (current.length() > 0) {
+                current.append("\n\n---\n\n");
             }
-            builder.append("## ").append(i + 1).append(". ").append(message.getRole().getProtocolName());
+            current.append("## ").append(i + 1).append(". ").append(message.getRole().getProtocolName());
             if (message.getContent().trim().length() > 0) {
-                builder.append("\n\n").append(MessageContentSanitizer.forModel(message));
+                current.append("\n\n").append(MessageContentSanitizer.forModel(message));
             }
             if (message.hasToolCalls()) {
-                builder.append("\n\nTool calls:\n");
+                current.append("\n\nTool calls:\n");
                 for (ToolCall call : message.getToolCalls()) {
-                    builder.append("- ").append(call.getName()).append(": ").append(call.getArguments()).append('\n');
+                    current.append("- ").append(call.getName()).append(": ")
+                            .append(call.getArguments()).append('\n');
+                    flushSegmentIfNeeded(segments, current);
                 }
             }
             if (message.getToolCallId().length() > 0) {
-                builder.append("\n\nTool result for: ").append(message.getToolCallId());
+                current.append("\n\nTool result for: ").append(message.getToolCallId());
             }
             if (message.getReasoningContent().trim().length() > 0) {
-                builder.append("\n\nReasoning:\n").append(message.getReasoningContent());
+                current.append("\n\nReasoning:\n").append(message.getReasoningContent());
             }
+            flushSegmentIfNeeded(segments, current);
         }
-        return builder.toString();
+        if (current.length() > 0) {
+            segments.add(current.toString());
+        }
+        return String.join("", segments);
+    }
+
+    /**
+     * 当当前 StringBuilder 长度超过 {@link #TRANSCRIPT_SEGMENT_MAX_CHARS} 时，
+     * 将其内容加入分段列表并重置长度为 0 继续复用。这里不调用 {@code trimToSize()}：
+     * 缩减内部 char[] 后下次 append 又得扩容，得不偿失。复用同一个 StringBuilder
+     * 让中间段可被 GC 及时回收，而不是等整个 transcript 构造完才释放。
+     */
+    private void flushSegmentIfNeeded(List<String> segments, StringBuilder current) {
+        if (current.length() < TRANSCRIPT_SEGMENT_MAX_CHARS) {
+            return;
+        }
+        segments.add(current.toString());
+        current.setLength(0);
     }
 
     public String createCompactSummaryContent(String summary) {

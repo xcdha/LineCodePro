@@ -249,6 +249,32 @@ public final class MainCoordinator implements MainUiController {
         backgroundTasks.shutdownNow();
     }
 
+    /**
+     * 统一的生成状态清理入口，用于终止、退出 App、进入 App 三个触发点。
+     * <p>幂等：即使当前不在生成，调用也是安全的。</p>
+     * <ul>
+     *   <li>取消当前网络请求的 cancellation token</li>
+     *   <li>重置 {@code streaming} 标志并失效当前 generation id</li>
+     *   <li>关闭流式渲染残留与 keep alive 服务</li>
+     *   <li>把进行中的工具调用与 Agent 进度标记为已终止</li>
+     *   <li>渲染最新状态以隐藏进度圈</li>
+     * </ul>
+     */
+    public void resetGenerationState() {
+        if (chatInteractionController != null) {
+            chatInteractionController.stopGeneration();
+            return;
+        }
+        // 兜底：直接走最小化清理，避免引用未初始化的依赖
+        generationLifecycleController.cancelActiveGeneration();
+        chatSessionStore.setStreaming(false);
+        chatSessionStore.invalidateActiveGeneration();
+        generationLifecycleController.stopKeepAlive();
+        if (viewProxy.isAttached()) {
+            render();
+        }
+    }
+
     @Override
     public void onMenuClick() {
         requestSshFileTreeLoad(false);
@@ -389,6 +415,13 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public void onSendMessageWithImage(String text, List<InputAttachment> attachments,
+                                       String imageBase64, String imageMimeType, String imageName) {
+        chatInteractionController.sendMessageWithImage(text, attachments,
+                imageBase64, imageMimeType, imageName);
+    }
+
+    @Override
     public void onRecallMessage(String messageId) {
         chatInteractionController.recallMessage(messageId);
     }
@@ -396,6 +429,11 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onAttachmentPickerRequested() {
         attachmentPickerController.onAttachmentPickerRequested();
+    }
+
+    @Override
+    public void onImagePickerRequested() {
+        viewProxy.openImagePicker();
     }
 
     @Override
@@ -592,6 +630,11 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onAllowAnyHttpChanged(boolean enabled) {
         settingsManagementController.setAllowAnyHttp(enabled);
+    }
+
+    @Override
+    public void onBypassPathProtectionChanged(boolean enabled) {
+        settingsManagementController.setBypassPathProtection(enabled);
     }
 
     @Override

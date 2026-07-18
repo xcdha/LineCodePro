@@ -157,6 +157,13 @@ public final class ViewProxy implements MainContract.View {
         }
     }
 
+    @Override
+    public void openImagePicker() {
+        if (view != null) {
+            view.openImagePicker();
+        }
+    }
+
     // ScreenView
 
     @Override

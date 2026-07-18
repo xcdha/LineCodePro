@@ -255,7 +255,7 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
                     closeButton.setEnabled(true);
                     closeButton.setAlpha(1f);
                     if (draft == null) {
-                        Toast.makeText(getContext(), "AI 生成失败：未返回结果", Toast.LENGTH_LONG).show();
+                        Toast.makeText(getContext(), R.string.toast_ai_generate_failed_no_result, Toast.LENGTH_LONG).show();
                         return;
                     }
                     applyConfig(draft);
@@ -270,7 +270,7 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
                     input.setEnabled(true);
                     closeButton.setEnabled(true);
                     closeButton.setAlpha(1f);
-                    Toast.makeText(getContext(), e.getMessage() != null ? e.getMessage() : "AI 生成失败", Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), e.getMessage() != null ? e.getMessage() : getContext().getString(R.string.toast_ai_generate_failed), Toast.LENGTH_LONG).show();
                 });
             }
         }, "linecode-agent-ai-writer").start();

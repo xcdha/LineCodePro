@@ -49,7 +49,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
         String raw = "";
         try {
             JSONObject body = new JSONObject();
-            body.put("model", ModelContextParser.apiModelId(config.getModelId()));
+            body.put("model", ModelContextParser.apiModelId(config));
             body.put("input", ResponsesInputBuilder.inputJson(messages));
             body.put("tools", new JSONArray());
             body.put("tool_choice", "auto");
@@ -111,7 +111,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             ModelRequestOptions requestOptions
     ) throws Exception {
         JSONObject body = new JSONObject();
-        body.put("model", ModelContextParser.apiModelId(config.getModelId()));
+        body.put("model", ModelContextParser.apiModelId(config));
         body.put("input", ResponsesInputBuilder.inputJson(messages));
         body.put("stream", true);
         body.put("parallel_tool_calls", true);
@@ -252,7 +252,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
     }
 
     private String promptCacheKey(ModelConfig config) {
-        String model = config == null ? "" : ModelContextParser.apiModelId(config.getModelId());
+        String model = config == null ? "" : ModelContextParser.apiModelId(config);
         return "linecode-codex-" + Integer.toHexString(model.hashCode());
     }
 

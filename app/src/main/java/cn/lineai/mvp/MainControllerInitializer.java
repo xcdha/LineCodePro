@@ -584,6 +584,9 @@ final class MainControllerInitializer {
                 new GenerationFlowHost(coordinator)
         );
         coordinator.generationLifecycleController.setGenerationFlowController(coordinator.generationFlowController);
+        java.util.function.BooleanSupplier bypassSupplier = () -> outputSettingsRepository.isPathProtectionBypassed();
+        coordinator.agentExecutionController.setBypassPathProtectionSupplier(bypassSupplier);
+        coordinator.generationFlowController.setBypassPathProtectionSupplier(bypassSupplier);
         coordinator.chatInteractionController = new ChatInteractionController(
                 messages,
                 chatSessionStore,

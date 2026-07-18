@@ -32,6 +32,7 @@ public final class ToolContext {
     private final SshFileTreeStore sshFileTreeRepository;
     private final ModelServiceProvider modelServiceProvider;
     private final PromptTemplateRepository promptTemplateRepository;
+    private final boolean bypassPathProtection;
 
     private ToolContext(
             String homePath,
@@ -44,7 +45,8 @@ public final class ToolContext {
             ModelStore modelRepository,
             SshFileTreeStore sshFileTreeRepository,
             ModelServiceProvider modelServiceProvider,
-            PromptTemplateRepository promptTemplateRepository
+            PromptTemplateRepository promptTemplateRepository,
+            boolean bypassPathProtection
     ) {
         this.homePath = homePath == null ? "" : homePath;
         this.extraWriteRoots = immutableRoots(extraWriteRoots);
@@ -57,6 +59,7 @@ public final class ToolContext {
         this.sshFileTreeRepository = sshFileTreeRepository;
         this.modelServiceProvider = modelServiceProvider;
         this.promptTemplateRepository = promptTemplateRepository;
+        this.bypassPathProtection = bypassPathProtection;
     }
 
     public static Builder builder() {
@@ -79,8 +82,12 @@ public final class ToolContext {
         return toolCallId;
     }
 
+    public boolean isBypassPathProtection() {
+        return bypassPathProtection;
+    }
+
     public ToolContext withToolCallId(String nextToolCallId) {
-        return new ToolContext(homePath, extraWriteRoots, agentRunner, nextToolCallId, progressListener, todoStateStore, toolSettingsStore, modelRepository, sshFileTreeRepository, modelServiceProvider, promptTemplateRepository);
+        return new ToolContext(homePath, extraWriteRoots, agentRunner, nextToolCallId, progressListener, todoStateStore, toolSettingsStore, modelRepository, sshFileTreeRepository, modelServiceProvider, promptTemplateRepository, bypassPathProtection);
     }
 
     public static final class Builder {
@@ -95,6 +102,7 @@ public final class ToolContext {
         private SshFileTreeStore sshFileTreeRepository;
         private ModelServiceProvider modelServiceProvider;
         private PromptTemplateRepository promptTemplateRepository;
+        private boolean bypassPathProtection;
 
         public Builder homePath(String v) { this.homePath = v; return this; }
         public Builder extraWriteRoots(List<String> v) { this.extraWriteRoots = v; return this; }
@@ -107,11 +115,13 @@ public final class ToolContext {
         public Builder sshFileTreeRepository(SshFileTreeStore v) { this.sshFileTreeRepository = v; return this; }
         public Builder modelServiceProvider(ModelServiceProvider v) { this.modelServiceProvider = v; return this; }
         public Builder promptTemplateRepository(PromptTemplateRepository v) { this.promptTemplateRepository = v; return this; }
+        public Builder bypassPathProtection(boolean v) { this.bypassPathProtection = v; return this; }
 
         public ToolContext build() {
             return new ToolContext(homePath, extraWriteRoots, agentRunner, toolCallId,
                     progressListener, todoStateStore, toolSettingsStore, modelRepository,
-                    sshFileTreeRepository, modelServiceProvider, promptTemplateRepository);
+                    sshFileTreeRepository, modelServiceProvider, promptTemplateRepository,
+                    bypassPathProtection);
         }
     }
 

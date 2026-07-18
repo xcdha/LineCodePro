@@ -115,6 +115,7 @@ public final class ToolExecutor {
                 .sshFileTreeRepository(context.getSshFileTreeRepository() != null ? context.getSshFileTreeRepository() : sshFileTreeRepository)
                 .modelServiceProvider(context.getModelServiceProvider() != null ? context.getModelServiceProvider() : modelServiceProvider)
                 .promptTemplateRepository(context.getPromptTemplateRepository() != null ? context.getPromptTemplateRepository() : promptTemplateRepository)
+                .bypassPathProtection(context.isBypassPathProtection())
                 .build();
     }
 

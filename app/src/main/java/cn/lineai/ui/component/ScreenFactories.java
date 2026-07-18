@@ -386,6 +386,11 @@ public final class ScreenFactories {
                 public void onBrowserJavaScriptChanged(boolean enabled) {
                     controller.onBrowserJavaScriptChanged(enabled);
                 }
+
+                @Override
+                public void onBypassPathProtectionChanged(boolean enabled) {
+                    controller.onBypassPathProtectionChanged(enabled);
+                }
             });
         }
 

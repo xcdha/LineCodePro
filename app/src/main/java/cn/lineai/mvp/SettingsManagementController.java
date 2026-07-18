@@ -75,6 +75,8 @@ public final class SettingsManagementController {
 
         void setAllowAnyHttp(boolean enabled);
 
+        void setBypassPathProtection(boolean enabled);
+
         ThemeSettingsState getThemeSettings();
 
         void applyThemeMode(String mode);
@@ -225,6 +227,11 @@ public final class SettingsManagementController {
         @Override
         public void setAllowAnyHttp(boolean enabled) {
             outputSettingsRepository.setAllowAnyHttp(enabled);
+        }
+
+        @Override
+        public void setBypassPathProtection(boolean enabled) {
+            outputSettingsRepository.setPathProtectionBypassed(enabled);
         }
 
         @Override
@@ -405,6 +412,11 @@ public final class SettingsManagementController {
     public void setAllowAnyHttp(boolean enabled) {
         settingsStore.setAllowAnyHttp(enabled);
         cn.lineai.security.UrlPolicy.setRelaxedHttpEnabled(enabled);
+        host.render();
+    }
+
+    public void setBypassPathProtection(boolean enabled) {
+        settingsStore.setBypassPathProtection(enabled);
         host.render();
     }
 

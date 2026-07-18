@@ -1,6 +1,7 @@
 package cn.lineai.data.repository;
 
 import android.content.Context;
+import cn.lineai.data.R;
 import cn.lineai.model.ChatMode;
 import cn.lineai.model.PromptTemplateItem;
 import java.io.ByteArrayOutputStream;
@@ -53,9 +54,9 @@ public final class PromptTemplateRepository {
             String currentText = settingsRepository.getString(key(definition.id), defaultText);
             items.add(new PromptTemplateItem(
                     definition.id,
-                    definition.title,
-                    definition.description,
-                    definition.sourceLabel,
+                    context.getString(definition.titleResId),
+                    context.getString(definition.descriptionResId),
+                    resolveSourceLabel(definition),
                     definition.variables,
                     defaultText,
                     currentText,
@@ -93,6 +94,13 @@ public final class PromptTemplateRepository {
         return Collections.unmodifiableList(ids);
     }
 
+    private String resolveSourceLabel(Definition definition) {
+        if (definition.sourceLabelResId != 0) {
+            return context.getString(definition.sourceLabelResId);
+        }
+        return definition.sourceLabel;
+    }
+
     private Definition definitionFor(String id) {
         String safeId = id == null ? "" : id;
         for (Definition definition : DEFINITIONS) {
@@ -100,7 +108,7 @@ public final class PromptTemplateRepository {
                 return definition;
             }
         }
-        throw new IllegalArgumentException("未知提示词模板: " + safeId);
+        throw new IllegalArgumentException(context.getString(R.string.prompt_template_error_unknown, safeId));
     }
 
     private String key(String id) {
@@ -119,7 +127,7 @@ public final class PromptTemplateRepository {
             input.close();
             return output.toString(StandardCharsets.UTF_8.name());
         } catch (Exception e) {
-            throw new IllegalStateException("无法读取提示词模板: " + path, e);
+            throw new IllegalStateException(context.getString(R.string.prompt_template_error_read_failed, path), e);
         }
     }
 
@@ -134,154 +142,154 @@ public final class PromptTemplateRepository {
         ArrayList<Definition> definitions = new ArrayList<>();
         definitions.add(new Definition(
                 ID_SYSTEM_PROMPT,
-                "System 提示词",
-                "主系统提示词，定义 LineCode 的身份、工作方式、工具循环、回答规范，并组合其它上下文模板。",
+                R.string.prompt_template_system_prompt_title,
+                R.string.prompt_template_system_prompt_description,
                 "prompts/system-prompt-template.txt",
                 "TOOLS_CONTEXT", "TONE_CONTEXT", "CHAT_MODE_CONTEXT", "WORK_DIRECTORY_CONTEXT", "LEARNING_CONTEXT", "MODEL_IDENTITY"
         ));
         definitions.add(new Definition(
                 ID_WORK_DIRECTORY,
-                "工作目录模板",
-                "注入当前工作区、应用私有目录、Skills 目录和 SSH Skills 目录，约束文件操作默认路径。",
+                R.string.prompt_template_work_directory_title,
+                R.string.prompt_template_work_directory_description,
                 "prompts/work-directory-template.txt",
                 "HOME_PATH", "LINECODE_ROOT", "GLOBAL_SKILLS_ROOT", "WORKSPACE_PRIVATE_ROOT", "WORKSPACE_SKILLS_ROOT"
         ));
         definitions.add(new Definition(
                 ID_TONE_CODING,
-                "编程模式提示词",
-                "AI 行为选择“编程模式”时追加的语气和输出风格约束。",
+                R.string.prompt_template_tone_coding_title,
+                R.string.prompt_template_tone_coding_description,
                 "prompts/tone-coding-template.txt"
         ));
         definitions.add(new Definition(
                 ID_TONE_CHAT,
-                "聊天模式提示词",
-                "AI 行为选择“聊天模式”时追加的语气和输出风格约束。",
+                R.string.prompt_template_tone_chat_title,
+                R.string.prompt_template_tone_chat_description,
                 "prompts/tone-chat-template.txt"
         ));
         definitions.add(new Definition(
                 ID_CHAT_MODE_CHAT,
-                "会话 Chat 模式提示词",
-                "顶部会话模式选择 Chat 时注入，只读交流、解释和搜索，不允许修改文件或执行 Shell。",
-                "内置模板：ChatMode.CHAT",
+                R.string.prompt_template_chat_mode_chat_title,
+                R.string.prompt_template_chat_mode_chat_description,
+                R.string.prompt_template_source_builtin_chat,
                 ChatMode.promptContext(ChatMode.CHAT)
         ));
         definitions.add(new Definition(
                 ID_CHAT_MODE_PLAN,
-                "会话 Plan 模式提示词",
-                "顶部会话模式选择 Plan 时注入，只读规划，允许收集上下文但禁止执行计划。",
-                "内置模板：ChatMode.PLAN",
+                R.string.prompt_template_chat_mode_plan_title,
+                R.string.prompt_template_chat_mode_plan_description,
+                R.string.prompt_template_source_builtin_plan,
                 ChatMode.promptContext(ChatMode.PLAN)
         ));
         definitions.add(new Definition(
                 ID_CHAT_MODE_AGENT,
-                "会话 Agent 模式提示词",
-                "顶部会话模式选择 Agent 时注入，允许按权限读取、修改、执行和验证任务。",
-                "内置模板：ChatMode.AGENT",
+                R.string.prompt_template_chat_mode_agent_title,
+                R.string.prompt_template_chat_mode_agent_description,
+                R.string.prompt_template_source_builtin_agent,
                 ChatMode.promptContext(ChatMode.AGENT)
         ));
         definitions.add(new Definition(
                 ID_CHAT_MODE_CONTROL,
-                "会话 Control 模式提示词",
-                "顶部会话模式选择 Control 时注入，仅允许手机控制工具，禁止文件操作、Shell 和 Agent。",
-                "内置模板：ChatMode.CONTROL",
+                R.string.prompt_template_chat_mode_control_title,
+                R.string.prompt_template_chat_mode_control_description,
+                R.string.prompt_template_source_builtin_control,
                 ChatMode.promptContext(ChatMode.CONTROL)
         ));
         definitions.add(new Definition(
                 ID_LEARNING_CONTEXT,
-                "学习模式上下文模板",
-                "学习模式开启时，把短期记忆、长期记忆、聊天检索和 Skills 检索结果渲染进 system prompt。",
+                R.string.prompt_template_learning_context_title,
+                R.string.prompt_template_learning_context_description,
                 "prompts/learning-context-template.txt",
                 "WORKING_MEMORY_SECTION", "MEMORY_SECTION", "HISTORY_SECTION", "SKILL_PATHS_SECTION",
                 "SKILLS_SECTION", "PRIVATE_BOUNDARY_SECTION"
         ));
         definitions.add(new Definition(
                 ID_MEMORY_EXTRACTION,
-                "长期记忆提取模板",
-                "学习模式保存记忆时使用，指导模型从本轮对话中提取 user/project/environment 记忆。",
+                R.string.prompt_template_memory_extraction_title,
+                R.string.prompt_template_memory_extraction_description,
                 "prompts/memory-extraction-template.txt",
                 "PROJECT_ID", "USER_INPUT", "TRANSCRIPT"
         ));
         definitions.add(new Definition(
                 ID_SKILL_EXTRACTION,
-                "Skills 沉淀模板",
-                "学习模式判断是否生成可复用 Skill 时使用，约束返回 JSON 和 Skill 内容格式。",
+                R.string.prompt_template_skill_extraction_title,
+                R.string.prompt_template_skill_extraction_description,
                 "prompts/skill-extraction-template.txt",
                 "PROJECT_ID", "USER_INPUT", "TRANSCRIPT"
         ));
         definitions.add(new Definition(
                 ID_CONTEXT_COMPACTION,
-                "上下文压缩模板",
-                "上下文过长时用于总结旧对话，要求模型输出可恢复任务状态的压缩摘要。",
+                R.string.prompt_template_context_compaction_title,
+                R.string.prompt_template_context_compaction_description,
                 "prompts/context-compaction-template.txt"
         ));
         definitions.add(new Definition(
                 ID_MODEL_IDENTITY,
-                "模型身份提示词",
-                "把当前模型的 modelId、名称、提供方和协议注入到 system prompt，让模型在回答自身能力相关问题时以模型标识为依据。",
+                R.string.prompt_template_model_identity_title,
+                R.string.prompt_template_model_identity_description,
                 "prompts/model-identity-template.txt",
                 "MODEL_ID", "MODEL_NAME", "MODEL_PROVIDER", "MODEL_PROTOCOL"
         ));
         definitions.add(new Definition(
                 ID_TODO_STATE,
-                "TODO 状态模板",
-                "把当前 TODO 列表注入到 system prompt，引导模型按顺序推进并及时更新状态。",
+                R.string.prompt_template_todo_state_title,
+                R.string.prompt_template_todo_state_description,
                 "prompts/todo-state-template.txt",
                 "TODO_LIST"
         ));
         definitions.add(new Definition(
                 ID_TODO_USAGE,
-                "TODO 使用引导模板",
-                "在当前 TODO 列表为空时注入到 system prompt，推荐 Plan/Agent 模式使用 todo_update 拆分任务，并解释跨轮次持续维护的语义。",
+                R.string.prompt_template_todo_usage_title,
+                R.string.prompt_template_todo_usage_description,
                 "prompts/todo-usage-template.txt"
         ));
         definitions.add(new Definition(
                 ID_AGENT_ROLE_EXPLORE_REMOTE,
-                "Agent 远程探索角色提示词",
-                "SSH 远端或终端提供者模式下 explore 类型 Agent 的角色定义和规则约束。",
+                R.string.prompt_template_agent_role_explore_remote_title,
+                R.string.prompt_template_agent_role_explore_remote_description,
                 "prompts/agent-role-explore-remote.txt"
         ));
         definitions.add(new Definition(
                 ID_AGENT_ROLE_CODING_REMOTE,
-                "Agent 远程编码角色提示词",
-                "SSH 远端或终端提供者模式下 coding 类型 Agent 的角色定义和规则约束。",
+                R.string.prompt_template_agent_role_coding_remote_title,
+                R.string.prompt_template_agent_role_coding_remote_description,
                 "prompts/agent-role-coding-remote.txt"
         ));
         definitions.add(new Definition(
                 ID_AGENT_ROLE_EXPLORE_LOCAL,
-                "Agent 本地探索角色提示词",
-                "本地模式下 explore 类型 Agent 的角色定义和规则约束。",
+                R.string.prompt_template_agent_role_explore_local_title,
+                R.string.prompt_template_agent_role_explore_local_description,
                 "prompts/agent-role-explore-local.txt"
         ));
         definitions.add(new Definition(
                 ID_AGENT_ROLE_CODING_LOCAL,
-                "Agent 本地编码角色提示词",
-                "本地模式下 coding 类型 Agent 的角色定义和规则约束。",
+                R.string.prompt_template_agent_role_coding_local_title,
+                R.string.prompt_template_agent_role_coding_local_description,
                 "prompts/agent-role-coding-local.txt"
         ));
         definitions.add(new Definition(
                 ID_AGENT_SYSTEM_PROMPT,
-                "Agent 系统提示词模板",
-                "Agent 系统提示词的组合模板，将角色、任务、工作区、范围、扩展和工具上下文拼接为完整 system prompt。",
+                R.string.prompt_template_agent_system_prompt_title,
+                R.string.prompt_template_agent_system_prompt_description,
                 "prompts/agent-system-prompt-template.txt",
                 "ROLE_PROMPT", "TASK_DESCRIPTION", "WORKSPACE_CONTEXT", "SCOPE_CONTEXT", "EXTENSIONS_CONTEXT", "TOOLS_CONTEXT"
         ));
         definitions.add(new Definition(
                 ID_IMAGE_UNDERSTANDING_TOOL_SYSTEM,
-                "图片理解工具系统提示词",
-                "图片理解工具发送给视觉模型的 system prompt，约束模型只返回与图片和提示相关的分析内容。",
+                R.string.prompt_template_image_understanding_tool_system_title,
+                R.string.prompt_template_image_understanding_tool_system_description,
                 "prompts/image-understanding-tool-system.txt"
         ));
         definitions.add(new Definition(
                 ID_CONTEXT_COMPACTION_SUMMARY_PREFIX,
-                "上下文压缩摘要前缀",
-                "上下文压缩后注入的摘要前缀，包含格式化的摘要内容，指示模型从上一段对话继续。",
+                R.string.prompt_template_context_compaction_summary_prefix_title,
+                R.string.prompt_template_context_compaction_summary_prefix_description,
                 "prompts/context-compaction-summary-prefix.txt",
                 "SUMMARY"
         ));
         definitions.add(new Definition(
                 ID_CONTEXT_COMPACTION_RESPONSES_FALLBACK,
-                "上下文压缩 Responses 回退前缀",
-                "使用 OpenAI Responses compact API 压缩后注入的回退前缀，指示模型从上一段对话继续。",
+                R.string.prompt_template_context_compaction_responses_fallback_title,
+                R.string.prompt_template_context_compaction_responses_fallback_description,
                 "prompts/context-compaction-responses-fallback.txt"
         ));
         return Collections.unmodifiableList(definitions);
@@ -289,29 +297,32 @@ public final class PromptTemplateRepository {
 
     private static final class Definition {
         final String id;
-        final String title;
-        final String description;
+        final int titleResId;
+        final int descriptionResId;
+        final int sourceLabelResId;
         final String assetPath;
         final String sourceLabel;
         final String defaultText;
         final String[] variables;
 
-        Definition(String id, String title, String description, String assetPath, String... variables) {
+        Definition(String id, int titleResId, int descriptionResId, String assetPath, String... variables) {
             this.id = id;
-            this.title = title;
-            this.description = description;
+            this.titleResId = titleResId;
+            this.descriptionResId = descriptionResId;
             this.assetPath = assetPath;
             this.sourceLabel = assetPath;
+            this.sourceLabelResId = 0;
             this.defaultText = "";
             this.variables = variables == null ? new String[0] : variables;
         }
 
-        Definition(String id, String title, String description, String source, String defaultText) {
+        Definition(String id, int titleResId, int descriptionResId, int sourceLabelResId, String defaultText) {
             this.id = id;
-            this.title = title;
-            this.description = description;
+            this.titleResId = titleResId;
+            this.descriptionResId = descriptionResId;
             this.assetPath = "";
-            this.sourceLabel = source;
+            this.sourceLabel = "";
+            this.sourceLabelResId = sourceLabelResId;
             this.defaultText = defaultText == null ? "" : defaultText;
             this.variables = new String[0];
         }

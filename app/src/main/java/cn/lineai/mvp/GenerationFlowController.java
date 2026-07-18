@@ -80,6 +80,7 @@ final class GenerationFlowController {
     private final ToolConfirmationController toolConfirmationController;
     private final ToolExecutionScheduler toolExecutionScheduler;
     private final StreamingRenderController streamingRenderController;
+    private java.util.function.BooleanSupplier bypassPathProtectionSupplier = () -> false;
     private final AgentExecutionController.Host agentHost = new AgentExecutionController.Host() {
         @Override
         public String projectPath() {
@@ -702,7 +703,20 @@ final class GenerationFlowController {
                 .progressListener((toolCallId, toolName, content, error) ->
                         postToolProgress(generationId, cancellationToken, toolCallId, toolName, content, error))
                 .todoStateStore(todoStateStore)
+                .bypassPathProtection(isBypassPathProtection())
                 .build();
+    }
+
+    void setBypassPathProtectionSupplier(java.util.function.BooleanSupplier supplier) {
+        this.bypassPathProtectionSupplier = supplier != null ? supplier : () -> false;
+    }
+
+    private boolean isBypassPathProtection() {
+        try {
+            return bypassPathProtectionSupplier.getAsBoolean();
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void executeAcceptedPendingTool(PendingToolExecution pending) {

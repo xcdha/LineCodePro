@@ -49,6 +49,10 @@
     <string name="composer_hint_default">Type a message…</string>
     <string name="composer_hint_no_model">Please configure a model first in Settings → Model management</string>
     <string name="composer_attachment_remove_desc">Remove attachment</string>
+    <string name="composer_image_button_desc">Pick an image to send</string>
+    <string name="composer_image_remove_desc">Remove selected image</string>
+    <string name="composer_image_loading">Loading image…</string>
+    <string name="composer_image_load_failed">Failed to load image</string>
     <string name="chat_mode_control_label">Control</string>
 
     <string name="slash_command_main_title">Quick switch</string>
@@ -219,6 +223,11 @@
     <string name="screen_security_title">Security</string>
     <string name="screen_security_section_http">HTTP restrictions</string>
     <string name="screen_security_section_browser">Built-in browser</string>
+    <string name="screen_security_section_path">Path protection</string>
+    <string name="settings_row_security_bypass_path_title">Bypass path protection</string>
+    <string name="settings_row_security_bypass_path_desc">Allow tools and agents to access any path, not limited to the workspace</string>
+    <string name="settings_row_security_bypass_path_warning_title">Warning</string>
+    <string name="settings_row_security_bypass_path_warning_message">Enabling this option allows AI to access any file on the device, including system files and app data. Only enable this if you trust the current AI model and agents. Continue?</string>
     <string name="settings_row_security_desc">HTTP restrictions and built-in browser script execution</string>
     <string name="screen_settings_section_info">Info</string>
 
@@ -265,6 +274,9 @@
     <string name="screen_model_add_local_picker_pending">Local file picker will be added later.</string>
     <string name="screen_model_add_context_length_label">Context length</string>
     <string name="screen_model_add_context_length_hint">Recommended to start from 4096 on phones; model ID will auto-tag context after saving.</string>
+    <string name="model_field_context_size">Context size</string>
+    <string name="model_field_context_size_hint">e.g. 128K or 128000</string>
+    <string name="model_field_context_size_hint_desc">Supports k / m units (case-insensitive). Leave empty to fall back to the model default.</string>
     <string name="screen_model_add_acceleration_label">Acceleration</string>
     <string name="screen_model_add_acceleration_auto">Auto</string>
     <string name="screen_model_add_acceleration_cpu">CPU</string>
@@ -759,6 +771,8 @@
     <string name="screen_theme_starter_saved">Saved</string>
     <string name="screen_theme_color_background">Background</string>
     <string name="screen_theme_color_background_desc">Page background</string>
+    <string name="screen_theme_color_surface">Base surface</string>
+    <string name="screen_theme_color_surface_desc">List and content backdrop</string>
     <string name="screen_theme_color_panel">Panel</string>
     <string name="screen_theme_color_panel_desc">Cards and overlays</string>
     <string name="screen_theme_color_panel_light">Light panel</string>
@@ -771,6 +785,8 @@
     <string name="screen_theme_color_text_secondary_desc">Description text</string>
     <string name="screen_theme_color_text_tertiary">Tertiary text</string>
     <string name="screen_theme_color_text_tertiary_desc">Placeholder and helper text</string>
+    <string name="screen_theme_color_text_on_color">Text on accent</string>
+    <string name="screen_theme_color_text_on_color_desc">Text shown over accent fills</string>
     <string name="screen_theme_color_accent">Accent</string>
     <string name="screen_theme_color_accent_desc">Selection, buttons, links</string>
     <string name="screen_theme_color_user_bubble">User bubble</string>
@@ -779,8 +795,12 @@
     <string name="screen_theme_color_ai_bubble_desc">AI message background</string>
     <string name="screen_theme_color_border">Border</string>
     <string name="screen_theme_color_border_desc">Main divider</string>
+    <string name="screen_theme_color_border_light">Light border</string>
+    <string name="screen_theme_color_border_light_desc">Secondary divider and rail</string>
     <string name="screen_theme_color_code_background">Code background</string>
     <string name="screen_theme_color_code_background_desc">Code block background</string>
+    <string name="screen_theme_color_code_border">Code border</string>
+    <string name="screen_theme_color_code_border_desc">Code block border</string>
     <string name="screen_theme_color_danger">Danger</string>
     <string name="screen_theme_color_danger_desc">Delete and error</string>
     <string name="screen_theme_color_warning">Warning</string>
@@ -1099,4 +1119,13 @@
     <!-- StoragePermissionManager messages -->
     <string name="permission_denied_manage_all">Missing \"manage all files\" permission, unable to access the external workspace. Please allow LineCode to manage all files in system settings and retry.</string>
     <string name="permission_denied_read_write">Missing file read/write permission, unable to access the external workspace. Please allow LineCode to read and write storage and retry.</string>
+
+    <!-- i18n fixes for hardcoded UI strings -->
+    <string name="toast_chat_empty_export">No chat content to export</string>
+    <string name="toast_query_failed">Query failed</string>
+    <string name="toast_ai_generate_failed_no_result">AI generation failed: no result returned</string>
+    <string name="toast_ai_generate_failed">AI generation failed</string>
+    <string name="composer_model_submenu_query_button">↓ Query models</string>
+    <string name="composer_model_submenu_count_label">↓ %1$d models</string>
+    <string name="composer_model_submenu_query_done_toast">Found %1$d models, please import them in model management</string>
 </resources>

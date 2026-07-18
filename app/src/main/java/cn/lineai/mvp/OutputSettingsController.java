@@ -12,4 +12,6 @@ public interface OutputSettingsController {
     void onBrowserJavaScriptChanged(boolean enabled);
 
     void onAllowAnyHttpChanged(boolean enabled);
+
+    void onBypassPathProtectionChanged(boolean enabled);
 }

@@ -94,6 +94,13 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         void openDocumentPicker(String mimeType, String[] extensions, DocumentPickCallback callback);
 
         void createDocument(String mimeType, String displayName, DocumentCreateCallback callback);
+
+        /**
+         * 启动系统图片选择器。Android 13+ 使用 Photo Picker
+         * ({@link android.provider.MediaStore#ACTION_PICK_IMAGES})，低版本回退到 SAF
+         * ({@link android.content.Intent#ACTION_OPEN_DOCUMENT})。
+         */
+        void pickImage(DocumentPickCallback callback);
     }
 
     public interface DocumentPickCallback {
@@ -253,8 +260,21 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             }
 
             @Override
+            public void onSendWithImage(String text, List<InputAttachment> attachments,
+                                        String imageBase64, String imageMimeType, String imageName) {
+                String finalText = quoteController.composeWithQuote(text);
+                MainChatView.this.presenter.onSendMessageWithImage(
+                        finalText, attachments, imageBase64, imageMimeType, imageName);
+            }
+
+            @Override
             public void onAttachClick() {
                 MainChatView.this.presenter.onAttachmentPickerRequested();
+            }
+
+            @Override
+            public void onImagePickerClick() {
+                MainChatView.this.presenter.onImagePickerRequested();
             }
 
             @Override
@@ -581,7 +601,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     @Override
     public void exportCurrentChat() {
         if (lastState == null || lastState.getMessages().isEmpty()) {
-            Toast.makeText(getContext(), "当前没有对话内容", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), R.string.toast_chat_empty_export, Toast.LENGTH_SHORT).show();
             return;
         }
         shareController.showFormatPicker(getContext(), lastState.getMessages());
@@ -791,6 +811,145 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 presenter.onLineCodeImportCancelled();
             }
         });
+    }
+
+    @Override
+    public void openImagePicker() {
+        Context context = getContext();
+        if (!(context instanceof WorkspaceHost)) {
+            return;
+        }
+        ((WorkspaceHost) context).pickImage(new DocumentPickCallback() {
+            @Override
+            public void onDocumentPicked(String uri, String displayName) {
+                handleImagePicked(uri, displayName);
+            }
+
+            @Override
+            public void onDocumentPickCancelled() {
+                // 用户取消，无需处理
+            }
+        });
+    }
+
+    private void handleImagePicked(final String uriString, final String displayName) {
+        if (uriString == null || uriString.length() == 0) {
+            return;
+        }
+        final Uri uri;
+        try {
+            uri = Uri.parse(uriString);
+        } catch (Exception ignored) {
+            return;
+        }
+        if (uri == null) {
+            return;
+        }
+        final Context context = getContext();
+        Toast.makeText(context, context.getString(R.string.composer_image_loading), Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String mimeType = "";
+            String base64 = "";
+            try {
+                android.content.ContentResolver resolver = context.getContentResolver();
+                byte[] bytes = readAndCompressImage(resolver, uri);
+                if (bytes != null && bytes.length > 0) {
+                    base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP);
+                    // 统一使用 image/jpeg，因为压缩后输出的是 JPEG
+                    mimeType = "image/jpeg";
+                }
+            } catch (Exception ignored) {
+            }
+            final String finalMimeType = mimeType;
+            final String finalBase64 = base64;
+            post(() -> {
+                if (finalBase64.length() == 0) {
+                    Toast.makeText(context, context.getString(R.string.composer_image_load_failed), Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                composerView.onImagePicked(uri, finalBase64, finalMimeType, displayName);
+            });
+        }, "linecode-image-load").start();
+    }
+
+    /**
+     * 读取图片并按需压缩：长边超过 1568 时缩放至 1568；压缩后总字节超过 3.5MB 时进一步降低质量。
+     * 这是 OpenAI / Anthropic 视觉模型对单图大小的常见上限的折中。
+     */
+    private byte[] readAndCompressImage(android.content.ContentResolver resolver, Uri uri) throws Exception {
+        android.graphics.Bitmap bitmap = null;
+        java.io.InputStream input = resolver.openInputStream(uri);
+        if (input == null) {
+            return null;
+        }
+        try {
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeStream(input, null, opts);
+            int width = opts.outWidth;
+            int height = opts.outHeight;
+            int sampleSize = computeSampleSize(width, height, 1568);
+            java.io.InputStream decodeInput = resolver.openInputStream(uri);
+            if (decodeInput == null) {
+                return null;
+            }
+            try {
+                android.graphics.BitmapFactory.Options decodeOpts = new android.graphics.BitmapFactory.Options();
+                decodeOpts.inSampleSize = sampleSize;
+                bitmap = android.graphics.BitmapFactory.decodeStream(decodeInput, null, decodeOpts);
+            } finally {
+                decodeInput.close();
+            }
+        } finally {
+            input.close();
+        }
+        if (bitmap == null) {
+            return null;
+        }
+        try {
+            int maxEdge = 1568;
+            int bw = bitmap.getWidth();
+            int bh = bitmap.getHeight();
+            if (Math.max(bw, bh) > maxEdge) {
+                float scale = (float) maxEdge / Math.max(bw, bh);
+                int newW = Math.max(1, Math.round(bw * scale));
+                int newH = Math.max(1, Math.round(bh * scale));
+                android.graphics.Bitmap scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, newW, newH, true);
+                if (scaled != bitmap) {
+                    bitmap.recycle();
+                    bitmap = scaled;
+                }
+            }
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            int quality = 85;
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output);
+            byte[] result = output.toByteArray();
+            // 超过 3.5 MB 时进一步压缩
+            while (result.length > 3_500_000 && quality > 30) {
+                quality -= 15;
+                output.reset();
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output);
+                result = output.toByteArray();
+            }
+            return result;
+        } finally {
+            bitmap.recycle();
+        }
+    }
+
+    private int computeSampleSize(int width, int height, int targetMaxEdge) {
+        if (width <= 0 || height <= 0) {
+            return 1;
+        }
+        int maxEdge = Math.max(width, height);
+        if (maxEdge <= targetMaxEdge) {
+            return 1;
+        }
+        int sample = 1;
+        while ((maxEdge / sample) > targetMaxEdge * 2) {
+            sample *= 2;
+        }
+        return sample;
     }
 
     @Override

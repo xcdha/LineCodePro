@@ -34,8 +34,46 @@ public final class ModelContextParser {
         return new ModelContextInfo(apiModelId, contextTokens, formatContextSize(contextTokens));
     }
 
+    /**
+     * 优先使用 {@link ModelConfig#getContextSize()} 字段，向后兼容旧 {@code {id}[{大小}]} 后缀。
+     *
+     * <p>解析优先级：
+     * <ol>
+     *   <li>{@code model.getContextSize() > 0}：直接使用，apiModelId 就是 {@code model.getModelId()}；</li>
+     *   <li>否则回退到 {@link #parse(String)} 解析 modelId 中的旧 {@code [大小]} 后缀。</li>
+     * </ol>
+     */
+    public static ModelContextInfo parse(ModelConfig model) {
+        if (model == null) {
+            return parse("");
+        }
+        int explicit = model.getContextSize();
+        if (explicit > 0) {
+            return new ModelContextInfo(
+                    model.getModelId(),
+                    explicit,
+                    formatContextSize(explicit)
+            );
+        }
+        return parse(model.getModelId());
+    }
+
     public static String apiModelId(String modelId) {
         return parse(modelId).getApiModelId();
+    }
+
+    /**
+     * 与 {@link #parse(ModelConfig)} 对应：返回真正要发给上游 API 的 modelId 字符串。
+     * 若 {@link ModelConfig#getContextSize()} 已设置，则不再剥离任何后缀，直接返回 modelId。
+     */
+    public static String apiModelId(ModelConfig model) {
+        if (model == null) {
+            return "";
+        }
+        if (model.getContextSize() > 0) {
+            return model.getModelId();
+        }
+        return apiModelId(model.getModelId());
     }
 
     public static String formatContextSize(int tokens) {

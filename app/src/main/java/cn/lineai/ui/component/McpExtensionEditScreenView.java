@@ -117,7 +117,7 @@ public final class McpExtensionEditScreenView extends ScreenScaffoldView {
                     queried = true;
                     renderQuery();
                     renderTools();
-                    Toast.makeText(getContext(), e.getMessage() != null ? e.getMessage() : "查询失败", Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), e.getMessage() != null ? e.getMessage() : getContext().getString(R.string.toast_query_failed), Toast.LENGTH_LONG).show();
                 });
             }
         }, "linecode-mcp-query").start();

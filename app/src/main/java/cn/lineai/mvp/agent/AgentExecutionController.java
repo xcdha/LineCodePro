@@ -59,6 +59,7 @@ public final class AgentExecutionController {
     private final AgentPromptBuilder promptBuilder;
     private final PipelineDependencyResolver dependencyResolver;
     private ToolReviewAwaiter toolReviewAwaiter;
+    private java.util.function.BooleanSupplier bypassPathProtectionSupplier = () -> false;
 
     public interface Host {
         String projectPath();
@@ -118,6 +119,18 @@ public final class AgentExecutionController {
 
     public void setToolReviewAwaiter(ToolReviewAwaiter toolReviewAwaiter) {
         this.toolReviewAwaiter = toolReviewAwaiter;
+    }
+
+    public void setBypassPathProtectionSupplier(java.util.function.BooleanSupplier supplier) {
+        this.bypassPathProtectionSupplier = supplier != null ? supplier : () -> false;
+    }
+
+    private boolean isBypassPathProtection() {
+        try {
+            return bypassPathProtectionSupplier.getAsBoolean();
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     public ToolResult runAgentTool(
@@ -605,6 +618,7 @@ public final class AgentExecutionController {
                 .homePath(homePath)
                 .extraWriteRoots(skillWriteRoots(homePath))
                 .toolCallId("")
+                .bypassPathProtection(isBypassPathProtection())
                 .build();
         ToolResult scopeError = validateAgentWriteScope(call, type, writeScope, context);
         if (scopeError != null) {
@@ -703,6 +717,9 @@ public final class AgentExecutionController {
         }
         if (AgentTool.TYPE_EXPLORE.equals(type)) {
             return new ToolResult(call.getId(), call.getName(), "explore Agent 不允许写入文件。", true);
+        }
+        if (context != null && context.isBypassPathProtection()) {
+            return null;
         }
         if (writeScope == null || writeScope.isEmpty()) {
             return new ToolResult(call.getId(), call.getName(),

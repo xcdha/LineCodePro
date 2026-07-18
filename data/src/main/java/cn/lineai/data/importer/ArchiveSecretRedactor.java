@@ -94,7 +94,8 @@ final class ArchiveSecretRedactor {
                 model.getToolCallLimit(),
                 model.isCompressionModelEnabled(),
                 model.isCompressionModelAuto(),
-                model.getCompressionModelId()
+                model.getCompressionModelId(),
+                model.getContextSize()
         );
     }
 

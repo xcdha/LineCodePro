@@ -7,6 +7,8 @@ public final class ModelConfig {
     public static final int DEFAULT_TOOL_CALL_LIMIT = 200;
     public static final int UNLIMITED_TOOL_CALLS = -1;
     public static final boolean DEFAULT_COMPRESSION_MODEL_AUTO = true;
+    /** contextSize 字段未设置时的哨兵值，表示沿用旧 {@code {id}[{大小}]} 后缀解析或默认值。 */
+    public static final int CONTEXT_SIZE_UNSET = 0;
 
     private final String id;
     private final String name;
@@ -19,6 +21,7 @@ public final class ModelConfig {
     private final boolean compressionModelEnabled;
     private final boolean compressionModelAuto;
     private final String compressionModelId;
+    private final int contextSize;
 
     @Deprecated
     public ModelConfig(String id, String name, ModelProtocolType protocolType, String providerLabel, String baseUrl, String apiKey, String modelId) {
@@ -44,6 +47,30 @@ public final class ModelConfig {
             boolean compressionModelAuto,
             String compressionModelId
     ) {
+        this(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
+                compressionModelEnabled, compressionModelAuto, compressionModelId, CONTEXT_SIZE_UNSET);
+    }
+
+    /**
+     * 显式带上 contextSize 的构造函数。新代码请优先使用 {@link Builder}。
+     *
+     * @param contextSize 上下文窗口 tokens 数；传 {@link #CONTEXT_SIZE_UNSET} 表示未设置，
+     *                    解析时会回退到旧的 {@code modelId[大小]} 后缀或默认值，保证向后兼容。
+     */
+    public ModelConfig(
+            String id,
+            String name,
+            ModelProtocolType protocolType,
+            String providerLabel,
+            String baseUrl,
+            String apiKey,
+            String modelId,
+            int toolCallLimit,
+            boolean compressionModelEnabled,
+            boolean compressionModelAuto,
+            String compressionModelId,
+            int contextSize
+    ) {
         this.id = Strings.nullToEmpty(id);
         this.name = Strings.nullToEmpty(name);
         this.protocolType = protocolType == null ? ModelProtocolType.OPENAI_COMPATIBLE : protocolType;
@@ -55,6 +82,7 @@ public final class ModelConfig {
         this.compressionModelEnabled = compressionModelEnabled && supportsDedicatedCompression(this.protocolType);
         this.compressionModelAuto = compressionModelAuto;
         this.compressionModelId = Strings.nullToEmpty(compressionModelId).trim();
+        this.contextSize = contextSize < 0 ? CONTEXT_SIZE_UNSET : contextSize;
     }
 
     private ModelConfig(Builder builder) {
@@ -69,6 +97,7 @@ public final class ModelConfig {
         this.compressionModelEnabled = builder.compressionModelEnabled && supportsDedicatedCompression(this.protocolType);
         this.compressionModelAuto = builder.compressionModelAuto;
         this.compressionModelId = Strings.nullToEmpty(builder.compressionModelId).trim();
+        this.contextSize = builder.contextSize < 0 ? CONTEXT_SIZE_UNSET : builder.contextSize;
     }
 
     public static Builder builder(String id, String name, ModelProtocolType protocolType,
@@ -88,6 +117,7 @@ public final class ModelConfig {
         private boolean compressionModelEnabled = false;
         private boolean compressionModelAuto = DEFAULT_COMPRESSION_MODEL_AUTO;
         private String compressionModelId = "";
+        private int contextSize = CONTEXT_SIZE_UNSET;
 
         private Builder(String id, String name, ModelProtocolType protocolType,
                         String providerLabel, String baseUrl, String apiKey, String modelId) {
@@ -122,6 +152,11 @@ public final class ModelConfig {
 
         public Builder compressionModelId(String compressionModelId) {
             this.compressionModelId = compressionModelId;
+            return this;
+        }
+
+        public Builder contextSize(int contextSize) {
+            this.contextSize = contextSize;
             return this;
         }
 
@@ -174,6 +209,14 @@ public final class ModelConfig {
         return compressionModelId;
     }
 
+    /**
+     * 显式配置的上下文窗口大小（tokens）。返回 {@link #CONTEXT_SIZE_UNSET} 表示未设置，
+     * 此时调用方应回退到 {@link ModelContextParser#parse(String)} 解析旧 modelId 后缀。
+     */
+    public int getContextSize() {
+        return contextSize;
+    }
+
     public String getEffectiveCompressionModelId() {
         if (!compressionModelEnabled || compressionModelAuto || compressionModelId.length() == 0) {
             return modelId;
@@ -183,12 +226,18 @@ public final class ModelConfig {
 
     public ModelConfig withId(String nextId) {
         return new ModelConfig(nextId, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
-                compressionModelEnabled, compressionModelAuto, compressionModelId);
+                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize);
     }
 
     public ModelConfig withModelId(String nextModelId) {
         return new ModelConfig(id, name, protocolType, providerLabel, baseUrl, apiKey, nextModelId, toolCallLimit,
-                compressionModelEnabled, compressionModelAuto, compressionModelId);
+                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize);
+    }
+
+    /** 返回一个更新了 contextSize 的副本。 */
+    public ModelConfig withContextSize(int nextContextSize) {
+        return new ModelConfig(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
+                compressionModelEnabled, compressionModelAuto, compressionModelId, nextContextSize);
     }
 
     public JSONObject toJson() throws JSONException {
@@ -204,6 +253,7 @@ public final class ModelConfig {
         object.put("compressionModelEnabled", compressionModelEnabled);
         object.put("compressionModelAuto", compressionModelAuto);
         object.put("compressionModelId", compressionModelId);
+        object.put("contextSize", contextSize);
         return object;
     }
 
@@ -236,6 +286,10 @@ public final class ModelConfig {
                 object.optBoolean("compression_model_auto", DEFAULT_COMPRESSION_MODEL_AUTO)
         );
         String compressionModelId = object.optString("compressionModelId", object.optString("compression_model_id"));
+        int contextSize = object.optInt("contextSize", object.optInt("context_size", CONTEXT_SIZE_UNSET));
+        if (contextSize < 0) {
+            contextSize = CONTEXT_SIZE_UNSET;
+        }
         return new ModelConfig(
                 object.optString("id"),
                 object.optString("name"),
@@ -247,7 +301,8 @@ public final class ModelConfig {
                 toolCallLimit,
                 compressionModelEnabled,
                 compressionModelAuto,
-                compressionModelId
+                compressionModelId,
+                contextSize
         );
     }
 

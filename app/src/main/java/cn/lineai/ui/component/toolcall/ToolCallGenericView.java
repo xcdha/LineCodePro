@@ -28,13 +28,16 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
         removeAllViews();
         String name = toolCall == null ? "" : toolCall.getName();
         JSONObject input = ToolCallUtils.parseInput(toolCall);
-        boolean running = result == null
-                || "running".equals(result.getReviewState())
-                || "pending".equals(result.getReviewState());
+        // 简化进度圈逻辑：直接根据结果决定最终状态
+        TerminalStatus status = computeTerminalStatus(result);
+        boolean running = status == TerminalStatus.RUNNING;
+        boolean error = status == TerminalStatus.FAILED;
+        boolean unknown = status == TerminalStatus.UNKNOWN;
         boolean hasResult = result != null && result.getContent().length() > 0;
-        boolean hasFinalResult = hasResult && !running;
-        boolean error = result != null && result.isError();
-        int statusColor = error ? LineTheme.DANGER : hasFinalResult ? LineTheme.SUCCESS : LineTheme.ACCENT;
+        int statusColor = error ? LineTheme.DANGER
+                : (status == TerminalStatus.SUCCESS) ? LineTheme.SUCCESS
+                : unknown ? LineTheme.TEXT_TERTIARY
+                : LineTheme.ACCENT;
 
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
@@ -66,7 +69,11 @@ public final class ToolCallGenericView extends BaseToolCallView implements ToolC
             bar.setIndeterminate(true);
             header.addView(bar, new LayoutParams(LineTheme.dp(getContext(), 18), LineTheme.dp(getContext(), 18)));
         } else {
-            IconButtonView done = new IconButtonView(getContext(), error ? IconButtonView.CLOSE : IconButtonView.CHECK);
+            // 工具调用结束：成功 → CHECK；失败 → CLOSE；未知 → CLOCK_3 表示等待结果
+            int doneIcon = error ? IconButtonView.CLOSE
+                    : (status == TerminalStatus.SUCCESS) ? IconButtonView.CHECK
+                    : IconButtonView.CLOCK_3;
+            IconButtonView done = new IconButtonView(getContext(), doneIcon);
             done.setIconColor(statusColor);
             done.setIconSizeDp(18, 13);
             done.setClickable(false);

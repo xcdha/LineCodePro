@@ -9,17 +9,17 @@ public final class FileToolPathPolicy {
     }
 
     public static File resolve(String homePath, String inputPath) throws IOException {
-        return resolve(homePath, java.util.Collections.emptyList(), inputPath);
+        return resolve(homePath, java.util.Collections.emptyList(), inputPath, false);
     }
 
     public static File resolve(ToolContext context, String inputPath) throws IOException {
         if (context == null) {
             throw new IOException("工具上下文为空");
         }
-        return resolve(context.getHomePath(), context.getExtraWriteRoots(), inputPath);
+        return resolve(context.getHomePath(), context.getExtraWriteRoots(), inputPath, context.isBypassPathProtection());
     }
 
-    private static File resolve(String homePath, java.util.List<String> extraRoots, String inputPath) throws IOException {
+    private static File resolve(String homePath, java.util.List<String> extraRoots, String inputPath, boolean bypassProtection) throws IOException {
         if (homePath == null || homePath.trim().length() == 0) {
             throw new IOException("工作区路径为空");
         }
@@ -29,6 +29,9 @@ public final class FileToolPathPolicy {
                 ? root
                 : new File(rawPath).isAbsolute() ? new File(rawPath) : new File(root, rawPath);
         File canonical = target.getCanonicalFile();
+        if (bypassProtection) {
+            return canonical;
+        }
         if (!isInside(root, canonical)) {
             File allowedRoot = matchingExtraRoot(extraRoots, canonical);
             if (allowedRoot == null) {

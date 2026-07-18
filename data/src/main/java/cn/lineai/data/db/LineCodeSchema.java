@@ -119,6 +119,7 @@ public final class LineCodeSchema {
                     + "compression_model_enabled INTEGER NOT NULL DEFAULT 0,"
                     + "compression_model_auto INTEGER NOT NULL DEFAULT 1,"
                     + "compression_model_id TEXT,"
+                    + "context_size INTEGER NOT NULL DEFAULT 0,"
                     + "selected INTEGER NOT NULL DEFAULT 0,"
                     + "raw_json TEXT,"
                     + "created_at INTEGER NOT NULL,"

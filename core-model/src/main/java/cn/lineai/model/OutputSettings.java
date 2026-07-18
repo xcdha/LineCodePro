@@ -8,20 +8,26 @@ public final class OutputSettings {
     private final String browserMode;
     private final boolean browserJavaScriptEnabled;
     private final boolean allowAnyHttp;
+    private final boolean bypassPathProtection;
 
     public OutputSettings(boolean codeWrapEnabled, String browserMode) {
-        this(codeWrapEnabled, browserMode, false, false);
+        this(codeWrapEnabled, browserMode, false, false, false);
     }
 
     public OutputSettings(boolean codeWrapEnabled, String browserMode, boolean browserJavaScriptEnabled) {
-        this(codeWrapEnabled, browserMode, browserJavaScriptEnabled, false);
+        this(codeWrapEnabled, browserMode, browserJavaScriptEnabled, false, false);
     }
 
     public OutputSettings(boolean codeWrapEnabled, String browserMode, boolean browserJavaScriptEnabled, boolean allowAnyHttp) {
+        this(codeWrapEnabled, browserMode, browserJavaScriptEnabled, allowAnyHttp, false);
+    }
+
+    public OutputSettings(boolean codeWrapEnabled, String browserMode, boolean browserJavaScriptEnabled, boolean allowAnyHttp, boolean bypassPathProtection) {
         this.codeWrapEnabled = codeWrapEnabled;
         this.browserMode = normalizeBrowserMode(browserMode);
         this.browserJavaScriptEnabled = browserJavaScriptEnabled;
         this.allowAnyHttp = allowAnyHttp;
+        this.bypassPathProtection = bypassPathProtection;
     }
 
     public boolean isCodeWrapEnabled() {
@@ -38,6 +44,10 @@ public final class OutputSettings {
 
     public boolean isAllowAnyHttp() {
         return allowAnyHttp;
+    }
+
+    public boolean isBypassPathProtection() {
+        return bypassPathProtection;
     }
 
     public static String normalizeBrowserMode(String mode) {

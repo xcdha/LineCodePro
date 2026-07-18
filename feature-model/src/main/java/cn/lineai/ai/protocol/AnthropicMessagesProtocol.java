@@ -30,7 +30,7 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
         String raw = "";
         try {
             JSONObject body = new JSONObject();
-            body.put("model", ModelContextParser.apiModelId(config.getModelId()));
+            body.put("model", ModelContextParser.apiModelId(config));
             body.put("max_tokens", 4096);
             body.put("messages", messagesJson(messages));
 
@@ -94,7 +94,7 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
         boolean thinkingEnabled = !AiBehaviorSettings.REASONING_OFF.equals(effort);
         int thinkingBudget = thinkingEnabled ? thinkingBudget(effort) : 0;
         JSONObject body = new JSONObject();
-        body.put("model", ModelContextParser.apiModelId(config.getModelId()));
+        body.put("model", ModelContextParser.apiModelId(config));
         body.put("max_tokens", thinkingEnabled ? Math.max(4096, thinkingBudget + 1024) : 4096);
         body.put("messages", messagesJson(messages));
         body.put("stream", true);

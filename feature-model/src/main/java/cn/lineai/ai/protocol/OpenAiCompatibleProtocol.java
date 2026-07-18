@@ -62,7 +62,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         String raw = "";
         try {
             JSONObject body = new JSONObject();
-            body.put("model", ModelContextParser.apiModelId(config.getModelId()));
+            body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messagesJson(messages));
             body.put("temperature", 0.2);
 
@@ -95,7 +95,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         try {
             ModelRequestOptions requestOptions = options == null ? ModelRequestOptions.defaults() : options;
             JSONObject body = new JSONObject();
-            body.put("model", ModelContextParser.apiModelId(config.getModelId()));
+            body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messagesJson(messages, requestOptions.isPreserveReasoning()));
             body.put("temperature", 0.2);
             body.put("stream", true);
@@ -304,7 +304,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             return;
         }
         String base = config.getBaseUrl().toLowerCase(java.util.Locale.ROOT);
-        String model = ModelContextParser.apiModelId(config.getModelId()).toLowerCase(java.util.Locale.ROOT);
+        String model = ModelContextParser.apiModelId(config).toLowerCase(java.util.Locale.ROOT);
         String effort = options.getReasoningEffort();
         boolean enabled = !AiBehaviorSettings.REASONING_OFF.equals(effort);
         ReasoningRequestContext context = new ReasoningRequestContext(

@@ -38,12 +38,12 @@ public final class ToolCallReadView extends BaseToolCallView implements ToolCall
         String name = toolCall == null ? "" : toolCall.getName();
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         String label = ToolCallUtils.displayInputLabel(getContext(), name, input, projectPath);
-        String reviewState = result == null ? "" : result.getReviewState();
-        boolean running = result == null
-                || "running".equals(reviewState)
-                || "pending".equals(reviewState);
-        boolean complete = result != null && !running;
-        boolean error = result != null && result.isError();
+        // 简化进度圈逻辑：直接根据结果决定最终状态
+        TerminalStatus status = computeTerminalStatus(result);
+        boolean running = status == TerminalStatus.RUNNING;
+        boolean error = status == TerminalStatus.FAILED;
+        boolean unknown = status == TerminalStatus.UNKNOWN;
+        boolean complete = !running;
         String actionLabel = actionLabel(name);
 
         LinearLayout header = new LinearLayout(getContext());
@@ -52,8 +52,12 @@ public final class ToolCallReadView extends BaseToolCallView implements ToolCall
         header.setMinimumHeight(LineTheme.dp(getContext(), 42));
         LineTheme.padding(header, LineTheme.SM, LineTheme.XS, LineTheme.SM, LineTheme.XS);
 
+        int headerIconColor = error ? LineTheme.DANGER
+                : running ? LineTheme.ACCENT
+                : unknown ? LineTheme.TEXT_TERTIARY
+                : LineTheme.TEXT_SECONDARY;
         IconButtonView icon = new IconButtonView(getContext(), iconFor(name));
-        icon.setIconColor(error ? LineTheme.DANGER : running ? LineTheme.ACCENT : LineTheme.TEXT_SECONDARY);
+        icon.setIconColor(headerIconColor);
         icon.setIconSizeDp(26, 13);
         icon.setClickable(false);
         icon.setBackground(LineTheme.roundedStroke(getContext(), android.graphics.Color.TRANSPARENT, 8,
@@ -77,13 +81,19 @@ public final class ToolCallReadView extends BaseToolCallView implements ToolCall
         HorizontalScrollView pathScroll = horizontalPathScroll(path);
         textBlock.addView(pathScroll, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        View status = statusView(complete);
-        if (complete && error && status instanceof IconButtonView) {
-            IconButtonView statusIcon = (IconButtonView) status;
-            statusIcon.setIconType(IconButtonView.CLOSE);
-            statusIcon.setIconColor(LineTheme.DANGER);
+        View statusViewInstance = statusView(complete);
+        if (complete && statusViewInstance instanceof IconButtonView) {
+            IconButtonView statusIcon = (IconButtonView) statusViewInstance;
+            if (error) {
+                statusIcon.setIconType(IconButtonView.CLOSE);
+                statusIcon.setIconColor(LineTheme.DANGER);
+            } else if (unknown) {
+                // 未知情况：使用时钟图标表示等待结果，颜色用 TEXT_TERTIARY
+                statusIcon.setIconType(IconButtonView.CLOCK_3);
+                statusIcon.setIconColor(LineTheme.TEXT_TERTIARY);
+            }
         }
-        header.addView(status, new LayoutParams(LineTheme.dp(getContext(), 18), LineTheme.dp(getContext(), 18)));
+        header.addView(statusViewInstance, new LayoutParams(LineTheme.dp(getContext(), 18), LineTheme.dp(getContext(), 18)));
         addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
         if (running && result != null && result.getContent().length() > 0) {

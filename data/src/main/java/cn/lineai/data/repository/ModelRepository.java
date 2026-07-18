@@ -228,6 +228,7 @@ public final class ModelRepository implements ModelStore {
         values.put("compression_model_enabled", model.isCompressionModelEnabled() ? 1 : 0);
         values.put("compression_model_auto", model.isCompressionModelAuto() ? 1 : 0);
         values.put("compression_model_id", model.getCompressionModelId());
+        values.put("context_size", model.getContextSize());
         values.put("selected", selected ? 1 : 0);
         try {
             values.put("raw_json", model.toJson().toString());
@@ -245,6 +246,11 @@ public final class ModelRepository implements ModelStore {
     }
 
     private ModelConfig readModel(Cursor cursor) {
+        int contextSize = ModelConfig.CONTEXT_SIZE_UNSET;
+        int contextSizeIndex = cursor.getColumnIndex("context_size");
+        if (contextSizeIndex >= 0 && !cursor.isNull(contextSizeIndex)) {
+            contextSize = cursor.getInt(contextSizeIndex);
+        }
         return new ModelConfig(
                 cursor.getString(cursor.getColumnIndexOrThrow("id")),
                 cursor.getString(cursor.getColumnIndexOrThrow("name")),
@@ -256,7 +262,8 @@ public final class ModelRepository implements ModelStore {
                 cursor.getInt(cursor.getColumnIndexOrThrow("tool_call_limit")),
                 cursor.getInt(cursor.getColumnIndexOrThrow("compression_model_enabled")) == 1,
                 cursor.getInt(cursor.getColumnIndexOrThrow("compression_model_auto")) == 1,
-                cursor.getString(cursor.getColumnIndexOrThrow("compression_model_id"))
+                cursor.getString(cursor.getColumnIndexOrThrow("compression_model_id")),
+                contextSize
         );
     }
 
@@ -275,6 +282,10 @@ public final class ModelRepository implements ModelStore {
         }
         if (!columns.contains("compression_model_id")) {
             db.execSQL("ALTER TABLE " + TABLE + " ADD COLUMN compression_model_id TEXT");
+        }
+        if (!columns.contains("context_size")) {
+            db.execSQL("ALTER TABLE " + TABLE + " ADD COLUMN context_size INTEGER NOT NULL DEFAULT "
+                    + ModelConfig.CONTEXT_SIZE_UNSET);
         }
     }
 

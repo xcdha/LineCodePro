@@ -74,6 +74,24 @@ public final class MainActivity extends Activity implements MainChatView.Workspa
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        // 退出 App 时清理生成状态：取消网络请求、关闭流式连接、隐藏进度圈
+        if (presenter != null) {
+            presenter.resetGenerationState();
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        // 进入 App 时清理残留状态：避免上次退出时未完成的进度圈、孤立 streaming 标志残留
+        if (presenter != null) {
+            presenter.resetGenerationState();
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         unregisterBackCallback();
         presenter.destroy();
@@ -245,6 +263,30 @@ public final class MainActivity extends Activity implements MainChatView.Workspa
     public void openDocumentPicker(String mimeType, String[] extensions, MainChatView.DocumentPickCallback callback) {
         documentPickCallback = callback;
         safPickerDelegate.openDocument(mimeType, extensions, new SafPickerDelegate.DocumentPickCallback() {
+            @Override
+            public void onDocumentPicked(String uri, String displayName) {
+                MainChatView.DocumentPickCallback pending = documentPickCallback;
+                documentPickCallback = null;
+                if (pending != null) {
+                    pending.onDocumentPicked(uri, displayName);
+                }
+            }
+
+            @Override
+            public void onCancelled() {
+                MainChatView.DocumentPickCallback pending = documentPickCallback;
+                documentPickCallback = null;
+                if (pending != null) {
+                    pending.onDocumentPickCancelled();
+                }
+            }
+        });
+    }
+
+    @Override
+    public void pickImage(MainChatView.DocumentPickCallback callback) {
+        documentPickCallback = callback;
+        safPickerDelegate.pickImage(new SafPickerDelegate.DocumentPickCallback() {
             @Override
             public void onDocumentPicked(String uri, String displayName) {
                 MainChatView.DocumentPickCallback pending = documentPickCallback;
