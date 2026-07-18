@@ -13,6 +13,7 @@ import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.ui.component.FlowLayoutView;
 import cn.lineai.ui.component.IconButtonView;
+import cn.lineai.ui.component.ThinkingBlockView;
 import cn.lineai.ui.markdown.MarkdownView;
 import cn.lineai.ui.theme.LineTheme;
 import java.util.HashMap;
@@ -27,6 +28,7 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
     private ToolResult lastResult;
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
+    private final java.util.HashMap<String, Boolean> rowExpandedMap = new java.util.HashMap<>();
 
     public ToolCallAgentPipelineView(Context context) {
         super(context);
@@ -204,8 +206,12 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         String rowStatus = summary == null ? "" : summary.status;
         boolean running = "running".equals(rowStatus);
         boolean pendingReview = "pending".equals(rowStatus);
-        boolean done = "done".equals(rowStatus) || (complete && summary != null && !summary.error) || (complete && summary == null && !pipelineError);
-        boolean error = (summary != null && summary.error) || "error".equals(rowStatus) || (complete && pipelineError && summary == null);
+        boolean rowInterrupted = pipelineError && running && complete;
+        boolean done = "done".equals(rowStatus) || (complete && summary != null && !summary.error && !rowInterrupted) || (complete && summary == null && !pipelineError);
+        boolean error = (summary != null && summary.error) || "error".equals(rowStatus) || rowInterrupted || (complete && pipelineError && summary == null);
+        if (rowInterrupted) {
+            running = false;
+        }
         String status = error ? getContext().getString(R.string.tool_call_status_failed) : pendingReview ? getContext().getString(R.string.tool_call_status_pending_review) : running ? getContext().getString(R.string.tool_call_status_running) : done ? getContext().getString(R.string.tool_call_status_done) : getContext().getString(R.string.tool_call_pipeline_status_waiting);
         int typeColor = "explore".equals(type) ? LineTheme.ACCENT : LineTheme.DANGER;
         int statusColor = error ? LineTheme.DANGER : pendingReview ? LineTheme.WARNING : running ? LineTheme.ACCENT : done ? LineTheme.SUCCESS : LineTheme.TEXT_TERTIARY;
@@ -218,6 +224,13 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
+        boolean rowExpanded = rowExpandedMap.containsKey(id) && rowExpandedMap.get(id);
+        header.setClickable(true);
+        header.setOnClickListener(v -> {
+            boolean current = rowExpandedMap.containsKey(id) && rowExpandedMap.get(id);
+            rowExpandedMap.put(id, !current);
+            bind(lastToolCall, lastResult);
+        });
 
         IconButtonView icon = new IconButtonView(getContext(), IconButtonView.BOT);
         icon.setIconColor(typeColor);
@@ -267,18 +280,37 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         LayoutParams statusParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
         statusParams.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
         header.addView(statusText, statusParams);
+        IconButtonView rowChevron = new IconButtonView(getContext(), rowExpanded ? IconButtonView.CHEVRON_DOWN : IconButtonView.CHEVRON_RIGHT);
+        rowChevron.setIconColor(LineTheme.TEXT_TERTIARY);
+        rowChevron.setIconSizeDp(14, 10);
+        rowChevron.setClickable(false);
+        LayoutParams rowChevronParams = new LayoutParams(LineTheme.dp(getContext(), 14), LineTheme.dp(getContext(), 14));
+        rowChevronParams.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
+        header.addView(rowChevron, rowChevronParams);
         row.addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        if (summary != null && (summary.output.length() > 0 || summary.thinking.length() > 0)) {
-            String preview = summary.output.length() > 0 ? summary.output : summary.thinking;
-            TextView output = LineTheme.text(getContext(), preview, LineTheme.FONT_XS,
-                    error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
-            output.setMaxLines(4);
-            LayoutParams outputParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            outputParams.topMargin = LineTheme.dp(getContext(), LineTheme.SM);
-            row.addView(output, outputParams);
+        if (rowExpanded && summary != null) {
+            LinearLayout rowContent = new LinearLayout(getContext());
+            rowContent.setOrientation(VERTICAL);
+            LayoutParams rowContentParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            rowContentParams.topMargin = LineTheme.dp(getContext(), LineTheme.SM);
+            if (summary.thinking.length() > 0) {
+                ThinkingBlockView thinkingView = new ThinkingBlockView(getContext());
+                thinkingView.bind(id, summary.thinking, !"done".equals(rowStatus), false, true);
+                LinearLayout.LayoutParams thinkingParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+                thinkingParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.SM);
+                rowContent.addView(thinkingView, thinkingParams);
+            }
+            if (summary.output.length() > 0) {
+                MarkdownView markdownView = new MarkdownView(getContext());
+                markdownView.setMarkdown(summary.output);
+                rowContent.addView(markdownView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            }
+            addNestedToolCalls(rowContent, summary.toolCalls);
+            BoundedScrollView scrollView = new BoundedScrollView(getContext(), 280);
+            scrollView.addView(rowContent, new android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+            row.addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
-        addNestedToolCalls(row, summary == null ? null : summary.toolCalls);
 
         LayoutParams rowParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         rowParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.XS);
@@ -556,6 +588,39 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
             this.status = status == null || status.length() == 0 ? "waiting" : status;
             this.error = error;
             this.toolCalls = toolCalls;
+        }
+    }
+
+    private static final class BoundedScrollView extends android.widget.ScrollView {
+        private final int maxHeightDp;
+
+        BoundedScrollView(Context context, int maxHeightDp) {
+            super(context);
+            this.maxHeightDp = maxHeightDp;
+        }
+
+        @Override
+        public boolean performClick() {
+            return super.performClick();
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int maxHeight = LineTheme.dp(getContext(), maxHeightDp);
+            int cappedHeightSpec = android.view.View.MeasureSpec.makeMeasureSpec(maxHeight, android.view.View.MeasureSpec.AT_MOST);
+            super.onMeasure(widthMeasureSpec, cappedHeightSpec);
+        }
+
+        @Override
+        public boolean onTouchEvent(android.view.MotionEvent ev) {
+            getParent().requestDisallowInterceptTouchEvent(true);
+            return super.onTouchEvent(ev);
+        }
+
+        @Override
+        public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
+            getParent().requestDisallowInterceptTouchEvent(true);
+            return super.onInterceptTouchEvent(ev);
         }
     }
 }

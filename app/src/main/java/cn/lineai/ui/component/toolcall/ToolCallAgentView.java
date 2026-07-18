@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -52,8 +53,13 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         String progressStatus = progress == null ? "" : progress.optString("status");
         boolean running = progress != null && ("running".equals(progressStatus) || "waiting_unlock".equals(progressStatus));
         boolean pendingReview = "pending".equals(progressStatus) || "pending".equals(outerReviewState);
+        boolean resultHasError = result != null && result.isError();
+        boolean interrupted = resultHasError && running;
+        if (interrupted) {
+            running = false;
+        }
         boolean complete = result != null && !running && !pendingReview;
-        boolean error = result != null && (result.isError() || "error".equals(progressStatus));
+        boolean error = resultHasError || "error".equals(progressStatus) || interrupted;
         String output = progress == null ? outputText(result) : progress.optString("output");
         String thinking = progress == null ? "" : progress.optString("thinking");
         JSONArray nestedToolCalls = progress == null ? null : progress.optJSONArray("tool_calls");
@@ -156,7 +162,10 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
             content.addView(empty, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
         addNestedToolCalls(content, nestedToolCalls);
-        addView(content, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        BoundedScrollView scrollView = new BoundedScrollView(getContext(), 400);
+        scrollView.addView(content, new android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+        addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
     }
 
     public void setProjectPath(String projectPath) {
@@ -271,6 +280,39 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
             return Integer.parseInt(text.substring(start, end));
         } catch (NumberFormatException ignored) {
             return 0;
+        }
+    }
+
+    private static final class BoundedScrollView extends android.widget.ScrollView {
+        private final int maxHeightDp;
+
+        BoundedScrollView(Context context, int maxHeightDp) {
+            super(context);
+            this.maxHeightDp = maxHeightDp;
+        }
+
+        @Override
+        public boolean performClick() {
+            return super.performClick();
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int maxHeight = LineTheme.dp(getContext(), maxHeightDp);
+            int cappedHeightSpec = android.view.View.MeasureSpec.makeMeasureSpec(maxHeight, android.view.View.MeasureSpec.AT_MOST);
+            super.onMeasure(widthMeasureSpec, cappedHeightSpec);
+        }
+
+        @Override
+        public boolean onTouchEvent(android.view.MotionEvent ev) {
+            getParent().requestDisallowInterceptTouchEvent(true);
+            return super.onTouchEvent(ev);
+        }
+
+        @Override
+        public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
+            getParent().requestDisallowInterceptTouchEvent(true);
+            return super.onInterceptTouchEvent(ev);
         }
     }
 }
