@@ -61,7 +61,7 @@ LineCode 不是一个轻量聊天客户端，它是一个**完整的编程工作
 | ---- | -------- |
 | 文件系统 | `file_read`、`file_write`、`file_edit`、`file_delete`、`glob`、`list_directory` |
 | Shell | `shell_execute`（经 Termux 或 IPC Provider） |
-| 网络 | `web_search`、`web_fetch`、`http_server` |
+| 网络 | `web_search`、`web_fetch` |
 | 媒体 | `image_understanding`、`image_generation` |
 | 子任务 | `agent`、`agent_pipeline`（分派给另一个 LLM 循环） |
 | 效率 | `todo_update` |
@@ -239,7 +239,7 @@ LineCode 在 **设置 → MCP execution mode** 里提供三种 Shell / 文件工
 
 ```
 FileReadTool      FileWriteTool      FileEditTool      FileDeleteTool
-GlobTool          ListDirectoryTool  HttpServerTool    ShellExecuteTool
+GlobTool          ListDirectoryTool  ShellExecuteTool
 ImageUnderstandingTool  ImageGenerationTool  WebSearchTool  WebFetchTool
 AgentTool  AgentPipelineTool  TodoUpdateTool
 ```

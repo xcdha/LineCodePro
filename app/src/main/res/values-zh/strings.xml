@@ -337,8 +337,8 @@
     <string name="screen_tools_hint_key_header">Authorization，可留空</string>
     <string name="screen_tools_hint_key_query">api_key，可留空</string>
 
-    <string name="screen_mcp_execution_local_desc">本地工作区会在当前工作区路径内执行文件读写、文件搜索、Agent、HTTP 服务器、网页搜索、图片理解和图片生成。搜索 API 与图片模型在工具设置中配置。</string>
-    <string name="screen_mcp_execution_ssh_desc">SSH Shell 模式会禁用本地文件读写、文件搜索和 HTTP 服务器；Agent、Agent Pipeline、任务清单、网页搜索、图片理解和图片生成仍可用，文件相关操作请通过 shell 命令在 SSH 环境内完成。</string>
+    <string name="screen_mcp_execution_local_desc">本地工作区会在当前工作区路径内执行文件读写、文件搜索、Agent、网页搜索、图片理解和图片生成。搜索 API 与图片模型在工具设置中配置。</string>
+    <string name="screen_mcp_execution_ssh_desc">SSH Shell 模式会禁用本地文件读写和文件搜索；Agent、Agent Pipeline、任务清单、网页搜索、图片理解和图片生成仍可用，文件相关操作请通过 shell 命令在 SSH 环境内完成。</string>
     <string name="screen_mcp_ssh_overview">SSH Shell 可以连接远程 Linux 服务器、桌面开发机、NAS，也可以连接手机本机 Termux。Termux 是一个单独选项，不等于只能连接手机。</string>
 
     <string name="screen_mcp_hint_name">例如：公司 MCP 服务</string>
@@ -1021,7 +1021,6 @@
     <string name="tool_call_pipeline_summary_failed">%1$d 失败</string>
     <string name="tool_call_pipeline_status_waiting">等待中</string>
 
-    <string name="tool_call_block_http">HTTP 服务</string>
     <string name="tool_call_block_mcp">MCP 调用</string>
 
     <string name="tool_call_generic_mcp">MCP 调用</string>

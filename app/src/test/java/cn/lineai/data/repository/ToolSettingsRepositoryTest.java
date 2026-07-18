@@ -164,7 +164,7 @@ public final class ToolSettingsRepositoryTest {
         Assert.assertTrue(prompt.contains("以内联 Markdown 图片返回"));
         Assert.assertTrue(prompt.contains("mcpx_test_lookup"));
         Assert.assertTrue(prompt.contains("调用测试 MCP"));
-        Assert.assertTrue(prompt.contains("本地文件读写、文件搜索和 HTTP 服务器已禁用"));
+        Assert.assertTrue(prompt.contains("本地文件读写和文件搜索已禁用"));
         Assert.assertTrue(prompt.contains("Agent、Agent Pipeline、任务清单仍可用"));
     }
 
@@ -257,7 +257,7 @@ public final class ToolSettingsRepositoryTest {
         Assert.assertTrue(prompt.contains("以内联 Markdown 图片返回"));
         Assert.assertTrue(prompt.contains("终端提供者（Terminal Provider）"));
         Assert.assertTrue(prompt.contains("通过终端提供者 IPC 执行"));
-        Assert.assertTrue(prompt.contains("本地文件读写、文件搜索和 HTTP 服务器已禁用"));
+        Assert.assertTrue(prompt.contains("本地文件读写和文件搜索已禁用"));
         Assert.assertTrue(prompt.contains("Agent、Agent Pipeline、任务清单仍可用"));
     }
 

@@ -19,6 +19,10 @@ public final class AssistantMessageView extends LinearLayout {
     private final MarkdownView contentView;
     private final LinearLayout toolCallsContainer;
     private final MessageActionBarView actionBar;
+    private final int defaultPaddingLeft;
+    private final int defaultPaddingTop;
+    private final int defaultPaddingRight;
+    private final int defaultPaddingBottom;
     private String lastMessageId = "";
     private String lastReasoning = "";
     private String lastContent = "";
@@ -39,6 +43,10 @@ public final class AssistantMessageView extends LinearLayout {
         setOrientation(VERTICAL);
         setGravity(Gravity.START);
         LineTheme.padding(this, LineTheme.LG, 0, LineTheme.LG, LineTheme.MD);
+        defaultPaddingLeft = getPaddingLeft();
+        defaultPaddingTop = getPaddingTop();
+        defaultPaddingRight = getPaddingRight();
+        defaultPaddingBottom = getPaddingBottom();
 
         compactBlockView = new ContextCompactBlockView(context);
         LinearLayout.LayoutParams compactParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
@@ -186,6 +194,10 @@ public final class AssistantMessageView extends LinearLayout {
 
     public void setMessageActionListener(MessageActionListener listener) {
         actionListener = listener;
+    }
+
+    public void restoreDefaultPadding() {
+        setPadding(defaultPaddingLeft, defaultPaddingTop, defaultPaddingRight, defaultPaddingBottom);
     }
 
     public void setMarkdownLinkHandler(MarkdownLinkHandler handler) {

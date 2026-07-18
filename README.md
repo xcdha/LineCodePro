@@ -61,7 +61,7 @@ The model has access to a registry of tools (`ToolRegistry`) with session-scoped
 | ----------- | -------------- |
 | Filesystem  | `file_read`, `file_write`, `file_edit`, `file_delete`, `glob`, `list_directory` |
 | Shell       | `shell_execute` (Termux or via IPC) |
-| Web         | `web_search`, `web_fetch`, `http_server` |
+| Web         | `web_search`, `web_fetch` |
 | Media       | `image_understanding`, `image_generation` |
 | Sub-agents  | `agent`, `agent_pipeline` (delegate work to another LLM loop) |
 | Productivity| `todo_update` |
@@ -240,7 +240,7 @@ Built-in tools live in `app/src/main/java/cn/lineai/tool/builtin/`:
 
 ```
 FileReadTool      FileWriteTool      FileEditTool      FileDeleteTool
-GlobTool          ListDirectoryTool  HttpServerTool    ShellExecuteTool
+GlobTool          ListDirectoryTool  ShellExecuteTool
 ImageUnderstandingTool  ImageGenerationTool  WebSearchTool  WebFetchTool
 AgentTool  AgentPipelineTool  TodoUpdateTool
 ```

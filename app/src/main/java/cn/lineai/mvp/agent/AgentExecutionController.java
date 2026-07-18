@@ -39,7 +39,6 @@ import cn.lineai.tool.builtin.FileDeleteTool;
 import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileToolPathPolicy;
 import cn.lineai.tool.builtin.FileWriteTool;
-import cn.lineai.tool.builtin.HttpServerTool;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -214,7 +213,26 @@ public final class AgentExecutionController {
         LinkedHashMap<String, AgentRunResult> results = new LinkedHashMap<>();
         StringBuilder summary = new StringBuilder();
         summary.append("Agent 流水线完成: ").append(agents.size()).append(" 个任务");
-        PipelineProgressSession pipelineProgress = new PipelineProgressSession(parentContext, agents);
+        PipelineProgressSession pipelineProgress = new PipelineProgressSession(
+                parentContext,
+                agents,
+                (id, name, payload, nextError) -> {
+                    String reviewState = "running";
+                    try {
+                        JSONObject object = new JSONObject(payload);
+                        if (object.has("status")) {
+                            String status = object.optString("status", "running");
+                            if (status.length() > 0) {
+                                reviewState = status;
+                            }
+                        }
+                    } catch (Exception ignored) {
+                        // 进度 payload 解析失败时使用 running
+                    }
+                    host.addOrReplaceToolResult(new ToolResult(id, name, payload, nextError, "", reviewState, ""));
+                    host.render();
+                }
+        );
         pipelineProgress.publish(false);
         boolean hasError = false;
         int totalToolCalls = 0;
@@ -534,8 +552,7 @@ public final class AgentExecutionController {
             return true;
         }
         return tool.getCategory() == ToolCategory.READ
-                || tool.getCategory() == ToolCategory.WRITE
-                || HttpServerTool.NAME.equals(name);
+                || tool.getCategory() == ToolCategory.WRITE;
     }
 
     private boolean isRemoteExecutionMode() {

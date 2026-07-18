@@ -1,5 +1,55 @@
 # 更新日志
 
+## v1.2.1
+
+### 上下文压缩
+
+- **跳过已生成的隐藏摘要** - `ContextCompactionService.selectCompactableMessages` 与 `ContextCompactionController` 三处过滤逻辑统一：消息为 `hidden` 且 `responseInputItemJson` 非空时视为已压缩摘要，不再参与下一次压缩；`compactStatus` 非空的压缩进度块同样跳过。修复历史摘要在多次压缩循环中被反复覆盖、导致早期上下文丢失的问题。
+- **摘要必须进入上下文** - `ContextCompactionController.createCompactedMessages` 构造摘要消息时显式将 `excludeFromContext` 置为 `false`（避免链式 `withResponseInputItemJson` 基于旧副本意外保留 `true`），保证压缩后的摘要能被后续模型请求看到，防止模型侧出现"上下文被清空"的幻觉。
+- **统一可压缩内容判断** - `hasCompactableContent` 与 `isCompactionNeeded` 路径均接入同一规则，避免不同入口对隐藏摘要/压缩块的处理不一致。
+
+### 工具参数解析容错
+
+- **`ToolArgsCleaner` 参数清洗** - 新增 `cn.lineai.tool.ToolArgsCleaner` 纯工具类，对模型返回的工具参数字符串做清洗：剥离 Markdown 代码围栏、NFKC 归一化并移除零宽字符、删除注释与控制字符、移除对象/数组尾部多余逗号、将简单单引号字符串转为双引号。合法 JSON 原样返回，空/空白返回 `{}`。
+- **`ToolExecutor` 接入清洗** - `ToolExecutor.execute` 在 `new JSONObject(...)` 之前先调用 `ToolArgsCleaner.clean(toolCall.getArguments())`，降低模型输出带围栏、注释、单引号或多余逗号时参数解析失败的概率。
+
+### 工具结果进度状态
+
+- **`GenerationFlowController` 不回退保护** - `publishToolResultProgress` 新增 `resolveProgressReviewState` 从进度 JSON 的 `status` 字段解析状态；若该工具已有完成/失败等终态结果，异步进度不再把它拉回 `running`，修复进度圈在某些异步进度发布后永不消失的问题。
+- **`ToolMessageController.currentReviewState`** - 新增按 `toolCallId` 查询当前 `reviewState` 的方法，供进度发布时判断是否为终态。
+- **Agent Pipeline 进度发布** - `AgentExecutionController.runAgentPipelineTool` 构造 `PipelineProgressSession` 时注入 `ProgressPublisher`，子 Agent 进度变化时直接调用 `host.addOrReplaceToolResult` + `host.render`，让流水线卡片状态与底层结果同步。
+- **流水线完成判定修复** - `ToolCallAgentPipelineView.bind` 完成判定优先以进度 JSON 的 `status == "done"` 为准（不再单纯依赖 `reviewState` 时序），异常时仍按 `error` 处理，解决流水线已完成但进度圈未消失的问题。
+- **会话恢复对 running/pending/accepted 空结果统一收敛** - `ConversationResumeSanitizer.isUnfinishedReviewState` 把 `accepted` 且内容为空也视为未完成；嵌套 Agent / Pipeline 进度里的子工具调用若处于 `running` 状态，同样被收敛为"上次生成已中断"的错误结果，避免恢复后仍显示运行中。
+
+### 移除 HTTP 服务器工具
+
+- **删除 `HttpServerTool`** - 移除内置工具 `http_server` 及其 `SimpleFileServer` 实现，包括 `MainCoordinator.onDestroy` 中的 `HttpServerTool.stopActiveServer()` 调用。
+- **清理注册与分类** - `BuiltInToolProviders`、`ToolSettingsRepository`、`ToolCategory`、`ToolDisplayResolver`、`ToolDisplayCategory`、`MainDependencies`、`AgentExecutionController.isAgentToolAllowed` 中全部移除 `HttpServerTool` 相关引用与 `HTTP` 显示分类；删除 `HttpToolCallViewFactory`。
+- **提示词与文案同步** - `ToolPromptRenderer`、执行模式描述字符串、`README.md` / `README_CN.md` / `CLAUDE.md` / `simple.md` 中不再把 HTTP 服务器列为本地/SSH 模式差异点；移除 `tool_call_block_http` 字符串。
+
+### 手机控制工具远程可用
+
+- **`ToolSettingsRepository` 分组模式调整** - `phone_control` 工具组由 `MODE_LOCAL` 改为 `MODE_ALL`，SSH Shell / 终端提供者模式下也可使用手机控制工具。
+- **提示词补充说明** - `ToolPromptRenderer` 在 SSH / 终端提供者工具提示末尾追加"当会话模式为 Control 时，手机控制工具仍然可用"。
+
+### UI 间距
+
+- **消息默认 padding 恢复** - `UserMessageView` / `AssistantMessageView` 在构造时保存默认 padding，新增 `restoreDefaultPadding()`。
+- **多选样式不再强制清零** - `ChatMessageListView.MessageAdapter.applyMultiSelectStyle` 在非多选/未选中状态下调用 `restoreMessagePadding` 恢复默认边距，仅选中消息保留 4dp 描边内边距；修复非多选模式下对话消息贴到屏幕边缘的问题。
+
+### 测试
+
+- 新增 `ToolArgsCleanerTest`（124 行）覆盖空输入、Markdown 围栏、单行/多行注释、字符串内注释保留、对象/数组尾部逗号、单引号对象、控制字符、合法 JSON 不变、嵌套尾部逗号等场景。
+- 扩展 `ConversationResumeSanitizerTest`（+121 行）覆盖 `running` 非空内容、`pending` 空内容、`accepted` 空内容、嵌套 Agent running 工具调用、嵌套 Pipeline running 工具调用五种恢复收敛场景。
+- 更新 `ToolSettingsRepositoryTest` / `AgentExecutionControllerTest` 断言，适配 HTTP 服务器移除与提示词调整。
+
+### 版本
+
+- 版本号升级到 `1.2.1`
+- `versionCode` 升级到 `24`
+
+---
+
 ## v1.2.0
 
 ### 切后台稳定性

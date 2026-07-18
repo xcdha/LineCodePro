@@ -38,7 +38,7 @@ public final class ChatMode {
                     + "当前模式：Plan。\n"
                     + "- Plan 是只读规划模式。目标是理解需求、读取必要上下文、形成计划、列出风险、确认验收方式；不要执行计划。\n"
                     + "- 允许使用明确只读工具收集信息：file_read、glob、list_dir、web_search、web_fetch。读取时只读最小必要文件，不要扩大范围。\n"
-                    + "- 禁止调用任何会改变状态的工具：file_write、file_edit、file_delete、http_server、agent、agent_pipeline、自定义 Agent、写入型 MCP 或未知副作用工具。\n"
+                    + "- 禁止调用任何会改变状态的工具：file_write、file_edit、file_delete、agent、agent_pipeline、自定义 Agent、写入型 MCP 或未知副作用工具。\n"
                     + "- 本地工作区目标下禁止执行 Shell；本地项目请用 file_read、glob、list_dir 读取上下文。\n"
                     + "- SSH Shell 目标下，本地 file_read、glob、list_dir 不可用时，允许用 shell_execute 查看远端项目内容，但只能执行无副作用的项目读取命令。\n"
                     + "- SSH Plan 允许的 shell 范围：pwd、ls/find 查看目录、cat/sed/head/tail 查看文件、grep/rg 搜索文本。命令必须限定在当前项目目录，优先限制深度、行数和结果数量。\n"
@@ -49,7 +49,7 @@ public final class ChatMode {
         }
         if (CONTROL.equals(normalized)) {
             return "## 当前会话模式\n"
-                    + "当前模式：Control。仅允许使用手机控制工具（phone_screenshot, phone_click, phone_swipe, phone_long_press, phone_view_hierarchy, phone_click_view, phone_global_action）。需要无障碍权限。截图后可把返回路径交给图片理解工具分析；如果未配置图片理解模型，图片理解工具会提示用户配置。禁止文件操作、shell、agent 等其他工具。";
+                    + "当前模式：Control。仅允许使用手机控制工具（phone_screenshot, phone_click, phone_swipe, phone_long_press, phone_view_hierarchy, phone_click_view, phone_global_action）。需要无障碍权限。截图后可把返回路径交给图片理解工具分析；如果未配置图片理解模型，图片理解工具会提示用户配置。禁止文件操作、shell、agent 等其他工具。\n";
         }
         return "## 当前会话模式\n"
                 + "当前模式：Agent。\n"

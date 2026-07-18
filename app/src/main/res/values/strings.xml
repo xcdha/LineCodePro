@@ -336,8 +336,8 @@
     <string name="screen_tools_hint_key_header">Authorization, can be empty</string>
     <string name="screen_tools_hint_key_query">api_key, can be empty</string>
 
-    <string name="screen_mcp_execution_local_desc">Local workspace runs file read/write, file search, Agent, HTTP server, web search, image understanding and image generation inside the current workspace path. Search API and image models are configured in Tool settings.</string>
-    <string name="screen_mcp_execution_ssh_desc">SSH Shell mode disables local file read/write, file search and HTTP server. Agent, Agent pipeline, todos, web search, image understanding and image generation remain available. File operations should be performed via shell commands inside the SSH environment.</string>
+    <string name="screen_mcp_execution_local_desc">Local workspace runs file read/write, file search, Agent, web search, image understanding and image generation inside the current workspace path. Search API and image models are configured in Tool settings.</string>
+    <string name="screen_mcp_execution_ssh_desc">SSH Shell mode disables local file read/write and file search. Agent, Agent pipeline, todos, web search, image understanding and image generation remain available. File operations should be performed via shell commands inside the SSH environment.</string>
     <string name="screen_mcp_ssh_overview">SSH Shell can connect to a remote Linux server, desktop dev machine, NAS, or Termux on the phone itself. Termux is a separate option and is not the only target.</string>
 
     <string name="screen_mcp_hint_name">e.g. Company MCP server</string>
@@ -1020,7 +1020,6 @@
     <string name="tool_call_pipeline_summary_failed">%1$d failed</string>
     <string name="tool_call_pipeline_status_waiting">Waiting</string>
 
-    <string name="tool_call_block_http">HTTP service</string>
     <string name="tool_call_block_mcp">MCP call</string>
 
     <string name="tool_call_generic_mcp">MCP call</string>

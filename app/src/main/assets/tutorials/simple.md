@@ -30,7 +30,7 @@ LineCode Pro 是一款**在 Android 设备上离线运行的 AI 编程工作台*
 入口：设置 → **工具与执行**（"Tools & execution"）。
 
 - **执行目标**：可选
-  - **本地工作区**：在本机项目里跑文件读写、Shell、HTTP 服务、Agent 等工具。
+  - **本地工作区**：在本机项目里跑文件读写、Shell、Agent 等工具。
   - **SSH Shell**：把文件操作、Shell 转发到远端 Linux；本地文件工具会被禁用，Agent、Pipeline、TODO、Web 搜索、图像理解/生成仍可用。
 - **权限模式**：
   - **每次询问**：每次工具调用都弹确认卡（默认安全）。

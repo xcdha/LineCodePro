@@ -7,7 +7,6 @@ import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileReadTool;
 import cn.lineai.tool.builtin.FileWriteTool;
 import cn.lineai.tool.builtin.GlobTool;
-import cn.lineai.tool.builtin.HttpServerTool;
 import cn.lineai.tool.builtin.ImageGenerationTool;
 import cn.lineai.tool.builtin.ImageUnderstandingTool;
 import cn.lineai.tool.builtin.ListDirectoryTool;
@@ -52,11 +51,6 @@ public enum ToolCategory {
     @Deprecated
     public static boolean isDeleteType(String name) {
         return FileDeleteTool.NAME.equals(name);
-    }
-
-    @Deprecated
-    public static boolean isHttpType(String name) {
-        return HttpServerTool.NAME.equals(name);
     }
 
     @Deprecated

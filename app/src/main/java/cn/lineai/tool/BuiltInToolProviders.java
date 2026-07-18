@@ -10,7 +10,6 @@ import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileReadTool;
 import cn.lineai.tool.builtin.FileWriteTool;
 import cn.lineai.tool.builtin.GlobTool;
-import cn.lineai.tool.builtin.HttpServerTool;
 import cn.lineai.tool.builtin.ImageGenerationTool;
 import cn.lineai.tool.builtin.ImageUnderstandingTool;
 import cn.lineai.tool.builtin.ListDirectoryTool;
@@ -45,7 +44,6 @@ public final class BuiltInToolProviders {
         list.add((context, ipc) -> new FileDeleteTool());
         list.add((context, ipc) -> new GlobTool());
         list.add((context, ipc) -> new ListDirectoryTool());
-        list.add((context, ipc) -> new HttpServerTool());
         list.add((context, ipc) -> new AgentTool());
         list.add((context, ipc) -> new AgentPipelineTool());
         list.add((context, ipc) -> new TodoUpdateTool());
