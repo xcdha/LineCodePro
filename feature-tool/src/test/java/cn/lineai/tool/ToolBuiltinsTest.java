@@ -1,5 +1,7 @@
 package cn.lineai.tool;
 
+import cn.lineai.data.repository.WebSearchConfigRepository;
+import cn.lineai.model.WebSearchConfig;
 import cn.lineai.tool.builtin.FileReadTool;
 import cn.lineai.tool.builtin.FileDeleteTool;
 import cn.lineai.tool.builtin.FileWriteTool;
@@ -99,7 +101,13 @@ public final class ToolBuiltinsTest {
 
     @Test
     public void webSearchFailsClearlyWhenNotConfigured() throws Exception {
-        ToolResult result = new WebSearchTool().execute(new JSONObject().put("query", "LineAI"), context());
+        WebSearchConfigRepository tavilyRepo = new WebSearchConfigRepository() {
+            @Override
+            public WebSearchConfig get() {
+                return WebSearchConfig.defaultConfig(WebSearchConfig.PROVIDER_TAVILY);
+            }
+        };
+        ToolResult result = new WebSearchTool(tavilyRepo).execute(new JSONObject().put("query", "LineAI"), context());
 
         Assert.assertTrue(result.isError());
         Assert.assertTrue(result.getContent().contains("网页搜索未配置"));

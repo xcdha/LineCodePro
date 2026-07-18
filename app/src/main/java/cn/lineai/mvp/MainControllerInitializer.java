@@ -144,6 +144,7 @@ final class MainControllerInitializer {
         coordinator.permissionModeController = new PermissionModeController(
                 toolSettingsRepository,
                 chatModeRepository,
+                context,
                 new PermissionModeController.Host() {
                     @Override
                     public boolean hasExternalStorageAccess() {
@@ -644,6 +645,7 @@ final class MainControllerInitializer {
                 }
         );
         coordinator.attachmentPickerController = new AttachmentPickerCoordinator(
+                context,
                 fileTreeRepository,
                 sshFileTreeRepository,
                 ipcFileTreeRepository,

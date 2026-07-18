@@ -13,6 +13,8 @@ import cn.lineai.R;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.WebSearchConfig;
 import cn.lineai.ui.theme.LineTheme;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class ToolSettingsScreenView extends ScreenScaffoldView {
     public interface Listener {
@@ -127,15 +129,25 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
 
         GridLayout providers = new GridLayout(context);
         providers.setColumnCount(3);
+        List<TextView> providerButtons = new ArrayList<>();
+        List<String> providerKeys = new ArrayList<>();
+        addProviderButton(providers, context.getString(R.string.screen_tools_provider_bing_rss_free), WebSearchConfig.PROVIDER_BING_RSS_FREE, selectedProvider, suppressChange,
+                providerButtons, providerKeys,
+                baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField);
         addProviderButton(providers, context.getString(R.string.screen_tools_provider_tavily), WebSearchConfig.PROVIDER_TAVILY, selectedProvider, suppressChange,
+                providerButtons, providerKeys,
                 baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField);
         addProviderButton(providers, context.getString(R.string.screen_tools_provider_brave), WebSearchConfig.PROVIDER_BRAVE, selectedProvider, suppressChange,
+                providerButtons, providerKeys,
                 baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField);
         addProviderButton(providers, context.getString(R.string.screen_tools_provider_serpapi), WebSearchConfig.PROVIDER_SERPAPI, selectedProvider, suppressChange,
+                providerButtons, providerKeys,
                 baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField);
         addProviderButton(providers, context.getString(R.string.screen_tools_provider_bing), WebSearchConfig.PROVIDER_BING, selectedProvider, suppressChange,
+                providerButtons, providerKeys,
                 baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField);
         addProviderButton(providers, context.getString(R.string.screen_tools_provider_custom), WebSearchConfig.PROVIDER_CUSTOM, selectedProvider, suppressChange,
+                providerButtons, providerKeys,
                 baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField);
         LinearLayout.LayoutParams providerParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         providerParams.topMargin = LineTheme.dp(context, LineTheme.MD);
@@ -157,6 +169,9 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
         card.addView(apiKeyHeaderField, formParams(context));
         card.addView(apiKeyParamField, formParams(context));
         addCard(content, card);
+
+        applyProviderFieldVisibility(selectedProvider[0],
+                baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField);
     }
 
     private void addProviderButton(
@@ -165,6 +180,8 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
             String provider,
             String[] selectedProvider,
             boolean[] suppressChange,
+            List<TextView> providerButtons,
+            List<String> providerKeys,
             FormTextFieldView baseUrlField,
             FormTextFieldView apiKeyField,
             FormTextFieldView modelField,
@@ -174,10 +191,12 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
     ) {
         Context context = providers.getContext();
         boolean active = provider.equals(selectedProvider[0]);
-        TextView button = LineTheme.text(context, label, LineTheme.FONT_XS, active ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_SECONDARY, Typeface.BOLD);
+        TextView button = LineTheme.text(context, label, LineTheme.FONT_XS, LineTheme.TEXT_SECONDARY, Typeface.BOLD);
         button.setGravity(Gravity.CENTER);
-        button.setBackground(LineTheme.roundedStroke(context, active ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 8, active ? LineTheme.ACCENT : LineTheme.BORDER_LIGHT));
+        applyProviderButtonStyle(context, button, active);
         button.setClickable(true);
+        providerButtons.add(button);
+        providerKeys.add(provider);
         button.setOnClickListener(v -> {
             WebSearchConfig defaults = WebSearchConfig.defaultConfig(provider);
             selectedProvider[0] = defaults.getProvider();
@@ -189,6 +208,9 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
             apiKeyHeaderField.getInput().setText(defaults.getApiKeyHeader());
             apiKeyParamField.getInput().setText(defaults.getApiKeyParam());
             suppressChange[0] = false;
+            refreshProviderButtons(context, providerButtons, providerKeys, selectedProvider[0]);
+            applyProviderFieldVisibility(selectedProvider[0],
+                    baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField);
             listener.onWebSearchConfigChanged(readWebSearchConfig(selectedProvider[0],
                     baseUrlField, apiKeyField, modelField, queryParamField, apiKeyHeaderField, apiKeyParamField));
         });
@@ -198,6 +220,46 @@ public final class ToolSettingsScreenView extends ScreenScaffoldView {
         params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
         params.setMargins(0, LineTheme.dp(context, LineTheme.SM), LineTheme.dp(context, LineTheme.SM), 0);
         providers.addView(button, params);
+    }
+
+    private void applyProviderButtonStyle(Context context, TextView button, boolean active) {
+        button.setTextColor(active ? LineTheme.TEXT_ON_COLOR : LineTheme.TEXT_SECONDARY);
+        button.setBackground(LineTheme.roundedStroke(context, active ? LineTheme.ACCENT : LineTheme.SURFACE_LIGHT, 8, active ? LineTheme.ACCENT : LineTheme.BORDER_LIGHT));
+    }
+
+    private void refreshProviderButtons(Context context, List<TextView> buttons, List<String> keys, String currentProvider) {
+        for (int i = 0; i < buttons.size(); i++) {
+            applyProviderButtonStyle(context, buttons.get(i), keys.get(i).equals(currentProvider));
+        }
+    }
+
+    /**
+     * 切换 provider 时，根据是否需要 API Key 等字段控制其可见性。
+     * bing_rss_free 是免密钥的内置 provider，相关字段全部隐藏，简化界面。
+     */
+    private void applyProviderFieldVisibility(
+            String provider,
+            FormTextFieldView baseUrlField,
+            FormTextFieldView apiKeyField,
+            FormTextFieldView modelField,
+            FormTextFieldView queryParamField,
+            FormTextFieldView apiKeyHeaderField,
+            FormTextFieldView apiKeyParamField
+    ) {
+        boolean freeProvider = WebSearchConfig.PROVIDER_BING_RSS_FREE.equals(provider);
+        int fieldVisibility = freeProvider ? View.GONE : View.VISIBLE;
+        baseUrlField.setVisibility(fieldVisibility);
+        apiKeyField.setVisibility(fieldVisibility);
+        modelField.setVisibility(fieldVisibility);
+        queryParamField.setVisibility(fieldVisibility);
+        apiKeyHeaderField.setVisibility(fieldVisibility);
+        apiKeyParamField.setVisibility(fieldVisibility);
+        baseUrlField.getInput().setEnabled(!freeProvider);
+        apiKeyField.getInput().setEnabled(!freeProvider);
+        modelField.getInput().setEnabled(!freeProvider);
+        queryParamField.getInput().setEnabled(!freeProvider);
+        apiKeyHeaderField.getInput().setEnabled(!freeProvider);
+        apiKeyParamField.getInput().setEnabled(!freeProvider);
     }
 
     private TextWatcher configWatcher(

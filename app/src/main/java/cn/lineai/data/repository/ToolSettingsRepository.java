@@ -1,6 +1,7 @@
 package cn.lineai.data.repository;
 
 import android.content.Context;
+import cn.lineai.R;
 import cn.lineai.model.ChatMode;
 import cn.lineai.model.McpSettingsState;
 import cn.lineai.model.McpToolConfig;
@@ -41,42 +42,70 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     private static final Set<String> MODE_REMOTE = java.util.Collections.unmodifiableSet(new HashSet<>(java.util.Arrays.asList(EXECUTION_SSH, EXECUTION_TERMINAL_PROVIDER)));
     private static final Set<String> MODE_ALL = java.util.Collections.unmodifiableSet(new HashSet<>(java.util.Arrays.asList(EXECUTION_LOCAL, EXECUTION_SSH, EXECUTION_TERMINAL_PROVIDER)));
 
-    private static final McpToolConfig[] DEFAULT_CONFIGS = new McpToolConfig[] {
-            new McpToolConfig("file_ops", "文件操作", "读取、写入、编辑和删除文件", true,
-                    new String[] {ToolNames.FILE_READ, ToolNames.FILE_WRITE, ToolNames.FILE_EDIT, ToolNames.FILE_DELETE, ToolNames.GLOB, ToolNames.LIST_DIR},
-                    MODE_LOCAL, "file_ops"),
-            new McpToolConfig(ToolNames.AGENT, "Agent", "分派 Agent 处理任务", true,
-                    new String[] {ToolNames.AGENT, ToolNames.AGENT_PIPELINE},
-                    MODE_ALL, "agent"),
-            new McpToolConfig("phone_control", "手机控制", "通过无障碍服务控制本机操作", true,
-                    new String[] {ToolNames.PHONE_SCREENSHOT, ToolNames.PHONE_CLICK, ToolNames.PHONE_SWIPE, ToolNames.PHONE_LONG_PRESS, ToolNames.PHONE_VIEW_HIERARCHY, ToolNames.PHONE_CLICK_VIEW, ToolNames.PHONE_GLOBAL_ACTION},
-                    MODE_ALL, "phone_control"),
-            new McpToolConfig("todo", "任务清单", "维护当前会话的 TODO 列表，状态会注入到 system prompt", true,
-                    new String[] {ToolNames.TODO_UPDATE},
-                    MODE_ALL, "todo"),
-            new McpToolConfig(ToolNames.IMAGE_UNDERSTANDING, "图片理解", "读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容", false,
-                    new String[] {ToolNames.IMAGE_UNDERSTANDING},
-                    MODE_ALL, "image_understanding"),
-            new McpToolConfig(ToolNames.IMAGE_GENERATION, "图片生成", "调用已选择的生图模型生成图片，并以内联 Markdown 图片返回", false,
-                    new String[] {ToolNames.IMAGE_GENERATION},
-                    MODE_ALL, "image_generation"),
-            new McpToolConfig("shell", "SSH Shell", "通过 SSH 执行 shell 命令", true,
-                    new String[] {ToolNames.SHELL_EXECUTE},
-                    MODE_REMOTE, "shell"),
-            new McpToolConfig(ToolNames.WEB_SEARCH, "网页搜索", "搜索互联网并查看网页内容", false,
-                    new String[] {ToolNames.WEB_SEARCH, ToolNames.WEB_FETCH},
-                    MODE_ALL, "web_search")
-    };
-
+    private final Context context;
     private final SettingsRepository settingsRepository;
     private final WebSearchConfigRepository webSearchConfigRepository;
     private final PhoneControlRepository phoneControlRepository;
     private ToolRegistry toolRegistry;
 
     public ToolSettingsRepository(Context context) {
+        this.context = context.getApplicationContext();
         settingsRepository = new SettingsRepository(context);
         webSearchConfigRepository = new WebSearchConfigRepository(context);
         phoneControlRepository = new PhoneControlRepository(context);
+    }
+
+    private List<McpToolConfig> buildDefaultConfigs() {
+        List<McpToolConfig> configs = new ArrayList<>();
+        configs.add(new McpToolConfig("file_ops",
+                context.getString(R.string.tool_group_file_ops_name),
+                context.getString(R.string.tool_group_file_ops_desc),
+                true,
+                new String[] {ToolNames.FILE_READ, ToolNames.FILE_WRITE, ToolNames.FILE_EDIT, ToolNames.FILE_DELETE, ToolNames.GLOB, ToolNames.LIST_DIR},
+                MODE_LOCAL, "file_ops"));
+        configs.add(new McpToolConfig(ToolNames.AGENT,
+                "Agent",
+                context.getString(R.string.tool_group_agent_desc),
+                true,
+                new String[] {ToolNames.AGENT, ToolNames.AGENT_PIPELINE},
+                MODE_ALL, "agent"));
+        configs.add(new McpToolConfig("phone_control",
+                context.getString(R.string.tool_group_phone_control_name),
+                context.getString(R.string.tool_group_phone_control_desc),
+                true,
+                new String[] {ToolNames.PHONE_SCREENSHOT, ToolNames.PHONE_CLICK, ToolNames.PHONE_SWIPE, ToolNames.PHONE_LONG_PRESS, ToolNames.PHONE_VIEW_HIERARCHY, ToolNames.PHONE_CLICK_VIEW, ToolNames.PHONE_GLOBAL_ACTION},
+                MODE_ALL, "phone_control"));
+        configs.add(new McpToolConfig("todo",
+                context.getString(R.string.tool_group_todo_name),
+                context.getString(R.string.tool_group_todo_desc),
+                true,
+                new String[] {ToolNames.TODO_UPDATE},
+                MODE_ALL, "todo"));
+        configs.add(new McpToolConfig(ToolNames.IMAGE_UNDERSTANDING,
+                context.getString(R.string.tool_group_image_understanding_name),
+                context.getString(R.string.tool_group_image_understanding_desc),
+                false,
+                new String[] {ToolNames.IMAGE_UNDERSTANDING},
+                MODE_ALL, "image_understanding"));
+        configs.add(new McpToolConfig(ToolNames.IMAGE_GENERATION,
+                context.getString(R.string.tool_group_image_generation_name),
+                context.getString(R.string.tool_group_image_generation_desc),
+                false,
+                new String[] {ToolNames.IMAGE_GENERATION},
+                MODE_ALL, "image_generation"));
+        configs.add(new McpToolConfig("shell",
+                "SSH Shell",
+                context.getString(R.string.tool_group_shell_desc),
+                true,
+                new String[] {ToolNames.SHELL_EXECUTE},
+                MODE_REMOTE, "shell"));
+        configs.add(new McpToolConfig(ToolNames.WEB_SEARCH,
+                context.getString(R.string.tool_group_web_search_name),
+                context.getString(R.string.tool_group_web_search_desc),
+                true,
+                new String[] {ToolNames.WEB_SEARCH, ToolNames.WEB_FETCH},
+                MODE_ALL, "web_search"));
+        return configs;
     }
 
     public void setToolRegistry(ToolRegistry toolRegistry) {
@@ -107,9 +136,9 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     public synchronized List<McpToolConfig> getConfigs() {
         String executionMode = getExecutionMode();
         ArrayList<McpToolConfig> configs = new ArrayList<>();
-        for (McpToolConfig config : DEFAULT_CONFIGS) {
+        for (McpToolConfig config : buildDefaultConfigs()) {
             boolean enabled = getMcpEnabled(executionMode, config);
-            configs.add(displayConfigForMode(executionMode, config, enabled));
+            configs.add(displayConfigForMode(executionMode, config, enabled, context));
         }
         return configs;
     }
@@ -185,8 +214,15 @@ public final class ToolSettingsRepository implements ToolSettingsStore {
     }
 
     static McpToolConfig displayConfigForMode(String executionMode, McpToolConfig config, boolean enabled) {
+        return displayConfigForMode(executionMode, config, enabled, null);
+    }
+
+    static McpToolConfig displayConfigForMode(String executionMode, McpToolConfig config, boolean enabled, Context context) {
         if ("shell".equals(config.getId()) && EXECUTION_TERMINAL_PROVIDER.equals(normalizeExecutionMode(executionMode))) {
-            return new McpToolConfig(config.getId(), "IPC Shell", "通过终端提供者 IPC 执行 shell 命令", enabled, config.getTools(), config.getSupportedExecutionModes(), config.getIconKey());
+            String ipcDesc = context == null
+                    ? "通过终端提供者 IPC 执行 shell 命令"
+                    : context.getString(R.string.tool_group_ipc_shell_desc);
+            return new McpToolConfig(config.getId(), "IPC Shell", ipcDesc, enabled, config.getTools(), config.getSupportedExecutionModes(), config.getIconKey());
         }
         return new McpToolConfig(config.getId(), config.getName(), config.getDescription(), enabled, config.getTools(), config.getSupportedExecutionModes(), config.getIconKey());
     }

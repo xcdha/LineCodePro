@@ -2,6 +2,7 @@ package cn.lineai.tool.builtin;
 
 import cn.lineai.model.WebSearchConfig;
 import cn.lineai.security.SimpleHttpClient;
+import cn.lineai.tool.builtin.search.BingRssSearchProvider;
 import cn.lineai.tool.builtin.search.BingSearchProvider;
 import cn.lineai.tool.builtin.search.BraveSearchProvider;
 import cn.lineai.tool.builtin.search.DefaultSearchProvider;
@@ -22,6 +23,7 @@ final class WebSearchService {
     WebSearchService() {
         DefaultSearchProvider defaultProvider = new DefaultSearchProvider();
         providerRegistry = new WebSearchProviderRegistry(defaultProvider);
+        providerRegistry.register(new BingRssSearchProvider());
         providerRegistry.register(new TavilySearchProvider());
         providerRegistry.register(new SerpApiSearchProvider());
         providerRegistry.register(new BingSearchProvider());
@@ -30,8 +32,12 @@ final class WebSearchService {
 
     List<SearchResultItem> search(WebSearchConfig config, String query, int limit) throws Exception {
         WebSearchConfig value = config == null ? WebSearchConfig.defaultConfig() : config;
-        if (value.getBaseUrl().length() == 0 || value.getApiKey().length() == 0) {
-            throw new IllegalStateException("网页搜索未配置。请在 MCP 工具设置中填写搜索 API、模型/搜索源和密钥。");
+        if (value.requiresApiKey()) {
+            if (value.getBaseUrl().length() == 0 || value.getApiKey().length() == 0) {
+                throw new IllegalStateException("网页搜索未配置。请在 MCP 工具设置中填写搜索 API、模型/搜索源和密钥。");
+            }
+        } else if (value.getBaseUrl().length() == 0 && !WebSearchConfig.PROVIDER_BING_RSS_FREE.equals(value.getProvider())) {
+            throw new IllegalStateException("网页搜索未配置。请在 MCP 工具设置中填写搜索 API 地址。");
         }
         int maxResults = Math.max(1, Math.min(limit <= 0 ? 5 : limit, 10));
         String providerId = WebSearchConfig.normalizeProvider(value.getProvider());
@@ -45,9 +51,17 @@ final class WebSearchService {
         if (response.code < 200 || response.code >= 300) {
             throw new IllegalStateException("搜索 API " + response.code + ": " + extractErrorText(response.body));
         }
-        JSONObject json = new JSONObject(response.body);
-        List<SearchResultItem> results = provider.normalizeResults(json);
+        List<SearchResultItem> results = parseResults(provider, response.body);
         return results.size() > maxResults ? new ArrayList<>(results.subList(0, maxResults)) : results;
+    }
+
+    private List<SearchResultItem> parseResults(WebSearchProvider provider, String body) throws Exception {
+        List<SearchResultItem> raw = provider.parseRawResponse(body);
+        if (raw != null) {
+            return raw;
+        }
+        JSONObject json = new JSONObject(body);
+        return provider.normalizeResults(json);
     }
 
     String fetchPage(String url, int maxChars) throws Exception {

@@ -3,6 +3,7 @@ package cn.lineai.model;
 import org.json.JSONObject;
 
 public final class WebSearchConfig {
+    public static final String PROVIDER_BING_RSS_FREE = "bing_rss_free";
     public static final String PROVIDER_TAVILY = "tavily";
     public static final String PROVIDER_BRAVE = "brave";
     public static final String PROVIDER_SERPAPI = "serpapi";
@@ -36,11 +37,14 @@ public final class WebSearchConfig {
     }
 
     public static WebSearchConfig defaultConfig() {
-        return defaultConfig(PROVIDER_TAVILY);
+        return defaultConfig(PROVIDER_BING_RSS_FREE);
     }
 
     public static WebSearchConfig defaultConfig(String provider) {
         String normalized = normalizeProvider(provider);
+        if (PROVIDER_BING_RSS_FREE.equals(normalized)) {
+            return new WebSearchConfig(normalized, "https://www.bing.com/search?format=rss", "", "", "q", "", "");
+        }
         if (PROVIDER_BRAVE.equals(normalized)) {
             return new WebSearchConfig(normalized, "https://api.search.brave.com/res/v1/web/search", "", "", "q", "X-Subscription-Token", "");
         }
@@ -54,6 +58,22 @@ public final class WebSearchConfig {
             return new WebSearchConfig(normalized, "", "", "", "q", "Authorization", "");
         }
         return new WebSearchConfig(PROVIDER_TAVILY, "https://api.tavily.com/search", "", "", "query", "Authorization", "");
+    }
+
+    /**
+     * 判断指定 provider 是否需要 API Key。
+     * bing_rss_free 走公开 RSS 端点，无需任何密钥。
+     */
+    public static boolean requiresApiKey(String provider) {
+        String normalized = normalizeProvider(provider);
+        return PROVIDER_BING_RSS_FREE.equals(normalized) ? false : true;
+    }
+
+    /**
+     * 判断当前配置是否需要 API Key。
+     */
+    public boolean requiresApiKey() {
+        return requiresApiKey(provider);
     }
 
     public static WebSearchConfig fromJson(String raw) {
@@ -132,13 +152,15 @@ public final class WebSearchConfig {
 
     public static String normalizeProvider(String provider) {
         String value = safe(provider);
-        if (PROVIDER_BRAVE.equals(value)
+        if (PROVIDER_BING_RSS_FREE.equals(value)
+                || PROVIDER_BRAVE.equals(value)
                 || PROVIDER_SERPAPI.equals(value)
                 || PROVIDER_BING.equals(value)
-                || PROVIDER_CUSTOM.equals(value)) {
+                || PROVIDER_CUSTOM.equals(value)
+                || PROVIDER_TAVILY.equals(value)) {
             return value;
         }
-        return PROVIDER_TAVILY;
+        return PROVIDER_BING_RSS_FREE;
     }
 
     private static String safe(String value) {

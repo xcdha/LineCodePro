@@ -137,10 +137,13 @@ final class ContextCompactionController {
 
     void showCompactConfirmation() {
         ArrayList<SheetOption> options = new ArrayList<>();
-        options.add(new SheetOption("compact:confirm", "确认压缩",
-                "把早期上下文总结成隐藏摘要，旧消息仍保留在历史中。", false));
-        options.add(new SheetOption("compact:cancel", context.getString(R.string.common_cancel), "返回当前对话", false));
-        host.showSheet("压缩上下文", options);
+        options.add(new SheetOption("compact:confirm",
+                context.getString(R.string.context_compact_confirm),
+                context.getString(R.string.context_compact_confirm_desc), false));
+        options.add(new SheetOption("compact:cancel",
+                context.getString(R.string.common_cancel),
+                context.getString(R.string.context_compact_cancel_desc), false));
+        host.showSheet(context.getString(R.string.sheet_more_compact), options);
     }
 
     void startManualContextCompaction() {
@@ -149,11 +152,11 @@ final class ContextCompactionController {
         }
         ModelConfig selectedModel = modelRepository.getSelectedModel();
         if (selectedModel == null) {
-            host.showNotice("还没有可用模型。请先配置模型，再压缩上下文。");
+            host.showNotice(context.getString(R.string.context_compact_no_model));
             return;
         }
         if (messages.size() < 4) {
-            host.showNotice("当前上下文不足，无需压缩。");
+            host.showNotice(context.getString(R.string.context_compact_insufficient));
             return;
         }
         chatSessionStore.ensureCurrentConversation(System.currentTimeMillis());

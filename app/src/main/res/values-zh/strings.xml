@@ -343,6 +343,7 @@
     <string name="screen_tools_provider_brave">Brave Search</string>
     <string name="screen_tools_provider_serpapi">SerpAPI</string>
     <string name="screen_tools_provider_bing">Bing Search</string>
+    <string name="screen_tools_provider_bing_rss_free">Bing RSS Free</string>
     <string name="screen_tools_provider_custom">自定义</string>
     <string name="screen_tools_hint_api_key">搜索服务密钥</string>
     <string name="screen_tools_hint_model">如 basic、advanced、google，可留空</string>
@@ -1129,4 +1130,58 @@
     <string name="composer_model_submenu_query_button">↓ 查询模型</string>
     <string name="composer_model_submenu_count_label">↓ %1$d 个模型</string>
     <string name="composer_model_submenu_query_done_toast">查到 %1$d 个模型，请在管理模型中导入</string>
+
+    <!-- Tool group titles and descriptions (ToolSettingsRepository.DEFAULT_CONFIGS) -->
+    <string name="tool_group_file_ops_name">文件操作</string>
+    <string name="tool_group_file_ops_desc">读取、写入、编辑和删除文件</string>
+    <string name="tool_group_agent_desc">分派 Agent 处理任务</string>
+    <string name="tool_group_phone_control_name">手机控制</string>
+    <string name="tool_group_phone_control_desc">通过无障碍服务控制本机操作</string>
+    <string name="tool_group_todo_name">任务清单</string>
+    <string name="tool_group_todo_desc">维护当前会话的 TODO 列表，状态会注入到 system prompt</string>
+    <string name="tool_group_image_understanding_name">图片理解</string>
+    <string name="tool_group_image_understanding_desc">读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容</string>
+    <string name="tool_group_image_generation_name">图片生成</string>
+    <string name="tool_group_image_generation_desc">调用已选择的生图模型生成图片，并以内联 Markdown 图片返回</string>
+    <string name="tool_group_shell_desc">通过 SSH 执行 shell 命令</string>
+    <string name="tool_group_web_search_name">网页搜索</string>
+    <string name="tool_group_web_search_desc">搜索互联网并查看网页内容</string>
+    <string name="tool_group_ipc_shell_desc">通过终端提供者 IPC 执行 shell 命令</string>
+
+    <!-- Overlay action sheet (more actions menu) -->
+    <string name="sheet_more_tutorial">教程</string>
+    <string name="sheet_more_tutorial_desc">打开初学者教程</string>
+    <string name="sheet_more_settings_desc">模型、主题、数据管理</string>
+    <string name="sheet_more_export">导出对话</string>
+    <string name="sheet_more_export_desc">将当前对话导出为 Markdown 或分享</string>
+    <string name="sheet_more_select_export">选择消息导出</string>
+    <string name="sheet_more_select_export_desc">多选消息后合并导出/分享</string>
+    <string name="sheet_more_compact">压缩上下文</string>
+    <string name="sheet_more_compact_desc">将早期上下文总结为隐藏摘要</string>
+    <string name="sheet_more_clear">清空对话</string>
+    <string name="sheet_more_clear_desc">清空当前对话消息</string>
+
+    <!-- Permission mode sheet -->
+    <string name="permission_mode_auto">自动</string>
+    <string name="permission_mode_auto_desc">自动执行已启用工具，危险工具按策略确认</string>
+    <string name="permission_mode_confirm">确认</string>
+    <string name="permission_mode_confirm_desc">危险操作需要确认后执行</string>
+    <string name="permission_mode_readonly">只读</string>
+    <string name="permission_mode_readonly_desc">仅允许读取、搜索和列目录，禁止写入与 Shell</string>
+    <string name="permission_mode_manage_all_files">管理所有文件权限</string>
+    <string name="permission_mode_storage_granted">已授权，可访问文件存储</string>
+
+    <!-- Context compaction sheet and notices -->
+    <string name="context_compact_confirm">确认压缩</string>
+    <string name="context_compact_confirm_desc">把早期上下文总结成隐藏摘要，旧消息仍保留在历史中。</string>
+    <string name="context_compact_cancel_desc">返回当前对话</string>
+    <string name="context_compact_no_model">还没有可用模型。请先配置模型，再压缩上下文。</string>
+    <string name="context_compact_insufficient">当前上下文不足，无需压缩。</string>
+
+    <!-- Attachment picker (composer + button) -->
+    <string name="attachment_picker_title_ssh">选择 SSH 文件</string>
+    <string name="attachment_picker_title_terminal_provider">选择终端提供者文件</string>
+    <string name="attachment_picker_title_local">选择本地文件</string>
+    <string name="attachment_picker_loading_ssh">正在通过 SFTP 读取 SSH 文件...</string>
+    <string name="attachment_picker_loading_terminal_provider">正在通过 IPC 读取终端提供者目录...</string>
 </resources>
