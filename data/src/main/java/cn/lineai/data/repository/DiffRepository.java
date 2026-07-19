@@ -64,10 +64,10 @@ public final class DiffRepository extends BaseRepository implements DiffStore {
     public synchronized RevertResult revertDiff(String diffId) {
         DiffRecord target = getDiff(diffId);
         if (target == null) {
-            return RevertResult.error("未找到指定的修改记录");
+            return RevertResult.error("Specified diff record not found");
         }
         if (target.isReverted()) {
-            return RevertResult.ok("此修改已撤销");
+            return RevertResult.ok("This change has been reverted");
         }
 
         List<DiffRecord> chain = getDiffChain(target.getFilePath());
@@ -79,11 +79,11 @@ public final class DiffRepository extends BaseRepository implements DiffStore {
             }
         }
         if (targetIndex < 0) {
-            return RevertResult.error("未找到指定的修改记录");
+            return RevertResult.error("Specified diff record not found");
         }
         for (int i = targetIndex + 1; i < chain.size(); i++) {
             if (!chain.get(i).isReverted()) {
-                return RevertResult.error("请先撤销此文件后续的修改");
+                return RevertResult.error("Please revert subsequent changes to this file first");
             }
         }
 
@@ -92,9 +92,9 @@ public final class DiffRepository extends BaseRepository implements DiffStore {
             ContentValues values = new ContentValues();
             values.put("reverted", 1);
             database.getWritableDatabase().update("diff_records", values, "id = ?", new String[] {target.getId()});
-            return RevertResult.ok("已撤销对 " + target.getFilePath() + " 的修改");
+            return RevertResult.ok("Reverted change to " + target.getFilePath());
         } catch (Exception e) {
-            return RevertResult.error("撤销失败: " + e.getMessage());
+            return RevertResult.error("Revert failed: " + e.getMessage());
         }
     }
 
@@ -102,13 +102,13 @@ public final class DiffRepository extends BaseRepository implements DiffStore {
         File file = new File(record.getFilePath());
         if (!record.isOldExists()) {
             if (file.exists() && !file.delete()) {
-                throw new java.io.IOException("无法删除文件: " + record.getFilePath());
+                throw new java.io.IOException("Cannot delete file: " + record.getFilePath());
             }
             return;
         }
         File parent = file.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new java.io.IOException("无法创建父目录: " + parent.getPath());
+            throw new java.io.IOException("Cannot create parent directory: " + parent.getPath());
         }
         FileOutputStream output = new FileOutputStream(file, false);
         try {

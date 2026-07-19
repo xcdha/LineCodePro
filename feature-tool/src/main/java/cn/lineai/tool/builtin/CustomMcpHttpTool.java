@@ -5,6 +5,7 @@ import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpToolSummary;
 import cn.lineai.security.SimpleHttpClient;
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -90,13 +91,13 @@ public final class CustomMcpHttpTool extends BaseTool {
             if (response.code < 200 || response.code >= 300) {
                 return error(response.code + ": " + response.body);
             }
-            return parseResult(response.body);
+            return parseResult(response.body, context);
         } catch (Exception e) {
-            return error("自定义 MCP 调用失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_mcp_call_failed, e.getMessage()));
         }
     }
 
-    private ToolResult parseResult(String text) {
+    private ToolResult parseResult(String text, ToolContext context) {
         try {
             JSONObject parsed = new JSONObject(extractEventData(text));
             if (parsed.has("error") && !parsed.isNull("error")) {
@@ -104,7 +105,7 @@ public final class CustomMcpHttpTool extends BaseTool {
             }
             Object result = parsed.has("result") ? parsed.opt("result") : parsed;
             String content = summarize(result);
-            return ok(content.length() == 0 ? "MCP 工具执行完成" : content);
+            return ok(content.length() == 0 ? context.getString(R.string.tool_mcp_completed) : content);
         } catch (Exception ignored) {
             return ok(text == null ? "" : text);
         }

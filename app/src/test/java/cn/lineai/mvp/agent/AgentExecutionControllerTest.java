@@ -314,7 +314,7 @@ public final class AgentExecutionControllerTest {
 
         assertTrue(result.isError());
         assertEquals("rejected", result.getReviewState());
-        assertTrue(result.getContent().contains("用户拒绝执行"));
+        assertTrue(result.getContent().contains("User rejected"));
         assertTrue(host.clearedReviews.contains("agent_call_agent_0"));
     }
 

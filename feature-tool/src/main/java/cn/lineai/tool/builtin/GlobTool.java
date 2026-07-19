@@ -1,6 +1,7 @@
 package cn.lineai.tool.builtin;
 
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolArgs;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
@@ -58,26 +59,26 @@ public final class GlobTool extends BaseTool {
             ToolArgs.requireNonEmpty(pattern, "pattern");
             File root = FileToolPathPolicy.resolve(context, input.optString("path"));
             if (!root.exists() || !root.isDirectory()) {
-                return error("搜索根目录不存在或不是目录: " + input.optString("path", "."));
+                return error(context.getString(R.string.tool_glob_root_not_found, input.optString("path", ".")));
             }
             ArrayList<String> results = new ArrayList<>();
             Pattern compiled = Pattern.compile(globToRegex(pattern));
             search(root, "", pattern, compiled, results);
             String displayRoot = FileToolPathPolicy.displayPath(context.getHomePath(), root);
             if (results.isEmpty()) {
-                return ok("在 " + displayRoot + " 目录下未找到匹配 \"" + pattern + "\" 的文件。");
+                return ok(context.getString(R.string.tool_glob_no_match, pattern, displayRoot));
             }
             StringBuilder builder = new StringBuilder();
-            builder.append("在 ").append(displayRoot).append(" 目录下找到 ").append(results.size()).append(" 个匹配文件:\n");
+            builder.append(context.getString(R.string.tool_glob_found, results.size(), displayRoot));
             for (String result : results) {
                 builder.append(result).append('\n');
             }
             if (results.size() >= MAX_RESULTS) {
-                builder.append("... (结果过多，已截断)\n");
+                builder.append(context.getString(R.string.tool_glob_truncated));
             }
             return ok(builder.toString().trim());
         } catch (Exception e) {
-            return error("搜索失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_glob_failed, e.getMessage()));
         }
     }
 

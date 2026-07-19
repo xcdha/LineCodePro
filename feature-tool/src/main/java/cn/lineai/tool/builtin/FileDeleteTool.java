@@ -1,6 +1,7 @@
 package cn.lineai.tool.builtin;
 
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -56,10 +57,10 @@ public final class FileDeleteTool extends BaseTool {
         ArrayList<String> paths = paths(input);
         String reason = input.optString("reason").trim();
         if (reason.length() == 0) {
-            return error("删除原因 reason 不能为空");
+            return error(context.getString(R.string.tool_file_delete_reason_empty));
         }
         if (paths.isEmpty()) {
-            return error("paths 不能为空");
+            return error(context.getString(R.string.tool_file_delete_paths_empty));
         }
 
         ArrayList<String> deleted = new ArrayList<>();
@@ -68,19 +69,19 @@ public final class FileDeleteTool extends BaseTool {
             try {
                 File target = FileToolPathPolicy.resolve(context, path);
                 if (!target.exists()) {
-                    errors.add("路径不存在: " + path);
+                    errors.add(context.getString(R.string.tool_file_delete_path_not_found, path));
                     continue;
                 }
                 deleteRecursive(target);
                 deleted.add(FileToolPathPolicy.displayPath(context.getHomePath(), target));
             } catch (Exception e) {
-                errors.add("删除 " + path + " 失败: " + e.getMessage());
+                errors.add(context.getString(R.string.tool_file_delete_item_failed, path, e.getMessage()));
             }
         }
 
         StringBuilder builder = new StringBuilder();
         if (!deleted.isEmpty()) {
-            builder.append("成功删除 ").append(deleted.size()).append(" 项:\n");
+            builder.append(context.getString(R.string.tool_file_delete_success, deleted.size()));
             for (String path : deleted) {
                 builder.append("- ").append(path).append('\n');
             }
@@ -89,13 +90,13 @@ public final class FileDeleteTool extends BaseTool {
             if (builder.length() > 0) {
                 builder.append('\n');
             }
-            builder.append("失败 ").append(errors.size()).append(" 项:\n");
+            builder.append(context.getString(R.string.tool_file_delete_partial_fail, errors.size()));
             for (String error : errors) {
                 builder.append("- ").append(error).append('\n');
             }
         }
         boolean isError = errors.size() > 0 && deleted.isEmpty();
-        String content = builder.length() == 0 ? "没有删除任何文件" : builder.toString().trim();
+        String content = builder.length() == 0 ? context.getString(R.string.tool_file_delete_none) : builder.toString().trim();
         return isError ? error(content) : ok(content);
     }
 
@@ -131,7 +132,7 @@ public final class FileDeleteTool extends BaseTool {
             }
         }
         if (!file.delete()) {
-            throw new java.io.IOException("无法删除 " + file.getPath());
+            throw new java.io.IOException("Unable to delete " + file.getPath());
         }
     }
 }

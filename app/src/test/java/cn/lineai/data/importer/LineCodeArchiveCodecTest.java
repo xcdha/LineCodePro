@@ -122,7 +122,7 @@ public final class LineCodeArchiveCodecTest {
             );
             fail("Expected zip slip entry to be rejected.");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("越界路径"));
+            assertTrue(expected.getMessage().contains("out-of-bounds path"));
         }
     }
 

@@ -1,5 +1,6 @@
 package cn.lineai.tool.builtin;
 
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolContext;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -21,7 +22,7 @@ final class ImageResponseParser {
         JSONObject response = new JSONObject(raw);
         JSONArray data = response.optJSONArray("data");
         if (data == null || data.length() == 0 || data.optJSONObject(0) == null) {
-            throw new Exception("接口没有返回图片数据。");
+            throw new Exception("API did not return image data.");
         }
         JSONObject item = data.getJSONObject(0);
         String revisedPrompt = item.optString("revised_prompt").trim();
@@ -51,12 +52,12 @@ final class ImageResponseParser {
         }
         if (url.length() == 0) {
             if (invalidImageData) {
-                throw new Exception("接口返回了无效的图片数据。");
+                throw new Exception("API returned invalid image data.");
             }
-            throw new Exception("接口没有返回 b64_json、data_url 或 url。");
+            throw new Exception("API did not return b64_json, data_url or url.");
         }
         if (context != null) {
-            context.reportToolProgress(ImageGenerationTool.NAME, "正在读取生成图片...", false);
+            context.reportToolProgress(ImageGenerationTool.NAME, context.getString(R.string.tool_img_parse_reading), false);
         }
         ImageApiClient.DownloadedImage downloaded = apiClient.downloadImage(url);
         return new GeneratedImage(downloaded.mimeType,
@@ -73,7 +74,7 @@ final class ImageResponseParser {
         }
         JSONArray output = response.optJSONArray("output");
         if (output == null || output.length() == 0) {
-            throw new Exception("Responses API 没有返回 output。");
+            throw new Exception("Responses API did not return output.");
         }
         boolean invalidImageData = false;
         for (int i = 0; i < output.length(); i++) {
@@ -98,13 +99,13 @@ final class ImageResponseParser {
             }
             String status = item.optString("status").trim();
             if ("failed".equals(status)) {
-                throw new Exception("Responses API 图片生成失败。");
+                throw new Exception("Responses API image generation failed.");
             }
         }
         if (invalidImageData) {
-            throw new Exception("Responses API 返回了无效的图片数据。");
+            throw new Exception("Responses API returned invalid image data.");
         }
-        throw new Exception("Responses API 没有返回 image_generation_call.result。");
+        throw new Exception("Responses API did not return image_generation_call.result.");
     }
 
     private String mimeFromDataUrl(String dataUrl) {

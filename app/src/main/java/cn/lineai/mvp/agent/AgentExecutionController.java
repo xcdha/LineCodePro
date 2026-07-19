@@ -1,5 +1,7 @@
 package cn.lineai.mvp.agent;
 
+import android.content.Context;
+import cn.lineai.R;
 import cn.lineai.ai.ModelClient;
 import cn.lineai.ai.ModelCompletionException;
 import cn.lineai.ai.ModelCompletionResponse;
@@ -58,6 +60,7 @@ public final class AgentExecutionController {
     private final ModelProtocolFactory modelProtocolFactory = new ModelProtocolFactory();
     private final AgentPromptBuilder promptBuilder;
     private final PipelineDependencyResolver dependencyResolver;
+    private Context context;
     private ToolReviewAwaiter toolReviewAwaiter;
     private java.util.function.BooleanSupplier bypassPathProtectionSupplier = () -> false;
 
@@ -121,6 +124,14 @@ public final class AgentExecutionController {
         this.toolReviewAwaiter = toolReviewAwaiter;
     }
 
+    public void setContext(Context context) {
+        this.context = context;
+    }
+
+    private String string(int resId, String fallback) {
+        return context != null ? context.getString(resId) : fallback;
+    }
+
     public void setBypassPathProtectionSupplier(java.util.function.BooleanSupplier supplier) {
         this.bypassPathProtectionSupplier = supplier != null ? supplier : () -> false;
     }
@@ -180,7 +191,7 @@ public final class AgentExecutionController {
                 toolCallBudget
         );
         StringBuilder builder = new StringBuilder();
-        builder.append("Agent 完成: ").append(description).append('\n')
+        builder.append(string(R.string.agent_execution_completed, "Agent completed: ")).append(description).append('\n')
                 .append("类型: ").append(type).append('\n')
                 .append("工具调用: ").append(result.getToolCallCount()).append('\n')
                 .append("输出:\n").append(result.getOutput());
@@ -221,7 +232,7 @@ public final class AgentExecutionController {
 
         LinkedHashMap<String, AgentRunResult> results = new LinkedHashMap<>();
         StringBuilder summary = new StringBuilder();
-        summary.append("Agent 流水线完成: ").append(agents.size()).append(" 个任务");
+        summary.append(string(R.string.agent_pipeline_completed, "Agent pipeline completed: ")).append(agents.size()).append(" 个任务");
         PipelineProgressSession pipelineProgress = new PipelineProgressSession(
                 parentContext,
                 agents,
@@ -662,7 +673,7 @@ public final class AgentExecutionController {
             String state = toolReviewAwaiter.awaitReview(displayToolCallId, call, cancellationToken);
             progress.setStatus("running", false);
             if ("rejected".equals(state)) {
-                ToolResult rejected = new ToolResult(call.getId(), call.getName(), "用户拒绝执行此工具。", true, "", "rejected", "");
+                ToolResult rejected = new ToolResult(call.getId(), call.getName(), string(R.string.user_rejected_tool, "User rejected this tool."), true, "", "rejected", "");
                 progress.putToolResult(call, rejected);
                 host.addOrReplaceToolResult(progress.snapshotResult());
                 return rejected;

@@ -1,6 +1,7 @@
 package cn.lineai.tool.builtin;
 
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -50,13 +51,13 @@ public final class WebFetchTool extends BaseTool {
     public ToolResult execute(JSONObject input, ToolContext context) {
         String url = input.optString("url").trim();
         if (url.length() == 0) {
-            return error("URL 不能为空。");
+            return error(context.getString(R.string.tool_web_fetch_url_empty));
         }
         try {
             String content = webSearchService.fetchPage(url, input.optInt("maxChars", 12000));
             return ok("URL: " + url + "\n\n" + content);
         } catch (Exception e) {
-            return error("网页查看失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_web_fetch_failed, e.getMessage()));
         }
     }
 }

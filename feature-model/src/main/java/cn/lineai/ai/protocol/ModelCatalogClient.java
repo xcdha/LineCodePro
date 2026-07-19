@@ -33,7 +33,7 @@ public final class ModelCatalogClient {
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
-            throw new ModelCompletionException("模型列表查询失败: " + e.getMessage(), e);
+            throw new ModelCompletionException("Model list query failed: " + e.getMessage(), e);
         }
     }
 
@@ -52,7 +52,7 @@ public final class ModelCatalogClient {
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
-            throw new ModelCompletionException("Codex 模型列表查询失败: " + e.getMessage(), e);
+            throw new ModelCompletionException("Codex model list query failed: " + e.getMessage(), e);
         }
     }
 
@@ -67,7 +67,7 @@ public final class ModelCatalogClient {
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
-            throw new ModelCompletionException("Anthropic 模型列表查询失败: " + e.getMessage(), e);
+            throw new ModelCompletionException("Anthropic model list query failed: " + e.getMessage(), e);
         }
     }
 

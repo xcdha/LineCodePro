@@ -71,7 +71,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
             throw e;
         } catch (Exception e) {
             logParseError("parse_codex_complete", raw, e);
-            throw new ModelCompletionException("Codex Responses 协议解析失败: " + e.getMessage(), e);
+            throw new ModelCompletionException("Codex Responses protocol parse failed: " + e.getMessage(), e);
         }
     }
 
@@ -101,7 +101,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
-            throw new ModelCompletionException("Codex Responses 协议流式解析失败: " + e.getMessage(), e);
+            throw new ModelCompletionException("Codex Responses protocol stream parse failed: " + e.getMessage(), e);
         }
     }
 
@@ -146,7 +146,7 @@ public final class CodexResponsesProtocol extends AbstractHttpModelProtocol {
         }
         JSONObject event = new JSONObject(data);
         if (event.has("error")) {
-            throw new ModelCompletionException("Codex 流式错误: " + event.opt("error"));
+            throw new ModelCompletionException("Codex stream error: " + event.opt("error"));
         }
         String type = event.optString("type");
         if (type.length() == 0) {

@@ -2,6 +2,7 @@ package cn.lineai.tool.builtin;
 
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -68,10 +69,10 @@ public final class CustomAgentExtensionTool extends BaseTool {
     public ToolResult execute(JSONObject input, ToolContext context) {
         String task = input == null ? "" : input.optString("task").trim();
         if (task.length() == 0) {
-            return error("自定义 Agent 任务不能为空。");
+            return error(context != null ? context.getString(R.string.tool_custom_agent_task_empty) : "Custom Agent task cannot be empty.");
         }
         if (context == null || context.getAgentRunner() == null) {
-            return error("Agent 执行器未接入，无法运行自定义 Agent。");
+            return error(context != null ? context.getString(R.string.tool_custom_agent_runner_not_available) : "Agent runner not available, cannot run custom Agent.");
         }
         try {
             String prompt = buildPrompt(task, input.optString("context"));
@@ -95,7 +96,7 @@ public final class CustomAgentExtensionTool extends BaseTool {
             }
             return context.getAgentRunner().runAgent(delegated, context);
         } catch (Exception e) {
-            return error("自定义 Agent 执行失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_custom_agent_failed, e.getMessage()));
         }
     }
 

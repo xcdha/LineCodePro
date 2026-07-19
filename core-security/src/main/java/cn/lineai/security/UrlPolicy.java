@@ -56,11 +56,11 @@ public final class UrlPolicy {
         String normalized = normalizeHttpOrHttpsUrl(rawUrl);
         String name = label == null || label.trim().length() == 0 ? "URL" : label.trim();
         if (normalized.length() == 0) {
-            throw new IllegalArgumentException(name + " 必须以 http:// 或 https:// 开头。");
+            throw new IllegalArgumentException(name + " must start with http:// or https://.");
         }
         URI uri = parse(normalized);
         if (uri != null && "http".equals(lower(uri.getScheme())) && !relaxedHttpEnabled && !isAllowedCleartextHttpHost(uri.getHost())) {
-            throw new IllegalArgumentException(name + " 使用 HTTP 明文时仅允许 localhost、127.0.0.1 或 10.0.2.2。");
+            throw new IllegalArgumentException(name + " using HTTP cleartext is only allowed for localhost, 127.0.0.1, or 10.0.2.2.");
         }
         return normalized;
     }

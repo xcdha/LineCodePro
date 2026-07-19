@@ -4,6 +4,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import cn.lineai.R;
 import cn.lineai.ai.prompt.SkillPromptBuilder;
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.service.SkillFileManager;
@@ -25,6 +26,7 @@ import org.json.JSONObject;
  */
 public final class SkillRepository extends BaseRepository {
 
+    private final Context context;
     private final SkillFileManager fileManager;
     private final SkillPromptBuilder promptBuilder;
     private final AgentExtensionRepository agentRepository;
@@ -32,6 +34,7 @@ public final class SkillRepository extends BaseRepository {
 
     public SkillRepository(Context context, AgentExtensionRepository agentRepository, McpExtensionRepository mcpRepository) {
         super(LineCodeDatabase.getInstance(context.getApplicationContext()));
+        this.context = context.getApplicationContext();
         this.fileManager = new SkillFileManager(context);
         this.promptBuilder = new SkillPromptBuilder(fileManager);
         this.agentRepository = agentRepository;
@@ -67,7 +70,7 @@ public final class SkillRepository extends BaseRepository {
         fileManager.ensureSkillRoots(homePath);
         File source = new File(safe(sourcePath).trim()).getCanonicalFile();
         if (!source.exists()) {
-            throw new IllegalArgumentException("Skill 来源不存在: " + sourcePath);
+            throw new IllegalArgumentException(context.getString(R.string.skill_source_not_found, sourcePath));
         }
         String normalizedLocation = SkillRecord.normalizeLocation(location);
         File root = fileManager.localSkillRoot(homePath, normalizedLocation);

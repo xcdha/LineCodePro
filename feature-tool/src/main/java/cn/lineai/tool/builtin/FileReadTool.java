@@ -2,6 +2,7 @@ package cn.lineai.tool.builtin;
 
 import android.content.Context;
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -65,15 +66,15 @@ public final class FileReadTool extends BaseTool {
         try {
             File file = FileToolPathPolicy.resolve(context, input.optString("file_path"));
             if (!file.exists()) {
-                return error("文件不存在: " + FileToolPathPolicy.displayPath(context.getHomePath(), file));
+                return error(context.getString(R.string.tool_file_read_not_found, FileToolPathPolicy.displayPath(context.getHomePath(), file)));
             }
             if (file.isDirectory()) {
                 StringBuilder builder = new StringBuilder();
                 int[] count = new int[] {0};
-                appendDirectory(builder, file, "", count);
-                String list = builder.length() == 0 ? "(空目录)" : builder.toString().trim();
-                return ok("目录 " + FileToolPathPolicy.displayPath(context.getHomePath(), file) + ":\n" + list
-                        + "\n\n如需读取文件，请指定具体文件路径。");
+                appendDirectory(builder, file, "", count, context);
+                String list = builder.length() == 0 ? context.getString(R.string.tool_file_read_empty_dir) : builder.toString().trim();
+                return ok(context.getString(R.string.tool_file_read_dir_content, FileToolPathPolicy.displayPath(context.getHomePath(), file), list)
+                        + context.getString(R.string.tool_file_read_dir_specify_file));
             }
 
             int startKb = Math.max(0, input.optInt("start_kb", 0));
@@ -82,18 +83,18 @@ public final class FileReadTool extends BaseTool {
 
             // For files > 1MB, refuse to read entirely
             if (file.length() > 1024 * 1024) {
-                return error("文件 " + FileToolPathPolicy.displayPath(context.getHomePath(), file)
-                        + " 大小为 " + (file.length() / 1024) + "KB，超过 1MB 读取限制。\n"
-                        + "请使用 start_kb/end_kb 指定更小的范围，例如："
-                        + "{\"file_path\":\"" + input.optString("file_path") + "\",\"start_kb\":0,\"end_kb\":50}");
+                return error(context.getString(R.string.tool_file_read_exceed_1mb,
+                        FileToolPathPolicy.displayPath(context.getHomePath(), file),
+                        file.length() / 1024,
+                        input.optString("file_path")));
             }
 
             // No KB range specified and file > 50KB: suggest using KB range
             if (!hasKbRange && file.length() > LARGE_FILE_THRESHOLD_BYTES) {
-                return error("文件 " + FileToolPathPolicy.displayPath(context.getHomePath(), file)
-                        + " 大小为 " + (file.length() / 1024) + "KB，单次读取超过 50KB。\n"
-                        + "请使用 start_kb 和 end_kb 指定读取范围，例如："
-                        + "{\"file_path\":\"" + input.optString("file_path") + "\",\"start_kb\":0,\"end_kb\":50}");
+                return error(context.getString(R.string.tool_file_read_exceed_50kb,
+                        FileToolPathPolicy.displayPath(context.getHomePath(), file),
+                        file.length() / 1024,
+                        input.optString("file_path")));
             }
 
             String content = FileIo.readUtf8(file);
@@ -108,8 +109,7 @@ public final class FileReadTool extends BaseTool {
             int startChar = Math.min(startKb * 1024, content.length());
             int endChar = Math.min(endKb * 1024, content.length());
             if (startChar >= content.length()) {
-                return error("start_kb=" + startKb + " 超出文件大小（文件共 "
-                        + (content.length() / 1024) + "KB）");
+                return error(context.getString(R.string.tool_file_read_start_out_of_range, startKb, content.length() / 1024));
             }
 
             // Snap to line boundaries
@@ -140,14 +140,12 @@ public final class FileReadTool extends BaseTool {
                 if (content.charAt(i) == '\n') totalLines++;
             }
             if (startChar > 0 || endChar < content.length()) {
-                result.append("\n\n... (共 ").append(totalLines).append(" 行，")
-                        .append("显示 KB ").append(startKb).append('-').append(endKb)
-                        .append(" / 共 ").append(content.length() / 1024).append("KB)");
+                result.append(context.getString(R.string.tool_file_read_range_info, totalLines, startKb, endKb, content.length() / 1024));
             }
 
             return ok(ToolResult.truncateContent(result.toString()));
         } catch (Exception e) {
-            return error("读取文件失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_file_read_failed, e.getMessage()));
         }
     }
 
@@ -163,7 +161,7 @@ public final class FileReadTool extends BaseTool {
         return sb.toString();
     }
 
-    private void appendDirectory(StringBuilder builder, File dir, String parentPath, int[] count) {
+    private void appendDirectory(StringBuilder builder, File dir, String parentPath, int[] count, ToolContext context) {
         if (count[0] >= MAX_DIRECTORY_ITEMS) {
             return;
         }
@@ -179,14 +177,14 @@ public final class FileReadTool extends BaseTool {
         });
         for (File item : items) {
             if (count[0] >= MAX_DIRECTORY_ITEMS) {
-                builder.append("... (目录项过多，已截断)\n");
+                builder.append(context.getString(R.string.tool_file_read_dir_truncated));
                 return;
             }
             String relative = parentPath.length() == 0 ? item.getName() : parentPath + "/" + item.getName();
             if (item.isDirectory()) {
                 builder.append("[DIR]  ").append(relative).append("/\n");
                 count[0]++;
-                appendDirectory(builder, item, relative, count);
+                appendDirectory(builder, item, relative, count, context);
             } else {
                 builder.append("[FILE] ").append(relative).append('\n');
                 count[0]++;

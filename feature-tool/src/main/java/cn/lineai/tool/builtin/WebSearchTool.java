@@ -3,6 +3,7 @@ package cn.lineai.tool.builtin;
 import cn.lineai.data.repository.WebSearchConfigRepository;
 import cn.lineai.model.WebSearchConfig;
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -70,13 +71,13 @@ public final class WebSearchTool extends BaseTool {
     public ToolResult execute(JSONObject input, ToolContext context) {
         String query = input.optString("query").trim();
         if (query.length() == 0) {
-            return error("搜索关键词不能为空。");
+            return error(context.getString(R.string.tool_web_search_query_empty));
         }
         int limit = input.optInt("limit", 5);
         try {
             List<SearchResultItem> results = webSearchService.search(config(), query, limit);
             if (results.isEmpty()) {
-                return ok("未搜索到与 \"" + query + "\" 相关的网页结果。");
+                return ok(context.getString(R.string.tool_web_search_no_results, query));
             }
             StringBuilder content = new StringBuilder();
             for (int i = 0; i < results.size(); i++) {
@@ -95,7 +96,7 @@ public final class WebSearchTool extends BaseTool {
             }
             return ok(content.toString());
         } catch (Exception e) {
-            return error("网页搜索失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_web_search_failed, e.getMessage()));
         }
     }
 

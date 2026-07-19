@@ -1,5 +1,6 @@
 package cn.lineai.tool;
 
+import android.content.Context;
 import cn.lineai.data.repository.PromptTemplateRepository;
 import cn.lineai.data.repository.SshFileTreeStore;
 import cn.lineai.data.repository.ToolSettingsStore;
@@ -33,6 +34,7 @@ public final class ToolContext {
     private final ModelServiceProvider modelServiceProvider;
     private final PromptTemplateRepository promptTemplateRepository;
     private final boolean bypassPathProtection;
+    private final Context appContext;
 
     private ToolContext(
             String homePath,
@@ -46,7 +48,8 @@ public final class ToolContext {
             SshFileTreeStore sshFileTreeRepository,
             ModelServiceProvider modelServiceProvider,
             PromptTemplateRepository promptTemplateRepository,
-            boolean bypassPathProtection
+            boolean bypassPathProtection,
+            Context appContext
     ) {
         this.homePath = homePath == null ? "" : homePath;
         this.extraWriteRoots = immutableRoots(extraWriteRoots);
@@ -60,6 +63,7 @@ public final class ToolContext {
         this.modelServiceProvider = modelServiceProvider;
         this.promptTemplateRepository = promptTemplateRepository;
         this.bypassPathProtection = bypassPathProtection;
+        this.appContext = appContext;
     }
 
     public static Builder builder() {
@@ -87,7 +91,7 @@ public final class ToolContext {
     }
 
     public ToolContext withToolCallId(String nextToolCallId) {
-        return new ToolContext(homePath, extraWriteRoots, agentRunner, nextToolCallId, progressListener, todoStateStore, toolSettingsStore, modelRepository, sshFileTreeRepository, modelServiceProvider, promptTemplateRepository, bypassPathProtection);
+        return new ToolContext(homePath, extraWriteRoots, agentRunner, nextToolCallId, progressListener, todoStateStore, toolSettingsStore, modelRepository, sshFileTreeRepository, modelServiceProvider, promptTemplateRepository, bypassPathProtection, appContext);
     }
 
     public static final class Builder {
@@ -103,6 +107,7 @@ public final class ToolContext {
         private ModelServiceProvider modelServiceProvider;
         private PromptTemplateRepository promptTemplateRepository;
         private boolean bypassPathProtection;
+        private Context appContext;
 
         public Builder homePath(String v) { this.homePath = v; return this; }
         public Builder extraWriteRoots(List<String> v) { this.extraWriteRoots = v; return this; }
@@ -116,12 +121,13 @@ public final class ToolContext {
         public Builder modelServiceProvider(ModelServiceProvider v) { this.modelServiceProvider = v; return this; }
         public Builder promptTemplateRepository(PromptTemplateRepository v) { this.promptTemplateRepository = v; return this; }
         public Builder bypassPathProtection(boolean v) { this.bypassPathProtection = v; return this; }
+        public Builder appContext(Context v) { this.appContext = v; return this; }
 
         public ToolContext build() {
             return new ToolContext(homePath, extraWriteRoots, agentRunner, toolCallId,
                     progressListener, todoStateStore, toolSettingsStore, modelRepository,
                     sshFileTreeRepository, modelServiceProvider, promptTemplateRepository,
-                    bypassPathProtection);
+                    bypassPathProtection, appContext);
         }
     }
 
@@ -153,6 +159,18 @@ public final class ToolContext {
 
     public PromptTemplateRepository getPromptTemplateRepository() {
         return promptTemplateRepository;
+    }
+
+    public Context getAndroidContext() {
+        return appContext;
+    }
+
+    public String getString(int resId) {
+        return appContext != null ? appContext.getString(resId) : "";
+    }
+
+    public String getString(int resId, Object... formatArgs) {
+        return appContext != null ? appContext.getString(resId, formatArgs) : "";
     }
 
     private List<String> immutableRoots(List<String> roots) {

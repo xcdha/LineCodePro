@@ -1,6 +1,7 @@
 package cn.lineai.tool.builtin;
 
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolArgs;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
@@ -58,18 +59,18 @@ public final class FileEditTool extends BaseTool {
             String newString = input.optString("new_string");
             ToolArgs.requireNonEmpty(path, "file_path");
             if (oldString.length() == 0) {
-                return error("old_string 不能为空");
+                return error(context.getString(R.string.tool_file_edit_old_string_empty));
             }
             File file = FileToolPathPolicy.resolve(context, path);
             if (!file.exists()) {
-                return error("文件不存在: " + FileToolPathPolicy.displayPath(context.getHomePath(), file));
+                return error(context.getString(R.string.tool_file_edit_not_found, FileToolPathPolicy.displayPath(context.getHomePath(), file)));
             }
             if (file.isDirectory()) {
-                return error("路径是一个目录，无法编辑文件: " + path + "\n如需编辑文件，请指定具体文件路径。");
+                return error(context.getString(R.string.tool_file_edit_is_directory, path));
             }
             String content = FileIo.readUtf8(file);
             if (!content.contains(oldString)) {
-                return error("未找到匹配的文本");
+                return error(context.getString(R.string.tool_file_edit_no_match));
             }
             int count = countOccurrences(content, oldString);
             String next = content.replace(oldString, newString);
@@ -79,10 +80,9 @@ public final class FileEditTool extends BaseTool {
             } finally {
                 output.close();
             }
-            return ok("成功编辑文件 " + FileToolPathPolicy.displayPath(context.getHomePath(), file)
-                    + " (" + count + " 处匹配已替换)");
+            return ok(context.getString(R.string.tool_file_edit_success, FileToolPathPolicy.displayPath(context.getHomePath(), file), count));
         } catch (Exception e) {
-            return error("编辑文件失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_file_edit_failed, e.getMessage()));
         }
     }
 

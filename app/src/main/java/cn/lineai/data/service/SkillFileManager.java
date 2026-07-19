@@ -2,6 +2,7 @@ package cn.lineai.data.service;
 
 import android.content.Context;
 import android.net.Uri;
+import cn.lineai.R;
 import cn.lineai.model.SkillRecord;
 import cn.lineai.model.Strings;
 import cn.lineai.workspace.WorkspacePaths;
@@ -121,7 +122,7 @@ public final class SkillFileManager {
             return new File(homePath, ".linecode/skills");
         }
         if (SkillRecord.LOCATION_SSH.equals(location)) {
-            throw new IllegalArgumentException("SSH Skills 目录请在 SSH Shell 中使用 ~/.linecode/skills 操作。");
+            throw new IllegalArgumentException(context.getString(R.string.skill_ssh_directory_hint));
         }
         return workspacePaths.getSkillsRoot();
     }
@@ -464,7 +465,7 @@ public final class SkillFileManager {
                 File out = new File(target, entry.getName()).getCanonicalFile();
                 if (!out.getPath().equals(canonicalTarget.getPath())
                         && !out.getPath().startsWith(canonicalTarget.getPath() + File.separator)) {
-                    throw new IllegalArgumentException("ZIP 包含越界路径: " + entry.getName());
+                    throw new IllegalArgumentException(context.getString(R.string.skill_zip_entry_out_of_bounds, entry.getName()));
                 }
                 if (entry.isDirectory()) {
                     out.mkdirs();

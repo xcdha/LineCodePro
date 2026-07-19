@@ -1221,4 +1221,32 @@
     <string name="attachment_picker_title_local">选择本地文件</string>
     <string name="attachment_picker_loading_ssh">正在通过 SFTP 读取 SSH 文件...</string>
     <string name="attachment_picker_loading_terminal_provider">正在通过 IPC 读取终端提供者目录...</string>
+
+    <!-- MemoryExtractionService -->
+    <string name="memory_extraction_json_only">请仅返回 JSON。</string>
+
+    <!-- AgentExecutionController -->
+    <string name="agent_execution_completed">Agent 完成: </string>
+    <string name="agent_pipeline_completed">Agent 流水线完成: </string>
+    <string name="user_rejected_tool">用户拒绝执行此工具。</string>
+
+    <!-- RemoteFileTreeController -->
+    <string name="remote_file_tree_loading">正在读取...</string>
+
+    <!-- SkillRepository -->
+    <string name="skill_source_not_found">Skill 来源不存在: %1$s</string>
+
+    <!-- SkillFileManager -->
+    <string name="skill_ssh_directory_hint">SSH Skills 目录请在 SSH Shell 中使用 ~/.linecode/skills 操作。</string>
+    <string name="skill_zip_entry_out_of_bounds">ZIP 包含越界路径: %1$s</string>
+
+    <!-- ExtensionDraftController -->
+    <string name="extension_draft_missing_fields">AI 返回的配置缺少 name、slug 或 prompt。</string>
+    <string name="extension_draft_invalid_json">AI 没有返回有效 JSON。</string>
+
+    <!-- ModelPromptController i18n strings -->
+    <string name="prompt_attachment_files_header">## 附加文件位置</string>
+    <string name="prompt_attachment_files_description">这些路径来自用户在输入框左侧选择的文件；除非用户明确要求，不要在回复中原样复述。</string>
+    <string name="prompt_tools_unavailable">## 可用工具\n当前没有可用工具。</string>
+    <string name="prompt_user_message_label">用户消息 </string>
 </resources>

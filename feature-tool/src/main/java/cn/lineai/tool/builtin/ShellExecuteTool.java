@@ -11,6 +11,7 @@ import cn.lineai.ipc.terminal.TerminalShellResult;
 import cn.lineai.ssh.SshService;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ExceptionUtils;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -92,7 +93,7 @@ public final class ShellExecuteTool extends BaseTool {
         String inputCommand = input.optString("command", "");
         String inputCwd = input.optString("cwd", "");
         if (inputCommand.trim().length() == 0) {
-            return error("命令不能为空");
+            return error(context.getString(R.string.tool_shell_command_empty));
         }
         int timeoutMs = Math.max(1000, Math.min(input.optInt("timeoutMs", 30000), 300000));
         String cwd = inputCwd.trim().length() > 0
@@ -119,16 +120,16 @@ public final class ShellExecuteTool extends BaseTool {
 
     private ToolResult executeViaTerminalProvider(String command, String cwd, long timeoutMs, ToolContext context) {
         if (ipcProviderManager == null) {
-            return error("终端提供者管理器未初始化。");
+            return error(context.getString(R.string.tool_shell_ipc_not_init));
         }
         TerminalIpcProvider provider = ipcProviderManager.getProviderByType(IpcProviderType.TERMINAL) instanceof TerminalIpcProvider
                 ? (TerminalIpcProvider) ipcProviderManager.getProviderByType(IpcProviderType.TERMINAL)
                 : null;
         if (provider == null) {
-            return error("没有已绑定的终端提供者。请在设置中添加并启用终端提供者。");
+            return error(context.getString(R.string.tool_shell_no_provider));
         }
         if (!provider.isBound()) {
-            return error("终端提供者服务未绑定。");
+            return error(context.getString(R.string.tool_shell_provider_not_bound));
         }
         if (context != null) {
             context.reportToolProgress(getName(), "", false);
@@ -157,27 +158,27 @@ public final class ShellExecuteTool extends BaseTool {
             });
             String output = streamedOutput.toString().trim();
             if (!result.isSuccess()) {
-                String message = "命令执行失败，退出码: " + result.getExitCode();
-                return error(output.length() == 0 ? message : truncateOutput(output) + "\n" + message);
+                String message = context.getString(R.string.tool_shell_exec_failed_exit, result.getExitCode());
+                return error(output.length() == 0 ? message : truncateOutput(output, context) + "\n" + message);
             }
             if (output.length() == 0) {
-                return ok("命令执行完成，无输出");
+                return ok(context.getString(R.string.tool_shell_exec_no_output));
             }
-            return ok(truncateOutput(output));
+            return ok(truncateOutput(output, context));
         } catch (Exception e) {
             restoreInterrupt(e);
             String existing;
             synchronized (streamedOutput) {
                 existing = streamedOutput.toString().trim();
             }
-            String message = "命令执行失败: " + describeException(e);
-            return error(existing.length() == 0 ? message : truncateOutput(existing) + "\n" + message);
+            String message = context.getString(R.string.tool_shell_exec_failed, describeException(e));
+            return error(existing.length() == 0 ? message : truncateOutput(existing, context) + "\n" + message);
         }
     }
 
     private ToolResult executeViaSsh(String inputCommand, String cwd, long timeoutMs, ToolContext context) {
         if (sshService == null) {
-            return error("当前环境未初始化 SSH 服务。");
+            return error(context.getString(R.string.tool_shell_ssh_not_init));
         }
         String command = cwd.length() > 0
                 ? "cd " + shellQuote(cwd) + " && " + inputCommand
@@ -197,21 +198,21 @@ public final class ShellExecuteTool extends BaseTool {
                 }
             });
             if (output.length() == 0) {
-                return ok("命令执行完成，无输出");
+                return ok(context.getString(R.string.tool_shell_exec_no_output));
             }
-            return ok(truncateOutput(output));
+            return ok(truncateOutput(output, context));
         } catch (Exception e) {
             restoreInterrupt(e);
             String existing;
             synchronized (streamedOutput) {
                 existing = streamedOutput.toString().trim();
             }
-            String message = "命令执行失败: " + describeException(e);
-            return error(existing.length() == 0 ? message : truncateOutput(existing) + "\n" + message);
+            String message = context.getString(R.string.tool_shell_exec_failed, describeException(e));
+            return error(existing.length() == 0 ? message : truncateOutput(existing, context) + "\n" + message);
         }
     }
 
-    private String truncateOutput(String output) {
+    private String truncateOutput(String output, ToolContext context) {
         if (output == null || output.length() <= ToolResult.MAX_TOOL_RESULT_CHARS) {
             return output;
         }
@@ -220,7 +221,7 @@ public final class ShellExecuteTool extends BaseTool {
             if (output.charAt(i) == '\n') lines++;
         }
         String truncated = ToolResult.truncateContent(output);
-        return "(总行数: " + lines + ")\n" + truncated;
+        return context.getString(R.string.tool_shell_output_line_count, lines) + truncated;
     }
 
     private String shellQuote(String value) {

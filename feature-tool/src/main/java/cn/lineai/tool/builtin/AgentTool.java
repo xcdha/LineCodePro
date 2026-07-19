@@ -1,6 +1,7 @@
 package cn.lineai.tool.builtin;
 
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -70,19 +71,19 @@ public final class AgentTool extends BaseTool {
         String description = input.optString("description").trim();
         String prompt = input.optString("prompt").trim();
         if (!TYPE_EXPLORE.equals(type) && !TYPE_SUB_CODING.equals(type)) {
-            return error("Agent 类型只能是 explore 或 sub-coding。");
+            return error(context.getString(R.string.tool_agent_invalid_type));
         }
         if (TYPE_EXPLORE.equals(type) && hasScope(input.optJSONArray("write_scope"))) {
-            return error("explore Agent 不能声明 write_scope，也不能写入文件。");
+            return error(context.getString(R.string.tool_agent_explore_no_write));
         }
         if (description.length() == 0) {
-            return error("Agent description 不能为空。");
+            return error(context.getString(R.string.tool_agent_description_empty));
         }
         if (prompt.length() == 0) {
-            return error("Agent prompt 不能为空。");
+            return error(context.getString(R.string.tool_agent_prompt_empty));
         }
         if (context == null || context.getAgentRunner() == null) {
-            return error("Agent 执行器未接入，无法运行子 Agent。");
+            return error(context.getString(R.string.tool_agent_runner_not_available));
         }
         try {
             JSONObject normalized = new JSONObject(input.toString())
@@ -91,7 +92,7 @@ public final class AgentTool extends BaseTool {
                     .put("prompt", prompt);
             return context.getAgentRunner().runAgent(normalized, context);
         } catch (Exception e) {
-            return error("Agent 参数解析失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_agent_parse_failed, e.getMessage()));
         }
     }
 

@@ -3,6 +3,7 @@ package cn.lineai.tool.builtin;
 import cn.lineai.model.TodoItem;
 import cn.lineai.state.TodoStateStore;
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -68,11 +69,11 @@ public final class TodoUpdateTool extends BaseTool {
     @Override
     public ToolResult execute(JSONObject input, ToolContext context) {
         if (input == null) {
-            return error("参数不能为空。");
+            return error(context.getString(R.string.tool_todo_params_empty));
         }
         JSONArray rawArray = input.optJSONArray("items");
         if (rawArray == null) {
-            return error("缺少 items 数组。");
+            return error(context.getString(R.string.tool_todo_items_missing));
         }
         List<TodoItem> parsed = new ArrayList<>();
         for (int i = 0; i < rawArray.length(); i++) {
@@ -87,16 +88,16 @@ public final class TodoUpdateTool extends BaseTool {
         }
         TodoStateStore store = context == null ? null : context.getTodoStateStore();
         if (store == null) {
-            return error("TODO 状态存储未初始化。");
+            return error(context.getString(R.string.tool_todo_store_not_init));
         }
         store.replace(parsed);
         int total = store.totalCount();
         int done = store.completedCount();
         String summary;
         if (total == 0) {
-            summary = "已清空 TODO 列表。";
+            summary = context.getString(R.string.tool_todo_cleared);
         } else {
-            summary = "TODO 列表已更新，共 " + total + " 项，已完成 " + done + " 项。";
+            summary = context.getString(R.string.tool_todo_updated, total, done);
         }
         return ok(summary);
     }

@@ -1,6 +1,7 @@
 package cn.lineai.context;
 
 import android.content.Context;
+import cn.lineai.R;
 import cn.lineai.ai.ModelClient;
 import cn.lineai.ai.ModelCompletionResponse;
 import cn.lineai.ai.message.ModelMessage;
@@ -70,7 +71,7 @@ public final class MemoryExtractionService {
         String prompt = template().render(values);
         ArrayList<ModelMessage> messages = new ArrayList<>();
         messages.add(new SystemModelMessage(prompt));
-        messages.add(new UserModelMessage("请仅返回 JSON。"));
+        messages.add(new UserModelMessage(context.getString(R.string.memory_extraction_json_only)));
         ModelCompletionResponse response = modelClient.complete(selectedModel, messages);
         return parseCandidates(response.getText(), userInput);
     }
@@ -86,9 +87,9 @@ public final class MemoryExtractionService {
             values.put("TRANSCRIPT", trimForPrompt(transcript, MAX_TRANSCRIPT_CHARS));
             ArrayList<ModelMessage> messages = new ArrayList<>();
             messages.add(new SystemModelMessage(skillTemplate().render(values)));
-            messages.add(new UserModelMessage("请仅返回 JSON。"));
-            ModelCompletionResponse response = modelClient.complete(selectedModel, messages);
-            for (ExtractedSkill skill : parseSkills(response.getText())) {
+            messages.add(new UserModelMessage(context.getString(R.string.memory_extraction_json_only)));
+        ModelCompletionResponse response = modelClient.complete(selectedModel, messages);
+        for (ExtractedSkill skill : parseSkills(response.getText())) {
                 if (skillExists(projectId, skill.name)) {
                     continue;
                 }

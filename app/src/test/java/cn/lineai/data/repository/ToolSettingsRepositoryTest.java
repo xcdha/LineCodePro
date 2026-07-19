@@ -58,7 +58,7 @@ public final class ToolSettingsRepositoryTest {
         Assert.assertTrue(prompt.contains("agent_pipeline [system]"));
         Assert.assertTrue(prompt.contains("\"depends_on\""));
         Assert.assertFalse(prompt.contains("shell_execute"));
-        Assert.assertTrue(prompt.contains("<tool_calls><tool_call name=\"工具名\">"));
+        Assert.assertTrue(prompt.contains("<tool_calls><tool_call name=\"tool_name\">"));
     }
 
     @Test
@@ -110,8 +110,8 @@ public final class ToolSettingsRepositoryTest {
                 true
         );
 
-        Assert.assertTrue(prompt.contains("原生 tools/function calling"));
-        Assert.assertTrue(prompt.contains("不要把工具调用 JSON、XML、<tool_calls>"));
+        Assert.assertTrue(prompt.contains("native tools/function calling"));
+        Assert.assertTrue(prompt.contains("do not output tool call JSON, XML, <tool_calls>"));
     }
 
     @Test
@@ -165,8 +165,8 @@ public final class ToolSettingsRepositoryTest {
         Assert.assertTrue(prompt.contains("以内联 Markdown 图片返回"));
         Assert.assertTrue(prompt.contains("mcpx_test_lookup"));
         Assert.assertTrue(prompt.contains("调用测试 MCP"));
-        Assert.assertTrue(prompt.contains("本地文件读写和文件搜索已禁用"));
-        Assert.assertTrue(prompt.contains("Agent、Agent Pipeline、任务清单仍可用"));
+        Assert.assertTrue(prompt.contains("Local file read/write and file search are disabled"));
+        Assert.assertTrue(prompt.contains("Agent, Agent Pipeline, and todo list remain available"));
     }
 
     @Test
@@ -256,10 +256,10 @@ public final class ToolSettingsRepositoryTest {
         Assert.assertTrue(prompt.contains("通过 IPC 读取终端提供者环境图片"));
         Assert.assertTrue(prompt.contains("image_generation"));
         Assert.assertTrue(prompt.contains("以内联 Markdown 图片返回"));
-        Assert.assertTrue(prompt.contains("终端提供者（Terminal Provider）"));
+        Assert.assertTrue(prompt.contains("Terminal Provider"));
         Assert.assertTrue(prompt.contains("通过终端提供者 IPC 执行"));
-        Assert.assertTrue(prompt.contains("本地文件读写和文件搜索已禁用"));
-        Assert.assertTrue(prompt.contains("Agent、Agent Pipeline、任务清单仍可用"));
+        Assert.assertTrue(prompt.contains("Local file read/write and file search are disabled"));
+        Assert.assertTrue(prompt.contains("Agent, Agent Pipeline, and todo list remain available"));
     }
 
     @Test
@@ -316,7 +316,7 @@ public final class ToolSettingsRepositoryTest {
                 true
         );
 
-        Assert.assertTrue(prompt.contains("原生 tools/function calling"));
+        Assert.assertTrue(prompt.contains("native tools/function calling"));
     }
 
     @Test
@@ -342,7 +342,7 @@ public final class ToolSettingsRepositoryTest {
                 false
         );
 
-        Assert.assertTrue(prompt.contains("<tool_calls><tool_call name=\"工具名\">"));
+        Assert.assertTrue(prompt.contains("<tool_calls><tool_call name=\"tool_name\">"));
     }
 
     @Test
@@ -376,7 +376,7 @@ public final class ToolSettingsRepositoryTest {
                 false
         );
 
-        Assert.assertTrue(prompt.contains("当前没有可用工具"));
+        Assert.assertTrue(prompt.contains("No tools are available"));
     }
 
     private static final class DummyCustomMcpTool extends BaseTool {

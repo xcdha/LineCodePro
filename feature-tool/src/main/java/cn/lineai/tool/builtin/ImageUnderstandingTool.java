@@ -12,6 +12,7 @@ import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelStore;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ModelServiceProvider;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -92,37 +93,37 @@ public final class ImageUnderstandingTool extends BaseTool {
         PromptTemplateRepository promptTemplateRepository = context != null ? context.getPromptTemplateRepository() : null;
         SshFileTreeStore sshFileTreeRepository = context != null ? context.getSshFileTreeRepository() : null;
         if (settingsRepository == null || modelRepository == null) {
-            return error("图片理解工具未接入应用上下文。");
+            return error(context.getString(R.string.tool_img_under_no_context));
         }
         String path = first(input, "path", "image_path", "file_path");
         if (path.length() == 0) {
-            return error("图片路径不能为空。");
+            return error(context.getString(R.string.tool_img_under_path_empty));
         }
         String prompt = input.optString("prompt").trim();
         if (prompt.length() == 0) {
-            prompt = "请描述这张图片的内容。";
+            prompt = context.getString(R.string.tool_img_under_default_prompt);
         }
         ModelConfig model = selectedModel(settingsRepository, modelRepository);
         if (model == null) {
-            return error("图片理解未选择模型。请在 设置 -> 工具设置 -> 图片操作 中选择视觉模型。");
+            return error(context.getString(R.string.tool_img_under_no_model));
         }
         if (modelServiceProvider == null) {
-            return error("图片理解工具未接入模型服务。");
+            return error(context.getString(R.string.tool_img_under_no_model_service));
         }
         if (!modelServiceProvider.supportsImageUnderstanding(model.getProtocolType())) {
-            return error("本地 GGUF 协议暂不支持图片理解工具。请选择 OpenAI、Codex 或 Anthropic 协议模型。");
+            return error(context.getString(R.string.tool_img_under_unsupported_protocol));
         }
         try {
             ImageBytes image = readImageBytes(path, context, sshFileTreeRepository, settingsRepository);
             String mimeType = mimeType(image.path);
             if (!isSupportedMimeType(mimeType)) {
-                return error("不支持的图片格式: " + image.path + "。支持 PNG、JPEG、WebP 和 GIF。");
+                return error(context.getString(R.string.tool_img_under_unsupported_format, image.path));
             }
             String rawInput = rawInputJson(prompt, mimeType, android.util.Base64.encodeToString(image.bytes, android.util.Base64.NO_WRAP));
             String text = modelServiceProvider.completeImageUnderstanding(model, systemPrompt(promptTemplateRepository), prompt, rawInput).trim();
-            return ok(text.length() == 0 ? "视觉模型没有返回内容。" : text);
+            return ok(text.length() == 0 ? context.getString(R.string.tool_img_under_no_content) : text);
         } catch (Exception e) {
-            return error("图片理解失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_img_under_failed, e.getMessage()));
         }
     }
 
@@ -156,39 +157,39 @@ public final class ImageUnderstandingTool extends BaseTool {
     private ImageBytes readImageBytes(String path, ToolContext context, SshFileTreeStore sshFileTreeRepository, ToolSettingsStore settingsRepository) throws Exception {
         if (isTerminalProviderMode(settingsRepository)) {
             if (ipcProviderManager == null) {
-                throw new IllegalStateException("终端提供者图片理解未接入应用上下文。");
+                throw new IllegalStateException("Image understanding via terminal provider is not connected to the app context.");
             }
             TerminalIpcProvider provider = ipcProviderManager.getProviderByType(IpcProviderType.TERMINAL) instanceof TerminalIpcProvider
                     ? (TerminalIpcProvider) ipcProviderManager.getProviderByType(IpcProviderType.TERMINAL)
                     : null;
             if (provider == null || !provider.isBound()) {
-                throw new IllegalStateException("没有已绑定的终端提供者。");
+                throw new IllegalStateException("No bound terminal provider.");
             }
             String remotePath = resolveSshPath(path, context == null ? "" : context.getHomePath());
             if (context != null) {
-                context.reportToolProgress(getName(), "正在通过 IPC 读取图片...", false);
+                context.reportToolProgress(getName(), context.getString(R.string.tool_img_under_ipc_reading), false);
             }
             return new ImageBytes(remotePath, provider.readFile(remotePath));
         }
         if (isSshMode(settingsRepository)) {
             if (sshFileTreeRepository == null) {
-                throw new IllegalStateException("SSH 图片理解未接入应用上下文。");
+                throw new IllegalStateException("Image understanding via SSH is not connected to the app context.");
             }
             String remotePath = resolveSshPath(path, context == null ? "" : context.getHomePath());
             if (context != null) {
-                context.reportToolProgress(getName(), "正在通过 SFTP 读取图片...", false);
+                context.reportToolProgress(getName(), context.getString(R.string.tool_img_under_sftp_reading), false);
             }
             return new ImageBytes(remotePath, sshFileTreeRepository.readFileBytes(remotePath, MAX_IMAGE_BYTES));
         }
         File file = resolveLocalImage(path, context);
         if (!file.exists()) {
-            throw new IllegalStateException("图片文件不存在: " + path);
+            throw new IllegalStateException("Image file not found: " + path);
         }
         if (file.isDirectory()) {
-            throw new IllegalStateException("路径是目录，无法作为图片理解: " + path);
+            throw new IllegalStateException("Path is a directory, cannot process as image: " + path);
         }
         if (file.length() > MAX_IMAGE_BYTES) {
-            throw new IllegalStateException("图片过大，当前上限为 10 MB: " + path);
+            throw new IllegalStateException("Image too large, current limit is 10 MB: " + path);
         }
         return new ImageBytes(file.getAbsolutePath(), readBytes(file));
     }

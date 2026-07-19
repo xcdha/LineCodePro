@@ -80,7 +80,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             throw e;
         } catch (Exception e) {
             logParseError("parse_openai_complete", raw, e);
-            throw new ModelCompletionException("OpenAI 兼容协议解析失败: " + e.getMessage(), e);
+            throw new ModelCompletionException("OpenAI compatible protocol parse failed: " + e.getMessage(), e);
         }
     }
 
@@ -119,7 +119,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 }
                 JSONObject event = new JSONObject(data);
                 if (event.has("error")) {
-                    throw new ModelCompletionException("OpenAI 流式错误: " + describeError(event.opt("error")));
+                    throw new ModelCompletionException("OpenAI stream error: " + describeError(event.opt("error")));
                 }
                 JSONArray choices = event.optJSONArray("choices");
                 if (choices == null || choices.length() == 0) {
@@ -130,7 +130,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     return;
                 }
                 if ("content_filter".equals(choice.optString("finish_reason"))) {
-                    throw new ModelCompletionException("OpenAI 流式错误: 输出被内容安全策略拦截");
+                    throw new ModelCompletionException("OpenAI stream error: output blocked by content safety policy");
                 }
                 JSONObject delta = choice.optJSONObject("delta");
                 if (delta == null) {
@@ -161,7 +161,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         } catch (ModelCompletionException e) {
             throw e;
         } catch (Exception e) {
-            throw new ModelCompletionException("OpenAI 兼容协议流式解析失败: " + e.getMessage(), e);
+            throw new ModelCompletionException("OpenAI compatible protocol stream parse failed: " + e.getMessage(), e);
         }
     }
 

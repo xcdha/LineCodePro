@@ -1220,4 +1220,32 @@
     <string name="attachment_picker_title_local">Select local file</string>
     <string name="attachment_picker_loading_ssh">Reading SSH files via SFTP…</string>
     <string name="attachment_picker_loading_terminal_provider">Reading terminal provider directory via IPC…</string>
+
+    <!-- MemoryExtractionService -->
+    <string name="memory_extraction_json_only">Return JSON only.</string>
+
+    <!-- AgentExecutionController -->
+    <string name="agent_execution_completed">Agent completed: </string>
+    <string name="agent_pipeline_completed">Agent pipeline completed: </string>
+    <string name="user_rejected_tool">User rejected this tool.</string>
+
+    <!-- RemoteFileTreeController -->
+    <string name="remote_file_tree_loading">Loading…</string>
+
+    <!-- SkillRepository -->
+    <string name="skill_source_not_found">Skill source does not exist: %1$s</string>
+
+    <!-- SkillFileManager -->
+    <string name="skill_ssh_directory_hint">Use ~/.linecode/skills in the SSH shell to manage SSH Skills.</string>
+    <string name="skill_zip_entry_out_of_bounds">ZIP contains out-of-bounds path: %1$s</string>
+
+    <!-- ExtensionDraftController -->
+    <string name="extension_draft_missing_fields">AI returned config missing name, slug, or prompt.</string>
+    <string name="extension_draft_invalid_json">AI did not return valid JSON.</string>
+
+    <!-- ModelPromptController i18n strings -->
+    <string name="prompt_attachment_files_header">## Attached file locations</string>
+    <string name="prompt_attachment_files_description">These paths are from files selected via the button on the left of the input field; do not repeat them in your response unless the user explicitly asks.</string>
+    <string name="prompt_tools_unavailable">## Available tools\nNo tools currently available.</string>
+    <string name="prompt_user_message_label">User message </string>
 </resources>

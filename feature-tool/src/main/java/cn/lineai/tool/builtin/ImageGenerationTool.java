@@ -9,6 +9,7 @@ import cn.lineai.model.ModelProtocolType;
 import cn.lineai.model.ModelStore;
 import cn.lineai.tool.BaseTool;
 import cn.lineai.tool.ModelServiceProvider;
+import cn.lineai.tool.R;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
 import cn.lineai.tool.ToolDisplayCategory;
@@ -88,32 +89,32 @@ public final class ImageGenerationTool extends BaseTool {
         ModelStore modelRepository = context != null ? context.getModelRepository() : null;
         ModelServiceProvider modelServiceProvider = context != null ? context.getModelServiceProvider() : null;
         if (settingsRepository == null || modelRepository == null) {
-            return error("图片生成工具未接入应用上下文。");
+            return error(context.getString(R.string.tool_img_gen_no_context));
         }
         String prompt = input == null ? "" : input.optString("prompt").trim();
         if (prompt.length() == 0) {
-            return error("图片生成提示词不能为空。");
+            return error(context.getString(R.string.tool_img_gen_prompt_empty));
         }
         ModelConfig model = selectedModel(settingsRepository, modelRepository);
         if (model == null) {
-            return error("图片生成未选择模型。请在 设置 -> 工具设置 -> 图片操作 中选择生图模型。");
+            return error(context.getString(R.string.tool_img_gen_no_model));
         }
         if (modelServiceProvider == null) {
-            return error("图片生成工具未接入模型服务。");
+            return error(context.getString(R.string.tool_img_gen_no_model_service));
         }
         if (!modelServiceProvider.supportsImageGeneration(model.getProtocolType())) {
-            return error("图片生成当前仅支持 OpenAI 兼容或 Codex 协议模型。请添加或选择一个 Images API 兼容模型。");
+            return error(context.getString(R.string.tool_img_gen_unsupported_protocol));
         }
         try {
             if (context != null) {
-                context.reportToolProgress(getName(), "正在生成图片...", false);
+                context.reportToolProgress(getName(), context.getString(R.string.tool_img_gen_progress), false);
             }
             ImageResponseParser.GeneratedImage image = model.getProtocolType() == ModelProtocolType.CODEX_RESPONSES
                     ? generateWithResponsesApi(model, input, prompt)
                     : generateWithImagesApi(model, input, prompt, context);
-            String displayMarkdown = "![" + markdownAlt(prompt) + "](" + image.dataUrl + ")";
-            String modelContent = "图片已生成并已在对话中显示。提示词: " + trimForModel(prompt)
-                    + (image.revisedPrompt.length() == 0 ? "" : "\n修订提示词: " + trimForModel(image.revisedPrompt));
+            String displayMarkdown = "![" + markdownAlt(prompt, context) + "](" + image.dataUrl + ")";
+            String modelContent = context.getString(R.string.tool_img_gen_result, trimForModel(prompt))
+                    + (image.revisedPrompt.length() == 0 ? "" : context.getString(R.string.tool_img_gen_revised_prompt, trimForModel(image.revisedPrompt)));
             JSONObject result = new JSONObject()
                     .put("linecode_image_generation", true)
                     .put("display_markdown", displayMarkdown)
@@ -123,7 +124,7 @@ public final class ImageGenerationTool extends BaseTool {
                     .put("revised_prompt", image.revisedPrompt);
             return ok(result.toString());
         } catch (Exception e) {
-            return error("图片生成失败: " + e.getMessage());
+            return error(context.getString(R.string.tool_img_gen_failed, e.getMessage()));
         }
     }
 
@@ -185,12 +186,12 @@ public final class ImageGenerationTool extends BaseTool {
         return !(id.startsWith("gpt-image-") || "chatgpt-image-latest".equals(id));
     }
 
-    private String markdownAlt(String prompt) {
+    private String markdownAlt(String prompt, ToolContext context) {
         String value = prompt == null ? "" : prompt.replace('\n', ' ').replace('\r', ' ').replace('[', ' ').replace(']', ' ').trim();
         if (value.length() > 80) {
             value = value.substring(0, 77) + "...";
         }
-        return value.length() == 0 ? "生成图片" : value;
+        return value.length() == 0 ? context.getString(R.string.tool_img_gen_default_alt) : value;
     }
 
     private String trimForModel(String value) {

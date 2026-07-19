@@ -4,7 +4,7 @@ public enum ModelProtocolType {
     OPENAI_COMPATIBLE("OpenAI"),
     CODEX_RESPONSES("Codex"),
     ANTHROPIC_MESSAGES("Anthropic"),
-    LOCAL_GGUF("本地");
+    LOCAL_GGUF("Local");
 
     private final String label;
 
