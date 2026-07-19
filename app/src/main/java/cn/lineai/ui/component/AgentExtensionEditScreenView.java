@@ -250,6 +250,14 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
             try {
                 ExtensionAgentConfig draft = listener.onGenerateDraft(description);
                 mainHandler.post(() -> {
+                    button.setBusy(false);
+                    input.setEnabled(true);
+                    closeButton.setEnabled(true);
+                    closeButton.setAlpha(1f);
+                    if (draft == null) {
+                        Toast.makeText(getContext(), R.string.toast_ai_generate_failed_no_result, Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     applyConfig(draft);
                     renderToolRows();
                     renderMcpRows();
@@ -262,7 +270,7 @@ public final class AgentExtensionEditScreenView extends ScreenScaffoldView {
                     input.setEnabled(true);
                     closeButton.setEnabled(true);
                     closeButton.setAlpha(1f);
-                    Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), e.getMessage() != null ? e.getMessage() : getContext().getString(R.string.toast_ai_generate_failed), Toast.LENGTH_LONG).show();
                 });
             }
         }, "linecode-agent-ai-writer").start();

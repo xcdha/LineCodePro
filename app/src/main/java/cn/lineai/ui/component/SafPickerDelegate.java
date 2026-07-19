@@ -5,6 +5,8 @@ import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
+import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 
 /**
@@ -38,6 +40,8 @@ public final class SafPickerDelegate {
     public static final int REQUEST_OPEN_DOCUMENT = 7003;
     /** Request code for {@code ACTION_CREATE_DOCUMENT}. */
     public static final int REQUEST_CREATE_DOCUMENT = 7004;
+    /** Request code for the system Photo Picker ({@code ACTION_PICK_IMAGES}) or SAF fallback. */
+    public static final int REQUEST_PICK_IMAGE = 7005;
 
     /** Callback for a successful or cancelled tree pick. */
     public interface TreePickCallback {
@@ -103,6 +107,34 @@ public final class SafPickerDelegate {
     }
 
     /**
+     * Launch the system image picker. On Android 13+ (Tiramisu) this uses the Photo Picker
+     * ({@link MediaStore#ACTION_PICK_IMAGES}); on older platforms it falls back to
+     * {@link Intent#ACTION_OPEN_DOCUMENT} with {@code image/*}.
+     *
+     * <p>The Photo Picker returns a URI backed by a temporary read grant — it does NOT
+     * require (and will reject) {@code takePersistableUriPermission}. The SAF fallback
+     * keeps the historical persistable read permission for compatibility.</p>
+     *
+     * @param callback invoked with the picked URI and display name, or
+     *                 {@link DocumentPickCallback#onCancelled()} on cancel / no-data.
+     */
+    public void pickImage(DocumentPickCallback callback) {
+        this.documentPickCallback = callback;
+        Intent intent;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            intent.setType("image/*");
+        } else {
+            intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        }
+        activity.startActivityForResult(intent, REQUEST_PICK_IMAGE);
+    }
+
+    /**
      * Launch the system "Create a file" picker. Both read and write persistable permissions
      * are taken when granted.
      *
@@ -135,6 +167,10 @@ public final class SafPickerDelegate {
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_OPEN_DOCUMENT) {
             handleDocumentResult(resultCode, data);
+            return true;
+        }
+        if (requestCode == REQUEST_PICK_IMAGE) {
+            handleImagePickResult(resultCode, data);
             return true;
         }
         if (requestCode == REQUEST_CREATE_DOCUMENT) {
@@ -191,6 +227,33 @@ public final class SafPickerDelegate {
         int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
         if (flags != 0) {
             takePersistableReadPermission(uri);
+        }
+        callback.onDocumentPicked(uri.toString(), displayName(uri));
+    }
+
+    /**
+     * 处理 {@link #pickImage(DocumentPickCallback)} 的结果。
+     *
+     * <p>Android 13+ Photo Picker 返回的 URI 只有临时读权限，调用
+     * {@code takePersistableUriPermission} 会抛 {@link SecurityException}，
+     * 因此只在 SAF 回退路径（SDK &lt; TIRAMISU）上保留持久化权限。</p>
+     */
+    private void handleImagePickResult(int resultCode, Intent data) {
+        DocumentPickCallback callback = documentPickCallback;
+        documentPickCallback = null;
+        if (callback == null) {
+            return;
+        }
+        if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) {
+            callback.onCancelled();
+            return;
+        }
+        Uri uri = data.getData();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            int flags = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+            if (flags != 0) {
+                takePersistableReadPermission(uri);
+            }
         }
         callback.onDocumentPicked(uri.toString(), displayName(uri));
     }

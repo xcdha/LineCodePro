@@ -45,17 +45,21 @@ public final class ThemeSettingsScreenView extends ScreenScaffoldView {
 
     private static final ColorField[] COLOR_FIELDS = new ColorField[] {
             new ColorField(ThemePalette.KEY_BG, R.string.screen_theme_color_background, R.string.screen_theme_color_background_desc),
+            new ColorField(ThemePalette.KEY_SURFACE, R.string.screen_theme_color_surface, R.string.screen_theme_color_surface_desc),
             new ColorField(ThemePalette.KEY_SURFACE_ELEVATED, R.string.screen_theme_color_panel, R.string.screen_theme_color_panel_desc),
             new ColorField(ThemePalette.KEY_SURFACE_LIGHT, R.string.screen_theme_color_panel_light, R.string.screen_theme_color_panel_light_desc),
             new ColorField(ThemePalette.KEY_INPUT_BG, R.string.screen_theme_color_input, R.string.screen_theme_color_input_desc),
             new ColorField(ThemePalette.KEY_TEXT, R.string.screen_theme_color_text, R.string.screen_theme_color_text_desc),
             new ColorField(ThemePalette.KEY_TEXT_SECONDARY, R.string.screen_theme_color_text_secondary, R.string.screen_theme_color_text_secondary_desc),
             new ColorField(ThemePalette.KEY_TEXT_TERTIARY, R.string.screen_theme_color_text_tertiary, R.string.screen_theme_color_text_tertiary_desc),
+            new ColorField(ThemePalette.KEY_TEXT_ON_COLOR, R.string.screen_theme_color_text_on_color, R.string.screen_theme_color_text_on_color_desc),
             new ColorField(ThemePalette.KEY_ACCENT, R.string.screen_theme_color_accent, R.string.screen_theme_color_accent_desc),
             new ColorField(ThemePalette.KEY_USER_BUBBLE, R.string.screen_theme_color_user_bubble, R.string.screen_theme_color_user_bubble_desc),
             new ColorField(ThemePalette.KEY_AI_BUBBLE, R.string.screen_theme_color_ai_bubble, R.string.screen_theme_color_ai_bubble_desc),
             new ColorField(ThemePalette.KEY_BORDER, R.string.screen_theme_color_border, R.string.screen_theme_color_border_desc),
+            new ColorField(ThemePalette.KEY_BORDER_LIGHT, R.string.screen_theme_color_border_light, R.string.screen_theme_color_border_light_desc),
             new ColorField(ThemePalette.KEY_CODE_BG, R.string.screen_theme_color_code_background, R.string.screen_theme_color_code_background_desc),
+            new ColorField(ThemePalette.KEY_CODE_BORDER, R.string.screen_theme_color_code_border, R.string.screen_theme_color_code_border_desc),
             new ColorField(ThemePalette.KEY_DANGER, R.string.screen_theme_color_danger, R.string.screen_theme_color_danger_desc),
             new ColorField(ThemePalette.KEY_WARNING, R.string.screen_theme_color_warning, R.string.screen_theme_color_warning_desc),
             new ColorField(ThemePalette.KEY_SUCCESS, R.string.screen_theme_color_success, R.string.screen_theme_color_success_desc)

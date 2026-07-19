@@ -216,6 +216,10 @@ public final class SettingsManagementControllerTest {
         }
 
         @Override
+        public void setBypassPathProtection(boolean enabled) {
+        }
+
+        @Override
         public ThemeSettingsState getThemeSettings() {
             return new ThemeSettingsState(themeMode, themeMode, Collections.emptyMap(), null);
         }

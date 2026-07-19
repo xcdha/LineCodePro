@@ -24,11 +24,12 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 import cn.lineai.R;
-import cn.lineai.ai.ModelCompletionException;
-import cn.lineai.ai.protocol.ModelCatalogClient;
 import cn.lineai.log.ErrorLog;
 import cn.lineai.log.ErrorLogRedactor;
+import cn.lineai.model.ContextSizeParser;
 import cn.lineai.model.ModelConfig;
+import cn.lineai.model.ModelContextInfo;
+import cn.lineai.model.ModelContextParser;
 import cn.lineai.model.ModelProtocolType;
 import cn.lineai.model.ModelProviderPreset;
 import cn.lineai.ui.theme.LineTheme;
@@ -43,6 +44,8 @@ public final class ModelAddScreenView extends LinearLayout {
         void onSave(ModelConfig model);
 
         void onTest(ModelConfig model);
+
+        List<String> onFetchModelCatalog(ModelProtocolType type, String baseUrl, String apiKey) throws Exception;
     }
 
     private final String[] providerLabels = new String[4];
@@ -53,7 +56,7 @@ public final class ModelAddScreenView extends LinearLayout {
     private EditText nameInput;
     private final ModelProviderPreset preset;
     private final ModelConfig editingModel;
-    private final ModelCatalogClient catalogClient = new ModelCatalogClient();
+    private final Listener listener;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<String> fetchedModelIds = new ArrayList<>();
     private final ArrayList<String> fetchedCompressionModelIds = new ArrayList<>();
@@ -79,6 +82,7 @@ public final class ModelAddScreenView extends LinearLayout {
     private EditText apiKeyInput;
     private EditText modelIdInput;
     private EditText toolCallLimitInput;
+    private EditText contextSizeInput;
     private final String[] selectedModelId = new String[] {""};
     private final String[] selectedCompressionModelId = new String[] {""};
     private final boolean local;
@@ -95,6 +99,7 @@ public final class ModelAddScreenView extends LinearLayout {
 
     public ModelAddScreenView(Context context, ModelProviderPreset preset, boolean local, ModelConfig editingModel, Listener listener) {
         super(context);
+        this.listener = listener;
         this.editingModel = editingModel;
         boolean editing = editingModel != null;
         this.local = local || (editing && editingModel.getProtocolType() == ModelProtocolType.LOCAL_GGUF);
@@ -265,6 +270,21 @@ public final class ModelAddScreenView extends LinearLayout {
             toolLimitHintParams.topMargin = LineTheme.dp(context, LineTheme.SM);
             content.addView(toolLimitHint, toolLimitHintParams);
 
+            content.addView(label(context, context.getString(R.string.model_field_context_size)), labelParams(context, LineTheme.LG, LineTheme.SM));
+            contextSizeInput = input(
+                    context,
+                    editing ? initialContextSizeText(editingModel) : "",
+                    context.getString(R.string.model_field_context_size_hint),
+                    false,
+                    false
+            );
+            content.addView(contextSizeInput, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            TextView contextSizeHint = LineTheme.text(context, context.getString(R.string.model_field_context_size_hint_desc), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            contextSizeHint.setLineSpacing(LineTheme.dp(context, 3), 1f);
+            LinearLayout.LayoutParams contextSizeHintParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            contextSizeHintParams.topMargin = LineTheme.dp(context, LineTheme.SM);
+            content.addView(contextSizeHint, contextSizeHintParams);
+
             addCompressionUi(context, content, editing);
         }
 
@@ -289,6 +309,7 @@ public final class ModelAddScreenView extends LinearLayout {
             apiKeyInput.addTextChangedListener(watcher);
             modelIdInput.addTextChangedListener(watcher);
             toolCallLimitInput.addTextChangedListener(watcher);
+            contextSizeInput.addTextChangedListener(watcher);
             compressionModelIdInput.addTextChangedListener(watcher);
             TextWatcher catalogWatcher = new TextWatcher() {
                 @Override
@@ -625,7 +646,8 @@ public final class ModelAddScreenView extends LinearLayout {
         ModelProtocolType type = protocolType[0];
         new Thread(() -> {
             try {
-                List<String> ids = catalogClient.fetch(type, baseUrl, apiKey);
+                List<String> rawIds = listener.onFetchModelCatalog(type, baseUrl, apiKey);
+                final List<String> ids = rawIds != null ? rawIds : java.util.Collections.<String>emptyList();
                 mainHandler.post(() -> {
                     fetchingModels = false;
                     fetchedModelIds.clear();
@@ -637,14 +659,14 @@ public final class ModelAddScreenView extends LinearLayout {
                     }
                     showModelPicker(ids);
                 });
-            } catch (ModelCompletionException e) {
+            } catch (Exception e) {
                 ErrorLog.record("model_catalog", "模型列表查询失败", e,
                         "protocol=" + type + ", baseUrl=" + baseUrl
                                 + ", apiKey=" + ErrorLogRedactor.redact("Authorization=Bearer " + apiKey));
                 mainHandler.post(() -> {
                     fetchingModels = false;
                     updateQueryState();
-                    Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), e.getMessage() != null ? e.getMessage() : getContext().getString(R.string.toast_query_failed), Toast.LENGTH_LONG).show();
                 });
             }
         }, "linecode-model-catalog").start();
@@ -658,7 +680,8 @@ public final class ModelAddScreenView extends LinearLayout {
         ModelProtocolType type = protocolType[0];
         new Thread(() -> {
             try {
-                List<String> ids = catalogClient.fetch(type, baseUrl, apiKey);
+                List<String> rawIds = listener.onFetchModelCatalog(type, baseUrl, apiKey);
+                final List<String> ids = rawIds != null ? rawIds : java.util.Collections.<String>emptyList();
                 mainHandler.post(() -> {
                     fetchingCompressionModels = false;
                     fetchedCompressionModelIds.clear();
@@ -670,14 +693,14 @@ public final class ModelAddScreenView extends LinearLayout {
                     }
                     showModelPicker(ids, true);
                 });
-            } catch (ModelCompletionException e) {
+            } catch (Exception e) {
                 ErrorLog.record("model_catalog_compression", "压缩模型列表查询失败", e,
                         "protocol=" + type + ", baseUrl=" + baseUrl
                                 + ", apiKey=" + ErrorLogRedactor.redact("Authorization=Bearer " + apiKey));
                 mainHandler.post(() -> {
                     fetchingCompressionModels = false;
                     updateCompressionQueryState();
-                    Toast.makeText(getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(getContext(), e.getMessage() != null ? e.getMessage() : getContext().getString(R.string.toast_query_failed), Toast.LENGTH_LONG).show();
                 });
             }
         }, "linecode-compression-model-catalog").start();
@@ -799,6 +822,7 @@ public final class ModelAddScreenView extends LinearLayout {
         String apiKey = value(apiKeyInput);
         String modelId = customIdSwitch.isChecked() ? value(modelIdInput) : selectedModelId[0];
         Integer toolCallLimit = parseToolCallLimit();
+        int contextSize = parseContextSize();
         boolean compressionEnabled = compressionEnabledSwitch != null
                 && compressionEnabledSwitch.isChecked()
                 && ModelConfig.supportsDedicatedCompression(protocolType[0]);
@@ -838,7 +862,8 @@ public final class ModelAddScreenView extends LinearLayout {
                 toolCallLimit,
                 compressionEnabled,
                 compressionAuto,
-                compressionModelId
+                compressionModelId,
+                contextSize
         );
     }
 
@@ -854,6 +879,7 @@ public final class ModelAddScreenView extends LinearLayout {
         if (toolCallLimit == null) {
             toolCallLimit = ModelConfig.DEFAULT_TOOL_CALL_LIMIT;
         }
+        int contextSize = parseContextSize();
         boolean compressionEnabled = compressionEnabledSwitch != null
                 && compressionEnabledSwitch.isChecked()
                 && ModelConfig.supportsDedicatedCompression(protocolType[0]);
@@ -881,8 +907,43 @@ public final class ModelAddScreenView extends LinearLayout {
                 toolCallLimit,
                 compressionEnabled,
                 compressionAuto,
-                compressionModelId
+                compressionModelId,
+                contextSize
         );
+    }
+
+    /**
+     * 返回编辑现有模型时「上下文大小」输入框的初始文本。
+     * 优先使用新字段 {@link ModelConfig#getContextSize()}；若未设置，则回退到旧
+     * {@code {id}[{大小}]} 后缀中编码的值；都没有则返回空串。
+     */
+    private String initialContextSizeText(ModelConfig model) {
+        if (model == null) {
+            return "";
+        }
+        if (model.getContextSize() > 0) {
+            return ContextSizeParser.format(model.getContextSize());
+        }
+        // 旧数据：如果 modelId 形如 "xxx[128000]"，提取其中的大小并展示。
+        // ModelContextParser.parse 对没有 [xxx] 后缀的 modelId 会回退到默认 250000，
+        // 所以这里要先用 endsWith("]") 判断，避免把默认值误当用户配置。
+        String trimmed = model.getModelId() == null ? "" : model.getModelId().trim();
+        if (trimmed.length() == 0 || !trimmed.endsWith("]")) {
+            return "";
+        }
+        ModelContextInfo legacy = ModelContextParser.parse(trimmed);
+        int legacyTokens = legacy.getContextTokens();
+        if (legacyTokens <= 0) {
+            return "";
+        }
+        return ContextSizeParser.format(legacyTokens);
+    }
+
+    private int parseContextSize() {
+        if (local || contextSizeInput == null) {
+            return ModelConfig.CONTEXT_SIZE_UNSET;
+        }
+        return ContextSizeParser.parse(value(contextSizeInput));
     }
 
     private void updateProviderToggles(LinearLayout providerRow) {

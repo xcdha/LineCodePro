@@ -24,6 +24,7 @@ import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelContextParser;
 import cn.lineai.model.ModelStore;
 import cn.lineai.tool.BaseTool;
+import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolRegistry;
 import cn.lineai.workspace.WorkspacePaths;
 import java.util.ArrayList;
@@ -123,9 +124,7 @@ final class ModelPromptController {
                 renderTodoStateForPrompt()
         );
         modelMessages.add(new SystemModelMessage(systemPrompt));
-        int contextTokens = selectedModel == null
-                ? ModelContextParser.parse("").getContextTokens()
-                : ModelContextParser.parse(selectedModel.getModelId()).getContextTokens();
+        int contextTokens = ModelContextParser.parse(selectedModel).getContextTokens();
         int reservedTokens = contextManager.estimateTokens(systemPrompt) + 2048;
         boolean includeReasoning = aiSettings.isPreserveReasoningEnabled();
         List<ChatMessage> contextWindow = contextManager.selectWindow(messages, contextTokens, reservedTokens, includeReasoning);
@@ -204,13 +203,13 @@ final class ModelPromptController {
     ModelRequestOptions requestOptions(AiBehaviorSettings aiSettings, ModelConfig selectedModel, int usedToolCallCount) {
         host.syncModePermission();
         toolRegistry.reloadExtensions();
-        Set<String> enabledToolNames = toolSettingsRepository.getEnabledToolNames(toolRegistry.getAll());
+        Set<String> enabledToolNames = toolSettingsRepository.getEnabledToolNames(new ArrayList<>(toolRegistry.getAll()));
         return new ModelRequestOptions(
                 aiSettings.getReasoningEffort(),
                 aiSettings.isPreserveReasoningEnabled(),
                 hasRemainingToolCalls(selectedModel, usedToolCallCount)
-                        ? toolRegistry.getByNameSet(enabledToolNames)
-                        : new ArrayList<BaseTool>()
+                        ? toolRegistry.getToolInfoByNameSet(enabledToolNames)
+                        : new ArrayList<ToolInfo>()
         );
     }
 
@@ -249,17 +248,7 @@ final class ModelPromptController {
     }
 
     private String chatModePromptContext(String mode) {
-        String normalized = ChatMode.normalize(mode);
-        if (ChatMode.CHAT.equals(normalized)) {
-            return promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_CHAT_MODE_CHAT);
-        }
-        if (ChatMode.PLAN.equals(normalized)) {
-            return promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_CHAT_MODE_PLAN);
-        }
-        if (ChatMode.CONTROL.equals(normalized)) {
-            return ChatMode.promptContext(ChatMode.CONTROL);
-        }
-        return promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_CHAT_MODE_AGENT);
+        return promptTemplateRepository.getTemplateText(ChatMode.promptTemplateId(mode));
     }
 
     private ModelMessage toModelMessage(ChatMessage message, boolean includeReasoning) {
@@ -292,7 +281,7 @@ final class ModelPromptController {
             return "## 可用工具\n当前没有可用工具。";
         }
         toolRegistry.reloadExtensions();
-        return toolSettingsRepository.buildToolPrompt(toolRegistry.getAll(), modelProtocolFactory.create(selectedModel.getProtocolType()).supportsNativeTools(selectedModel));
+        return toolSettingsRepository.buildToolPrompt(new ArrayList<ToolInfo>(toolRegistry.getAll()), modelProtocolFactory.create(selectedModel.getProtocolType()).supportsNativeTools(selectedModel));
     }
 
     private String buildAttachmentPrompt(List<ChatMessage> history) {
@@ -350,10 +339,17 @@ final class ModelPromptController {
     }
 
     private String recallText(String content, List<InputAttachment> attachments) {
-        String value = content == null ? "" : content.trim();
-        if ("已附加文件".equals(value) && attachments != null && !attachments.isEmpty()) {
+        String value = content == null ? "" : content;
+        // 剥离 ChatInteractionController.composeUserContent 追加的引用文件块，
+        // 这里需要的是用户原始输入作为「附加文件位置」段落的 label
+        int idx = value.indexOf(ATTACHMENT_BLOCK_HEADER);
+        String base = idx >= 0 ? value.substring(0, idx) : value;
+        if ("已附加文件".equals(base.trim()) && attachments != null && !attachments.isEmpty()) {
             return "";
         }
-        return content == null ? "" : content;
+        return base;
     }
+
+    /** 与 ChatInteractionController.ATTACHMENT_BLOCK_HEADER 保持一致 */
+    private static final String ATTACHMENT_BLOCK_HEADER = "\n\n[引用文件]\n";
 }

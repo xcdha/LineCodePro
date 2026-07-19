@@ -8,16 +8,17 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import cn.lineai.R;
+import cn.lineai.tool.AgentPipelineSummaryParser;
 import cn.lineai.tool.NestedToolCallParser;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolResult;
 import cn.lineai.ui.component.FlowLayoutView;
 import cn.lineai.ui.component.IconButtonView;
+import cn.lineai.ui.component.ThinkingBlockView;
 import cn.lineai.ui.markdown.MarkdownView;
 import cn.lineai.ui.theme.LineTheme;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -27,6 +28,7 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
     private ToolResult lastResult;
     private String projectPath = "";
     private ToolReviewListener toolReviewListener;
+    private final java.util.HashMap<String, Boolean> rowExpandedMap = new java.util.HashMap<>();
 
     public ToolCallAgentPipelineView(Context context) {
         super(context);
@@ -40,28 +42,21 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
 
         JSONObject input = ToolCallUtils.parseInput(toolCall);
         JSONArray agents = input.optJSONArray("agents");
-        String parseError = parseInputError(toolCall, input);
+        String parseError = AgentPipelineSummaryParser.parseInputError(toolCall, input);
         if (parseError.length() > 0 && (agents == null || agents.length() == 0)) {
             bindParseError(toolCall, result, parseError);
             return;
         }
         int total = agents == null ? 0 : agents.length();
-        JSONObject progress = progressPayload(result);
-        boolean runningProgress = progress != null && "running".equals(progress.optString("status", "running"));
-        boolean error = result != null && (result.isError() || (progress != null && "error".equals(progress.optString("status"))));
-        // 完成判定优先以 progress 携带的权威 status 为准：done 且非 error 即完成。
-        // 这样即使 reviewState 因时序异常，也能正确驱动进度圈消失。
-        boolean complete = progress != null
-                ? ("done".equals(progress.optString("status")) && !error)
-                : (result != null && !"running".equals(result.getReviewState()) && !"pending".equals(result.getReviewState()));
-        HashMap<String, AgentSummary> summaryById = progress != null ? parseProgress(progress) : parseResult(result);
-        int failed = error ? Math.max(progress == null ? 1 : 0, failedCount(summaryById)) : failedCount(summaryById);
-        int pendingReview = pendingReviewCount(summaryById);
-        int completed = summaryById.isEmpty() && complete && total > 0 && !error ? total : doneCount(summaryById);
-        int running = complete ? 0 : runningCount(summaryById);
-        if (!complete && running == 0 && progress == null && total > 0) {
-            running = 1;
-        }
+        JSONObject progress = AgentPipelineSummaryParser.progressPayload(result);
+        AgentPipelineSummaryParser.PipelineSummary ps = AgentPipelineSummaryParser.computeSummary(progress, result, total);
+        HashMap<String, AgentPipelineSummaryParser.AgentSummary> summaryById = ps.summaryById;
+        int completed = ps.completed;
+        int running = ps.running;
+        int pendingReview = ps.pendingReview;
+        int failed = ps.failed;
+        boolean complete = ps.complete;
+        boolean error = ps.error;
 
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
@@ -197,15 +192,19 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         return item;
     }
 
-    private void addAgentRow(LinearLayout list, JSONObject agent, AgentSummary summary, boolean complete, boolean pipelineError) {
+    private void addAgentRow(LinearLayout list, JSONObject agent, AgentPipelineSummaryParser.AgentSummary summary, boolean complete, boolean pipelineError) {
         String id = agent.optString("id").trim();
         String name = agent.optString("description", id).trim();
-        String type = normalizeType(agent.optString("type"));
+        String type = AgentPipelineSummaryParser.normalizeType(agent.optString("type"));
         String rowStatus = summary == null ? "" : summary.status;
         boolean running = "running".equals(rowStatus);
         boolean pendingReview = "pending".equals(rowStatus);
-        boolean done = "done".equals(rowStatus) || (complete && summary != null && !summary.error) || (complete && summary == null && !pipelineError);
-        boolean error = (summary != null && summary.error) || "error".equals(rowStatus) || (complete && pipelineError && summary == null);
+        boolean rowInterrupted = pipelineError && running && complete;
+        boolean done = "done".equals(rowStatus) || (complete && summary != null && !summary.error && !rowInterrupted) || (complete && summary == null && !pipelineError);
+        boolean error = (summary != null && summary.error) || "error".equals(rowStatus) || rowInterrupted || (complete && pipelineError && summary == null);
+        if (rowInterrupted) {
+            running = false;
+        }
         String status = error ? getContext().getString(R.string.tool_call_status_failed) : pendingReview ? getContext().getString(R.string.tool_call_status_pending_review) : running ? getContext().getString(R.string.tool_call_status_running) : done ? getContext().getString(R.string.tool_call_status_done) : getContext().getString(R.string.tool_call_pipeline_status_waiting);
         int typeColor = "explore".equals(type) ? LineTheme.ACCENT : LineTheme.DANGER;
         int statusColor = error ? LineTheme.DANGER : pendingReview ? LineTheme.WARNING : running ? LineTheme.ACCENT : done ? LineTheme.SUCCESS : LineTheme.TEXT_TERTIARY;
@@ -218,6 +217,13 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
+        boolean rowExpanded = rowExpandedMap.containsKey(id) && rowExpandedMap.get(id);
+        header.setClickable(true);
+        header.setOnClickListener(v -> {
+            boolean current = rowExpandedMap.containsKey(id) && rowExpandedMap.get(id);
+            rowExpandedMap.put(id, !current);
+            bind(lastToolCall, lastResult);
+        });
 
         IconButtonView icon = new IconButtonView(getContext(), IconButtonView.BOT);
         icon.setIconColor(typeColor);
@@ -267,18 +273,37 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         LayoutParams statusParams = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
         statusParams.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
         header.addView(statusText, statusParams);
+        IconButtonView rowChevron = new IconButtonView(getContext(), rowExpanded ? IconButtonView.CHEVRON_DOWN : IconButtonView.CHEVRON_RIGHT);
+        rowChevron.setIconColor(LineTheme.TEXT_TERTIARY);
+        rowChevron.setIconSizeDp(14, 10);
+        rowChevron.setClickable(false);
+        LayoutParams rowChevronParams = new LayoutParams(LineTheme.dp(getContext(), 14), LineTheme.dp(getContext(), 14));
+        rowChevronParams.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
+        header.addView(rowChevron, rowChevronParams);
         row.addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
-        if (summary != null && (summary.output.length() > 0 || summary.thinking.length() > 0)) {
-            String preview = summary.output.length() > 0 ? summary.output : summary.thinking;
-            TextView output = LineTheme.text(getContext(), preview, LineTheme.FONT_XS,
-                    error ? LineTheme.DANGER : LineTheme.TEXT_SECONDARY, Typeface.NORMAL);
-            output.setMaxLines(4);
-            LayoutParams outputParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            outputParams.topMargin = LineTheme.dp(getContext(), LineTheme.SM);
-            row.addView(output, outputParams);
+        if (rowExpanded && summary != null) {
+            LinearLayout rowContent = new LinearLayout(getContext());
+            rowContent.setOrientation(VERTICAL);
+            LayoutParams rowContentParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            rowContentParams.topMargin = LineTheme.dp(getContext(), LineTheme.SM);
+            if (summary.thinking.length() > 0) {
+                ThinkingBlockView thinkingView = new ThinkingBlockView(getContext());
+                thinkingView.bind(id, summary.thinking, !"done".equals(rowStatus), false, true);
+                LinearLayout.LayoutParams thinkingParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+                thinkingParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.SM);
+                rowContent.addView(thinkingView, thinkingParams);
+            }
+            if (summary.output.length() > 0) {
+                MarkdownView markdownView = new MarkdownView(getContext());
+                markdownView.setMarkdown(summary.output);
+                rowContent.addView(markdownView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            }
+            addNestedToolCalls(rowContent, summary.toolCalls);
+            BoundedScrollView scrollView = new BoundedScrollView(getContext(), 280);
+            scrollView.addView(rowContent, new android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
+            row.addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
-        addNestedToolCalls(row, summary == null ? null : summary.toolCalls);
 
         LayoutParams rowParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
         rowParams.bottomMargin = LineTheme.dp(getContext(), LineTheme.XS);
@@ -293,46 +318,15 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         return view;
     }
 
-    private JSONObject progressPayload(ToolResult result) {
-        if (result == null || result.getContent().trim().length() == 0) {
-            return null;
-        }
-        try {
-            JSONObject object = new JSONObject(result.getContent());
-            return object.optBoolean("linecode_agent_pipeline_progress") ? object : null;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private String parseInputError(ToolCall toolCall, JSONObject input) {
-        if (toolCall == null) {
-            return "";
-        }
-        String arguments = toolCall.getArguments();
-        if (arguments == null || arguments.trim().length() == 0) {
-            return "";
-        }
-        if (input == null) {
-            return "参数解析失败: 模型返回的不是合法 JSON。";
-        }
-        if (input.length() == 0) {
-            String message = "参数解析失败";
-            try {
-                new JSONObject(arguments);
-            } catch (Exception e) {
-                message = "参数解析失败: " + e.getMessage();
-            }
-            return message;
-        }
-        return "";
-    }
-
     private void bindParseError(ToolCall toolCall, ToolResult result, String parseError) {
         LinearLayout header = new LinearLayout(getContext());
         header.setOrientation(HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setClickable(false);
+        header.setClickable(true);
+        header.setOnClickListener(v -> {
+            expanded = !expanded;
+            bind(lastToolCall, lastResult);
+        });
         LineTheme.padding(header, LineTheme.MD, LineTheme.SM, LineTheme.MD, LineTheme.SM);
 
         IconButtonView icon = new IconButtonView(getContext(), IconButtonView.GIT_BRANCH);
@@ -364,129 +358,31 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         statusIcon.setClickable(false);
         header.addView(statusIcon, new LayoutParams(LineTheme.dp(getContext(), 16), LineTheme.dp(getContext(), 16)));
 
+        IconButtonView chevron = new IconButtonView(getContext(), expanded ? IconButtonView.CHEVRON_DOWN : IconButtonView.CHEVRON_RIGHT);
+        chevron.setIconColor(LineTheme.TEXT_TERTIARY);
+        chevron.setIconSizeDp(16, 12);
+        chevron.setClickable(false);
+        LayoutParams chevronParams = new LayoutParams(LineTheme.dp(getContext(), 16), LineTheme.dp(getContext(), 16));
+        chevronParams.leftMargin = LineTheme.dp(getContext(), LineTheme.XS);
+        header.addView(chevron, chevronParams);
+
         addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+
+        if (!expanded) {
+            return;
+        }
+
+        View divider = new View(getContext());
+        divider.setBackgroundColor(LineTheme.CODE_BORDER);
+        addView(divider, new LayoutParams(LayoutParams.MATCH_PARENT, 1));
 
         LinearLayout list = new LinearLayout(getContext());
         list.setOrientation(VERTICAL);
         LineTheme.padding(list, LineTheme.SM, LineTheme.SM, LineTheme.SM, LineTheme.SM);
-        TextView errorView = LineTheme.text(getContext(), parseError, LineTheme.FONT_XS, LineTheme.DANGER, Typeface.NORMAL);
+        MarkdownView errorView = new MarkdownView(getContext());
+        errorView.setMarkdown(parseError);
         list.addView(errorView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(list, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-    }
-
-    private HashMap<String, AgentSummary> parseProgress(JSONObject progress) {
-        HashMap<String, AgentSummary> values = new HashMap<>();
-        if (progress == null) {
-            return values;
-        }
-        JSONArray array = progress.optJSONArray("agents");
-        if (array == null) {
-            return values;
-        }
-        for (int i = 0; i < array.length(); i++) {
-            JSONObject object = array.optJSONObject(i);
-            if (object == null) {
-                continue;
-            }
-            String id = object.optString("id").trim();
-            if (id.length() == 0) {
-                continue;
-            }
-            String status = object.optString("status", "waiting");
-            boolean error = object.optBoolean("error") || "error".equals(status);
-            values.put(id, new AgentSummary(
-                    object.optString("output"),
-                    object.optString("thinking"),
-                    status,
-                    error,
-                    object.optJSONArray("tool_calls")
-            ));
-        }
-        return values;
-    }
-
-    private HashMap<String, AgentSummary> parseResult(ToolResult result) {
-        HashMap<String, AgentSummary> values = new HashMap<>();
-        if (result == null || result.getContent().length() == 0) {
-            return values;
-        }
-        String[] sections = result.getContent().split("\\n\\n## ");
-        for (String section : sections) {
-            String text = section.trim();
-            if (text.length() == 0 || text.startsWith("Agent 流水线完成")) {
-                continue;
-            }
-            int titleEnd = text.indexOf('\n');
-            String title = titleEnd >= 0 ? text.substring(0, titleEnd) : text;
-            String id = title;
-            int dot = title.indexOf(" · ");
-            if (dot >= 0) {
-                id = title.substring(0, dot).trim();
-            }
-            if (id.length() == 0) {
-                continue;
-            }
-            boolean error = text.contains("\n状态: error");
-            String output = text;
-            int outputStart = nthLineIndex(text, 4);
-            if (outputStart >= 0 && outputStart < text.length()) {
-                output = text.substring(outputStart).trim();
-            }
-            values.put(id, new AgentSummary(output, "", error ? "error" : "done", error, null));
-        }
-        return values;
-    }
-
-    private int nthLineIndex(String text, int lineCount) {
-        int index = 0;
-        for (int i = 0; i < lineCount; i++) {
-            index = text.indexOf('\n', index);
-            if (index < 0) {
-                return -1;
-            }
-            index++;
-        }
-        return index;
-    }
-
-    private int doneCount(HashMap<String, AgentSummary> summaryById) {
-        int count = 0;
-        for (AgentSummary summary : summaryById.values()) {
-            if ("done".equals(summary.status) && !summary.error) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private int failedCount(HashMap<String, AgentSummary> summaryById) {
-        int count = 0;
-        for (AgentSummary summary : summaryById.values()) {
-            if (summary.error) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private int runningCount(HashMap<String, AgentSummary> summaryById) {
-        int count = 0;
-        for (AgentSummary summary : summaryById.values()) {
-            if ("running".equals(summary.status)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private int pendingReviewCount(HashMap<String, AgentSummary> summaryById) {
-        int count = 0;
-        for (AgentSummary summary : summaryById.values()) {
-            if ("pending".equals(summary.status)) {
-                count++;
-            }
-        }
-        return count;
     }
 
     private void addNestedToolCalls(LinearLayout row, JSONArray nestedToolCalls) {
@@ -510,31 +406,40 @@ public final class ToolCallAgentPipelineView extends BaseToolCallView implements
         }
     }
 
-    private String normalizeType(String type) {
-        String value = type == null ? "" : type.trim().toLowerCase(Locale.US);
-        if ("sub_coding".equals(value) || "subcoding".equals(value) || "coding".equals(value)) {
-            return "sub-coding";
-        }
-        return value.length() == 0 ? "explore" : value;
-    }
-
     private String typeLabel(String type) {
         return "explore".equals(type) ? getContext().getString(R.string.tool_call_agent_type_explore) : getContext().getString(R.string.tool_call_agent_type_coding);
     }
 
-    private static final class AgentSummary {
-        private final String output;
-        private final String thinking;
-        private final String status;
-        private final boolean error;
-        private final JSONArray toolCalls;
+    private static final class BoundedScrollView extends android.widget.ScrollView {
+        private final int maxHeightDp;
 
-        AgentSummary(String output, String thinking, String status, boolean error, JSONArray toolCalls) {
-            this.output = output == null ? "" : output;
-            this.thinking = thinking == null ? "" : thinking;
-            this.status = status == null || status.length() == 0 ? "waiting" : status;
-            this.error = error;
-            this.toolCalls = toolCalls;
+        BoundedScrollView(Context context, int maxHeightDp) {
+            super(context);
+            this.maxHeightDp = maxHeightDp;
+        }
+
+        @Override
+        public boolean performClick() {
+            return super.performClick();
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int maxHeight = LineTheme.dp(getContext(), maxHeightDp);
+            int cappedHeightSpec = android.view.View.MeasureSpec.makeMeasureSpec(maxHeight, android.view.View.MeasureSpec.AT_MOST);
+            super.onMeasure(widthMeasureSpec, cappedHeightSpec);
+        }
+
+        @Override
+        public boolean onTouchEvent(android.view.MotionEvent ev) {
+            getParent().requestDisallowInterceptTouchEvent(true);
+            return super.onTouchEvent(ev);
+        }
+
+        @Override
+        public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
+            getParent().requestDisallowInterceptTouchEvent(true);
+            return super.onInterceptTouchEvent(ev);
         }
     }
 }

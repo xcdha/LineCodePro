@@ -8,6 +8,7 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import cn.lineai.tool.ToolResult;
 import cn.lineai.ui.component.IconButtonView;
 import cn.lineai.ui.theme.LineTheme;
 
@@ -17,10 +18,61 @@ import cn.lineai.ui.theme.LineTheme;
  */
 public abstract class BaseToolCallView extends LinearLayout {
 
+    /**
+     * 工具调用结束后的最终 UI 状态。
+     * <p>用于简化进度圈逻辑：工具调用结束就根据结果直接决定状态，不再依赖各种中间回调。</p>
+     * <ul>
+     *   <li>{@link #RUNNING} 仍在运行或等待确认，需要显示进度圈</li>
+     *   <li>{@link #SUCCESS} 成功完成，去掉进度圈</li>
+     *   <li>{@link #FAILED} 失败，显示失败图标</li>
+     *   <li>{@link #UNKNOWN} 未知情况，显示未知图标</li>
+     * </ul>
+     */
+    public enum TerminalStatus {
+        RUNNING,
+        SUCCESS,
+        FAILED,
+        UNKNOWN
+    }
+
     public BaseToolCallView(Context context) {
         super(context);
         setOrientation(LinearLayout.VERTICAL);
         setBackground(LineTheme.roundedStroke(context, LineTheme.CODE_BG, 8, LineTheme.CODE_BORDER));
+    }
+
+    /**
+     * 根据工具调用的最终结果直接决定 UI 状态。
+     * <p>判定规则：</p>
+     * <ul>
+     *   <li>result 为 null 或 reviewState 仍是中间状态（running/pending）→ {@link TerminalStatus#RUNNING}</li>
+     *   <li>result.isError() == true → {@link TerminalStatus#FAILED}</li>
+     *   <li>result.isError() == false 且 content 非空 → {@link TerminalStatus#SUCCESS}</li>
+     *   <li>其它（content 为空且未出错）→ {@link TerminalStatus#UNKNOWN}</li>
+     * </ul>
+     */
+    protected static TerminalStatus computeTerminalStatus(ToolResult result) {
+        if (result == null) {
+            return TerminalStatus.RUNNING;
+        }
+        String reviewState = result.getReviewState();
+        if ("running".equals(reviewState) || "pending".equals(reviewState)) {
+            return TerminalStatus.RUNNING;
+        }
+        if (result.isError()) {
+            return TerminalStatus.FAILED;
+        }
+        if (result.getContent().trim().length() > 0) {
+            return TerminalStatus.SUCCESS;
+        }
+        return TerminalStatus.UNKNOWN;
+    }
+
+    /**
+     * 判断工具调用是否已经结束（不再显示进度圈）。
+     */
+    protected static boolean isTerminal(ToolResult result) {
+        return computeTerminalStatus(result) != TerminalStatus.RUNNING;
     }
 
     /**

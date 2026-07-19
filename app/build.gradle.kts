@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
-val releaseVersionName = "1.2.1"
+val releaseVersionName = "1.2.2"
 val releaseApkName = "LineCode Pro $releaseVersionName.APK"
 val releaseIdsigName = "$releaseApkName.idsig"
 val releaseSigningProperties = Properties()
@@ -103,7 +103,7 @@ android {
         applicationId = "cn.lineai"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
+        versionCode = 25
         versionName = releaseVersionName
     }
 
@@ -225,10 +225,17 @@ tasks.matching {
 }
 
 dependencies {
+    implementation(project(":core-model"))
+    implementation(project(":core-api"))
+    implementation(project(":core-security"))
     implementation(project(":ipc"))
-    implementation(libs.commonmark)
-    implementation(libs.commonmark.gfm.tables)
-    implementation(libs.jsch)
+    implementation(project(":data"))
+    implementation(project(":feature-ssh"))
+    implementation(project(":feature-share"))
+    implementation(project(":feature-tool"))
+    implementation(project(":feature-model"))
+    implementation(project(":ui-theme"))
+    implementation(project(":markdown"))
     testImplementation(libs.junit)
     testImplementation(libs.json)
 }

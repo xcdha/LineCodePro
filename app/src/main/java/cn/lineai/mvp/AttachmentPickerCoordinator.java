@@ -1,5 +1,7 @@
 package cn.lineai.mvp;
 
+import android.content.Context;
+import cn.lineai.R;
 import cn.lineai.data.repository.FileTreeStore;
 import cn.lineai.data.repository.IpcFileTreeStore;
 import cn.lineai.data.repository.SshFileTreeStore;
@@ -25,6 +27,7 @@ public final class AttachmentPickerCoordinator {
         void showAttachmentPicker(String title, FileTreeNode tree, boolean loading, String message, String source);
     }
 
+    private final Context context;
     private final FileTreeStore fileTreeRepository;
     private final SshFileTreeStore sshFileTreeRepository;
     private final IpcFileTreeStore ipcFileTreeRepository;
@@ -42,6 +45,7 @@ public final class AttachmentPickerCoordinator {
     private int loadGeneration;
 
     public AttachmentPickerCoordinator(
+            Context context,
             FileTreeStore fileTreeRepository,
             SshFileTreeStore sshFileTreeRepository,
             IpcFileTreeStore ipcFileTreeRepository,
@@ -49,6 +53,7 @@ public final class AttachmentPickerCoordinator {
             UiDispatcher uiDispatcher,
             Host host
     ) {
+        this.context = context.getApplicationContext();
         this.fileTreeRepository = fileTreeRepository;
         this.sshFileTreeRepository = sshFileTreeRepository;
         this.ipcFileTreeRepository = ipcFileTreeRepository;
@@ -125,7 +130,7 @@ public final class AttachmentPickerCoordinator {
 
     private void refreshSshAttachmentPicker() {
         loading = true;
-        message = "正在通过 SFTP 读取 SSH 文件...";
+        message = context.getString(R.string.attachment_picker_loading_ssh);
         renderAttachmentPicker();
         int generation = ++loadGeneration;
         String root = rootPath;
@@ -160,7 +165,7 @@ public final class AttachmentPickerCoordinator {
 
     private void refreshIpcAttachmentPicker() {
         loading = true;
-        message = "正在通过 IPC 读取终端提供者目录...";
+        message = context.getString(R.string.attachment_picker_loading_terminal_provider);
         renderAttachmentPicker();
         int generation = ++loadGeneration;
         String root = rootPath;
@@ -199,11 +204,11 @@ public final class AttachmentPickerCoordinator {
         }
         String title;
         if (InputAttachment.SOURCE_SSH.equals(source)) {
-            title = "选择 SSH 文件";
+            title = context.getString(R.string.attachment_picker_title_ssh);
         } else if (InputAttachment.SOURCE_TERMINAL_PROVIDER.equals(source)) {
-            title = "选择终端提供者文件";
+            title = context.getString(R.string.attachment_picker_title_terminal_provider);
         } else {
-            title = "选择本地文件";
+            title = context.getString(R.string.attachment_picker_title_local);
         }
         host.showAttachmentPicker(title, tree, loading, message, source);
     }

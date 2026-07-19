@@ -15,9 +15,14 @@ public interface ChatController {
 
     void onSendMessage(String text, List<InputAttachment> attachments);
 
+    void onSendMessageWithImage(String text, List<InputAttachment> attachments,
+                                String imageBase64, String imageMimeType, String imageName);
+
     void onRecallMessage(String messageId);
 
     void onAttachmentPickerRequested();
+
+    void onImagePickerRequested();
 
     void onAttachmentPickerNodeSelected(String path, boolean directory);
 

@@ -15,6 +15,7 @@ import cn.lineai.model.OutputSettings;
 import cn.lineai.model.PromptTemplateItem;
 import cn.lineai.model.ThemeSettingsState;
 import cn.lineai.model.WebSearchConfig;
+import cn.lineai.ui.theme.LineTheme;
 import java.util.List;
 import java.util.Map;
 
@@ -73,6 +74,8 @@ public final class SettingsManagementController {
         void setBrowserJavaScriptEnabled(boolean enabled);
 
         void setAllowAnyHttp(boolean enabled);
+
+        void setBypassPathProtection(boolean enabled);
 
         ThemeSettingsState getThemeSettings();
 
@@ -227,18 +230,23 @@ public final class SettingsManagementController {
         }
 
         @Override
+        public void setBypassPathProtection(boolean enabled) {
+            outputSettingsRepository.setPathProtectionBypassed(enabled);
+        }
+
+        @Override
         public ThemeSettingsState getThemeSettings() {
             return themeSettingsRepository.getState();
         }
 
         @Override
         public void applyThemeMode(String mode) {
-            themeSettingsRepository.applyThemeMode(mode);
+            LineTheme.apply(themeSettingsRepository.resolveThemePalette(mode));
         }
 
         @Override
         public void saveCustomThemeColors(Map<String, String> colors) {
-            themeSettingsRepository.saveCustomThemeColors(colors);
+            LineTheme.apply(themeSettingsRepository.resolveCustomPalette(colors));
         }
 
         @Override
@@ -404,6 +412,11 @@ public final class SettingsManagementController {
     public void setAllowAnyHttp(boolean enabled) {
         settingsStore.setAllowAnyHttp(enabled);
         cn.lineai.security.UrlPolicy.setRelaxedHttpEnabled(enabled);
+        host.render();
+    }
+
+    public void setBypassPathProtection(boolean enabled) {
+        settingsStore.setBypassPathProtection(enabled);
         host.render();
     }
 
