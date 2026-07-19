@@ -26,7 +26,7 @@ public final class AgentTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "分派一个子 Agent 处理任务。explore 只能只读探索；sub-coding 必须有明确且唯一的写入范围，不能和其他 Agent 操纵同一文件。";
+        return "Dispatch a sub-Agent to handle a task. explore is read-only; sub-coding must have a clear and unique write scope and must not modify the same files as other Agents.";
     }
 
     @Override
@@ -47,21 +47,21 @@ public final class AgentTool extends BaseTool {
                         .put("type", new JSONObject()
                                 .put("type", "string")
                                 .put("enum", new JSONArray().put(TYPE_EXPLORE).put(TYPE_SUB_CODING))
-                                .put("description", "Agent 类型：explore 只读探索，sub-coding 编程子任务"))
+                                .put("description", "Agent type: explore for read-only exploration, sub-coding for programming subtasks"))
                         .put("description", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "3-8 个词的任务标题"))
+                                .put("description", "Task title of 3-8 words"))
                         .put("prompt", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "分派给 Agent 的详细任务、范围、限制和验收方式。必须写明不能修改未授权文件；如需修改范围外文件必须停止并汇报"))
+                                .put("description", "Detailed task assigned to the Agent, including scope, constraints, and acceptance criteria. Must state that unauthorized files must not be modified; if out-of-scope files must be modified, stop and report."))
                         .put("read_scope", new JSONObject()
                                 .put("type", "array")
                                 .put("items", new JSONObject().put("type", "string"))
-                                .put("description", "允许读取的文件或目录路径列表。为空时仍应只读取完成任务所需的最小范围"))
+                                .put("description", "List of files or directories allowed to read. When empty, still read only the minimum scope needed to complete the task"))
                         .put("write_scope", new JSONObject()
                                 .put("type", "array")
                                 .put("items", new JSONObject().put("type", "string"))
-                                .put("description", "sub-coding 允许写入的唯一文件或目录路径列表；explore 必须留空。不要把同一文件分配给多个 Agent")))
+                                .put("description", "Unique list of files or directories sub-coding is allowed to write; explore must be empty. Do not assign the same file to multiple Agents")))
                 .put("required", new JSONArray().put("type").put("description").put("prompt"));
     }
 

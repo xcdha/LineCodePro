@@ -17,6 +17,7 @@ import org.json.JSONObject;
  */
 public final class PhoneSwipeTool extends BaseTool {
     public static final String NAME = "phone_swipe";
+    private static final String SWIPE_DESC = "Swipe from the start coordinates to the end coordinates. x1/y1 are the start point, x2/y2 are the end point, duration_ms is optional and defaults to 300.";
     private final Context context;
 
     public PhoneSwipeTool(Context context) {
@@ -30,7 +31,7 @@ public final class PhoneSwipeTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return context == null ? "Swipe between screen coordinates." : context.getString(R.string.phone_tool_swipe_description);
+        return context == null ? SWIPE_DESC : SWIPE_DESC;
     }
 
     @Override
@@ -65,11 +66,11 @@ public final class PhoneSwipeTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("x1", new JSONObject().put("type", "number").put("description", "起点 X 坐标"))
-                        .put("y1", new JSONObject().put("type", "number").put("description", "起点 Y 坐标"))
-                        .put("x2", new JSONObject().put("type", "number").put("description", "终点 X 坐标"))
-                        .put("y2", new JSONObject().put("type", "number").put("description", "终点 Y 坐标"))
-                        .put("duration_ms", new JSONObject().put("type", "number").put("description", "滑动时长（毫秒），默认 300")))
+                        .put("x1", new JSONObject().put("type", "number").put("description", "Start X coordinate"))
+                        .put("y1", new JSONObject().put("type", "number").put("description", "Start Y coordinate"))
+                        .put("x2", new JSONObject().put("type", "number").put("description", "End X coordinate"))
+                        .put("y2", new JSONObject().put("type", "number").put("description", "End Y coordinate"))
+                        .put("duration_ms", new JSONObject().put("type", "number").put("description", "Swipe duration in milliseconds, default 300")))
                 .put("required", new JSONArray().put("x1").put("y1").put("x2").put("y2"));
     }
 

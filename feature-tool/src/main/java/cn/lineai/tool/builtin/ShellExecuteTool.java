@@ -40,7 +40,7 @@ public final class ShellExecuteTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "通过当前执行目标执行 shell 命令：SSH 模式走 SSH，终端提供者模式走 IPC。命令会在执行前请求用户确认。";
+        return "Execute a shell command via the current execution target: SSH mode uses SSH, terminal provider mode uses IPC. The command requires user confirmation before execution.";
     }
 
     @Override
@@ -66,9 +66,9 @@ public final class ShellExecuteTool extends BaseTool {
     @Override
     public String promptSupplement(String executionMode, boolean isSsh) {
         if (isSsh) {
-            return "shell_execute 默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。";
+            return "shell_execute runs in the current workspace directory by default; set cwd explicitly to switch temporarily.";
         }
-        return "shell_execute 通过终端提供者 IPC 执行；默认在当前工作区目录执行；如需临时切换目录，再显式设置 cwd。";
+        return "shell_execute runs via the terminal provider IPC; it runs in the current workspace directory by default; set cwd explicitly to switch temporarily.";
     }
 
     @Override
@@ -78,13 +78,13 @@ public final class ShellExecuteTool extends BaseTool {
                 .put("properties", new JSONObject()
                         .put("command", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "要执行的 shell 命令"))
+                                .put("description", "The shell command to execute"))
                         .put("cwd", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "可选工作目录，会通过 cd 后执行命令"))
+                                .put("description", "Optional working directory; the command runs after cd into it"))
                         .put("timeoutMs", new JSONObject()
                                 .put("type", "number")
-                                .put("description", "可选超时时间，单位毫秒，默认 30000，最大 300000")))
+                                .put("description", "Optional timeout in milliseconds, default 30000, max 300000")))
                 .put("required", new JSONArray().put("command"));
     }
 

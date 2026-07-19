@@ -17,6 +17,7 @@ import org.json.JSONObject;
  */
 public final class PhoneClickTool extends BaseTool {
     public static final String NAME = "phone_click";
+    private static final String CLICK_DESC = "Tap the specified screen coordinates. x and y are screen pixel coordinates.";
     private final Context context;
 
     public PhoneClickTool(Context context) {
@@ -30,7 +31,7 @@ public final class PhoneClickTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return context == null ? "Tap the specified screen coordinates." : context.getString(R.string.phone_tool_click_description);
+        return context == null ? CLICK_DESC : CLICK_DESC;
     }
 
     @Override
@@ -64,8 +65,8 @@ public final class PhoneClickTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("x", new JSONObject().put("type", "number").put("description", "屏幕 X 坐标"))
-                        .put("y", new JSONObject().put("type", "number").put("description", "屏幕 Y 坐标")))
+                        .put("x", new JSONObject().put("type", "number").put("description", "Screen X coordinate"))
+                        .put("y", new JSONObject().put("type", "number").put("description", "Screen Y coordinate")))
                 .put("required", new JSONArray().put("x").put("y"));
     }
 

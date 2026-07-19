@@ -17,6 +17,7 @@ import org.json.JSONObject;
  */
 public final class PhoneLongPressTool extends BaseTool {
     public static final String NAME = "phone_long_press";
+    private static final String LONG_PRESS_DESC = "Long-press the specified screen coordinates. x and y are screen pixel coordinates, duration_ms is optional and defaults to 800.";
     private final Context context;
 
     public PhoneLongPressTool(Context context) {
@@ -30,7 +31,7 @@ public final class PhoneLongPressTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return context == null ? "Long-press the specified screen coordinates." : context.getString(R.string.phone_tool_long_press_description);
+        return context == null ? LONG_PRESS_DESC : LONG_PRESS_DESC;
     }
 
     @Override
@@ -64,9 +65,9 @@ public final class PhoneLongPressTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("x", new JSONObject().put("type", "number").put("description", "屏幕 X 坐标"))
-                        .put("y", new JSONObject().put("type", "number").put("description", "屏幕 Y 坐标"))
-                        .put("duration_ms", new JSONObject().put("type", "number").put("description", "长按时长（毫秒），默认 800")))
+                        .put("x", new JSONObject().put("type", "number").put("description", "Screen X coordinate"))
+                        .put("y", new JSONObject().put("type", "number").put("description", "Screen Y coordinate"))
+                        .put("duration_ms", new JSONObject().put("type", "number").put("description", "Long-press duration in milliseconds, default 800")))
                 .put("required", new JSONArray().put("x").put("y"));
     }
 

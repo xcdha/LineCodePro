@@ -21,7 +21,7 @@ public final class FileDeleteTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "删除文件或目录。必须提供删除原因 reason；执行前会请求用户确认。";
+        return "Delete a file or directory. A deletion reason is required; user confirmation is requested before execution.";
     }
 
     @Override
@@ -44,11 +44,11 @@ public final class FileDeleteTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("reason", new JSONObject().put("type", "string").put("description", "删除原因，会展示给用户确认"))
+                        .put("reason", new JSONObject().put("type", "string").put("description", "Deletion reason, shown to the user for confirmation"))
                         .put("paths", new JSONObject()
                                 .put("type", "array")
                                 .put("items", new JSONObject().put("type", "string"))
-                                .put("description", "要删除的文件或目录路径列表")))
+                                .put("description", "List of file or directory paths to delete")))
                 .put("required", new org.json.JSONArray().put("reason").put("paths"));
     }
 

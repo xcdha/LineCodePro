@@ -21,6 +21,7 @@ import org.json.JSONObject;
  */
 public final class PhoneScreenshotTool extends BaseTool {
     public static final String NAME = "phone_screenshot";
+    private static final String SCREENSHOT_DESC = "Capture the current screen, save it to the app cache directory, and return the image file path. Accessibility must be enabled.";
     private final Context context;
 
     public PhoneScreenshotTool(Context context) {
@@ -34,7 +35,7 @@ public final class PhoneScreenshotTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return context == null ? "Capture the current screen and return the saved image path." : context.getString(R.string.phone_tool_screenshot_description);
+        return context == null ? SCREENSHOT_DESC : SCREENSHOT_DESC;
     }
 
     @Override

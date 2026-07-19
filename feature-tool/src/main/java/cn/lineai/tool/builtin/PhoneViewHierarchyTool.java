@@ -17,6 +17,7 @@ import org.json.JSONObject;
  */
 public final class PhoneViewHierarchyTool extends BaseTool {
     public static final String NAME = "phone_view_hierarchy";
+    private static final String VIEW_HIERARCHY_DESC = "Get the current window View hierarchy, including class names, resource ids, text, content descriptions, and screen bounds.";
     private final Context context;
 
     public PhoneViewHierarchyTool(Context context) {
@@ -30,7 +31,7 @@ public final class PhoneViewHierarchyTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return context == null ? "Get the current window View hierarchy." : context.getString(R.string.phone_tool_view_hierarchy_description);
+        return context == null ? VIEW_HIERARCHY_DESC : VIEW_HIERARCHY_DESC;
     }
 
     @Override

@@ -26,7 +26,7 @@ public final class AgentPipelineTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "创建多个有依赖关系的 Agent 任务流水线。sub-coding 必须声明唯一 write_scope，多个 Agent 不能写同一文件或重叠目录。";
+        return "Create a pipeline of Agent tasks with dependencies. sub-coding must declare a unique write_scope; multiple Agents cannot write the same file or overlapping directories.";
     }
 
     @Override
@@ -46,29 +46,29 @@ public final class AgentPipelineTool extends BaseTool {
                 .put("properties", new JSONObject()
                         .put("id", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "流水线内唯一标识"))
+                                .put("description", "Unique identifier within the pipeline"))
                         .put("type", new JSONObject()
                                 .put("type", "string")
                                 .put("enum", new JSONArray().put(AgentTool.TYPE_EXPLORE).put(AgentTool.TYPE_SUB_CODING))
-                                .put("description", "Agent 类型"))
+                                .put("description", "Agent type"))
                         .put("description", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "简短任务标题"))
+                                .put("description", "Short task title"))
                         .put("prompt", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "详细任务描述。必须写明任务边界、验收方式，以及不能修改 write_scope 外的文件"))
+                                .put("description", "Detailed task description. Must state the task boundaries, acceptance criteria, and that files outside write_scope must not be modified"))
                         .put("read_scope", new JSONObject()
                                 .put("type", "array")
                                 .put("items", new JSONObject().put("type", "string"))
-                                .put("description", "允许读取的文件或目录路径列表。为空时仍应只读取完成任务所需的最小范围"))
+                                .put("description", "List of files or directories allowed to read. When empty, still read only the minimum scope needed to complete the task"))
                         .put("write_scope", new JSONObject()
                                 .put("type", "array")
                                 .put("items", new JSONObject().put("type", "string"))
-                                .put("description", "sub-coding 允许写入的唯一文件或目录路径列表；explore 必须留空。多个 Agent 的 write_scope 不能相同、包含或被包含"))
+                                .put("description", "Unique list of files or directories sub-coding is allowed to write; explore must be empty. Multiple Agents' write_scope must not be identical, nor contain or be contained by one another"))
                         .put("depends_on", new JSONObject()
                                 .put("type", "array")
                                 .put("items", new JSONObject().put("type", "string"))
-                                .put("description", "依赖的 Agent ID 列表")))
+                                .put("description", "List of dependent Agent IDs")))
                 .put("required", new JSONArray().put("id").put("type").put("description").put("prompt"));
 
         return new JSONObject()
@@ -77,7 +77,7 @@ public final class AgentPipelineTool extends BaseTool {
                         .put("agents", new JSONObject()
                                 .put("type", "array")
                                 .put("items", agentSchema)
-                                .put("description", "Agent 任务列表")))
+                                .put("description", "List of Agent tasks")))
                 .put("required", new JSONArray().put("agents"));
     }
 

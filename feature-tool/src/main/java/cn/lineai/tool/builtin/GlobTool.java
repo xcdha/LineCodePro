@@ -25,7 +25,7 @@ public final class GlobTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "搜索匹配的文件。支持 * ** ? 通配符。";
+        return "Search for matching files. Supports * ** ? wildcards.";
     }
 
     @Override
@@ -58,8 +58,8 @@ public final class GlobTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("pattern", new JSONObject().put("type", "string").put("description", "文件匹配模式，如 *.java, app/src/**/*.java"))
-                        .put("path", new JSONObject().put("type", "string").put("description", "搜索根目录，可选，默认为 home 目录")))
+                        .put("pattern", new JSONObject().put("type", "string").put("description", "File match pattern, e.g. *.java, app/src/**/*.java"))
+                        .put("path", new JSONObject().put("type", "string").put("description", "Search root directory, optional, defaults to the home directory")))
                 .put("required", new org.json.JSONArray().put("pattern"));
     }
 

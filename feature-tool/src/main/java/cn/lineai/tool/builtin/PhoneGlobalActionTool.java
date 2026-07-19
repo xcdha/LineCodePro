@@ -17,6 +17,8 @@ import org.json.JSONObject;
  */
 public final class PhoneGlobalActionTool extends BaseTool {
     public static final String NAME = "phone_global_action";
+    private static final String GLOBAL_ACTION_DESC = "Run a system global action. action can be back, home, exit_app, recents, notifications, quick_settings, power_dialog, or lock_screen.";
+    private static final String GLOBAL_ACTION_PARAM_DESC = "System action to run";
     private final Context context;
 
     public PhoneGlobalActionTool(Context context) {
@@ -30,7 +32,7 @@ public final class PhoneGlobalActionTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return context == null ? "Run a system global action." : context.getString(R.string.phone_tool_global_action_description);
+        return context == null ? GLOBAL_ACTION_DESC : GLOBAL_ACTION_DESC;
     }
 
     @Override
@@ -91,7 +93,7 @@ public final class PhoneGlobalActionTool extends BaseTool {
                                         .put("quick_settings")
                                         .put("power_dialog")
                                         .put("lock_screen"))
-                                .put("description", context == null ? "System action to run" : context.getString(R.string.phone_tool_global_action_param_desc))))
+                                .put("description", context == null ? GLOBAL_ACTION_PARAM_DESC : GLOBAL_ACTION_PARAM_DESC)))
                 .put("required", new JSONArray().put("action"));
     }
 

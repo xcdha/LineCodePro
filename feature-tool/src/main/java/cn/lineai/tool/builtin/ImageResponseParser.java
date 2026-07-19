@@ -52,7 +52,9 @@ final class ImageResponseParser {
         }
         if (url.length() == 0) {
             if (invalidImageData) {
-                throw new Exception("API returned invalid image data.");
+                throw new Exception(context != null
+                        ? context.getString(R.string.tool_img_parse_invalid_data)
+                        : "API returned invalid image data.");
             }
             throw new Exception("API did not return b64_json, data_url or url.");
         }
@@ -65,7 +67,7 @@ final class ImageResponseParser {
                 revisedPrompt);
     }
 
-    GeneratedImage parseResponsesImage(String raw) throws Exception {
+    GeneratedImage parseResponsesImage(String raw, ToolContext context) throws Exception {
         JSONObject response = new JSONObject(raw);
         JSONObject error = response.optJSONObject("error");
         if (error != null) {
@@ -103,7 +105,9 @@ final class ImageResponseParser {
             }
         }
         if (invalidImageData) {
-            throw new Exception("Responses API returned invalid image data.");
+            throw new Exception(context != null
+                    ? context.getString(R.string.tool_img_parse_responses_invalid)
+                    : "Responses API returned invalid image data.");
         }
         throw new Exception("Responses API did not return image_generation_call.result.");
     }

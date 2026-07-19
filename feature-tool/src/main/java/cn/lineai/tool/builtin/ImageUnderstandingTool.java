@@ -51,14 +51,14 @@ public final class ImageUnderstandingTool extends BaseTool {
     @Override
     public String promptSupplement(String executionMode, boolean isSsh) {
         if (isSsh) {
-            return "image_understanding 通过 SFTP 读取 SSH 工作区图片，再由应用侧视觉模型配置执行。";
+            return "image_understanding reads images from the SSH workspace via SFTP, then runs via the app-side vision model configuration.";
         }
-        return "image_understanding 通过 IPC 读取终端提供者环境图片，再由应用侧视觉模型配置执行。";
+        return "image_understanding reads images from the terminal provider environment via IPC, then runs via the app-side vision model configuration.";
     }
 
     @Override
     public String getDescription() {
-        return "读取本地或 SSH 工作区图片文件并调用工具设置里选择的视觉模型理解图片内容。支持 OpenAI 兼容、Codex Responses 和 Anthropic Messages 协议。";
+        return "Read a local or SSH workspace image file and call the vision model selected in tool settings to understand its content. Supports OpenAI compatible, Codex Responses, and Anthropic Messages protocols.";
     }
 
     @Override
@@ -88,10 +88,10 @@ public final class ImageUnderstandingTool extends BaseTool {
                 .put("properties", new JSONObject()
                         .put("path", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "图片路径，相对当前工作区或已授权目录；SSH 模式下相对 SSH 工作区，也可以是远端绝对路径"))
+                                .put("description", "Image path, relative to the current workspace or an authorized directory; in SSH mode relative to the SSH workspace, or a remote absolute path"))
                         .put("prompt", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "希望视觉模型回答的问题或分析要求")))
+                                .put("description", "Question or analysis request for the vision model to answer")))
                 .put("required", new org.json.JSONArray().put("path").put("prompt"));
     }
 
@@ -111,7 +111,7 @@ public final class ImageUnderstandingTool extends BaseTool {
         }
         String prompt = input.optString("prompt").trim();
         if (prompt.length() == 0) {
-            prompt = context.getString(R.string.tool_img_under_default_prompt);
+            prompt = "Please describe the content of this image.";
         }
         ModelConfig model = selectedModel(settingsRepository, modelRepository);
         if (model == null) {
@@ -141,7 +141,7 @@ public final class ImageUnderstandingTool extends BaseTool {
         if (promptTemplateRepository != null) {
             return promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_IMAGE_UNDERSTANDING_TOOL_SYSTEM);
         }
-        return "你是 LineCode 的图片理解工具。根据用户提示分析图片，只返回与图片和提示相关的内容。不要提及工具调用、base64 或文件路径；无法确定时说明不确定。";
+        return "You are LineCode's image understanding tool. Analyze the image based on the user's prompt and return only content relevant to the image and the prompt. Do not mention tool calls, base64, or file paths; when uncertain, state the uncertainty.";
     }
 
     private ModelConfig selectedModel(ToolSettingsStore settingsRepository, ModelStore modelRepository) {

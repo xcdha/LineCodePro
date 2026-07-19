@@ -22,6 +22,16 @@ public final class ToolContext {
         void onToolProgress(String toolCallId, String toolName, String content, boolean error);
     }
 
+    /**
+     * Resolves Android string resources independently of a real {@link Context}.
+     * Used by unit tests where {@code Context.getString} is stubbed and throws.
+     */
+    public interface StringResolver {
+        String getString(int resId);
+
+        String getString(int resId, Object... formatArgs);
+    }
+
     private final String homePath;
     private final List<String> extraWriteRoots;
     private final AgentRunner agentRunner;
@@ -35,6 +45,7 @@ public final class ToolContext {
     private final PromptTemplateRepository promptTemplateRepository;
     private final boolean bypassPathProtection;
     private final Context appContext;
+    private final StringResolver stringResolver;
 
     private ToolContext(
             String homePath,
@@ -49,7 +60,8 @@ public final class ToolContext {
             ModelServiceProvider modelServiceProvider,
             PromptTemplateRepository promptTemplateRepository,
             boolean bypassPathProtection,
-            Context appContext
+            Context appContext,
+            StringResolver stringResolver
     ) {
         this.homePath = homePath == null ? "" : homePath;
         this.extraWriteRoots = immutableRoots(extraWriteRoots);
@@ -64,6 +76,7 @@ public final class ToolContext {
         this.promptTemplateRepository = promptTemplateRepository;
         this.bypassPathProtection = bypassPathProtection;
         this.appContext = appContext;
+        this.stringResolver = stringResolver;
     }
 
     public static Builder builder() {
@@ -91,7 +104,7 @@ public final class ToolContext {
     }
 
     public ToolContext withToolCallId(String nextToolCallId) {
-        return new ToolContext(homePath, extraWriteRoots, agentRunner, nextToolCallId, progressListener, todoStateStore, toolSettingsStore, modelRepository, sshFileTreeRepository, modelServiceProvider, promptTemplateRepository, bypassPathProtection, appContext);
+        return new ToolContext(homePath, extraWriteRoots, agentRunner, nextToolCallId, progressListener, todoStateStore, toolSettingsStore, modelRepository, sshFileTreeRepository, modelServiceProvider, promptTemplateRepository, bypassPathProtection, appContext, stringResolver);
     }
 
     public static final class Builder {
@@ -108,6 +121,7 @@ public final class ToolContext {
         private PromptTemplateRepository promptTemplateRepository;
         private boolean bypassPathProtection;
         private Context appContext;
+        private StringResolver stringResolver;
 
         public Builder homePath(String v) { this.homePath = v; return this; }
         public Builder extraWriteRoots(List<String> v) { this.extraWriteRoots = v; return this; }
@@ -122,12 +136,13 @@ public final class ToolContext {
         public Builder promptTemplateRepository(PromptTemplateRepository v) { this.promptTemplateRepository = v; return this; }
         public Builder bypassPathProtection(boolean v) { this.bypassPathProtection = v; return this; }
         public Builder appContext(Context v) { this.appContext = v; return this; }
+        public Builder stringResolver(StringResolver v) { this.stringResolver = v; return this; }
 
         public ToolContext build() {
             return new ToolContext(homePath, extraWriteRoots, agentRunner, toolCallId,
                     progressListener, todoStateStore, toolSettingsStore, modelRepository,
                     sshFileTreeRepository, modelServiceProvider, promptTemplateRepository,
-                    bypassPathProtection, appContext);
+                    bypassPathProtection, appContext, stringResolver);
         }
     }
 
@@ -166,10 +181,16 @@ public final class ToolContext {
     }
 
     public String getString(int resId) {
+        if (stringResolver != null) {
+            return stringResolver.getString(resId);
+        }
         return appContext != null ? appContext.getString(resId) : "";
     }
 
     public String getString(int resId, Object... formatArgs) {
+        if (stringResolver != null) {
+            return stringResolver.getString(resId, formatArgs);
+        }
         return appContext != null ? appContext.getString(resId, formatArgs) : "";
     }
 

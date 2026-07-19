@@ -22,7 +22,7 @@ public final class FileEditTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "编辑文件内容。通过 old_string/new_string 搜索替换修改文件。";
+        return "Edit file contents. Search and replace via old_string/new_string.";
     }
 
     @Override
@@ -45,9 +45,9 @@ public final class FileEditTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("file_path", new JSONObject().put("type", "string").put("description", "文件的绝对或相对路径"))
-                        .put("old_string", new JSONObject().put("type", "string").put("description", "要搜索的原始文本，必须唯一或明确"))
-                        .put("new_string", new JSONObject().put("type", "string").put("description", "替换后的新文本")))
+                        .put("file_path", new JSONObject().put("type", "string").put("description", "Absolute or relative file path"))
+                        .put("old_string", new JSONObject().put("type", "string").put("description", "Original text to search for; must be unique or unambiguous"))
+                        .put("new_string", new JSONObject().put("type", "string").put("description", "Replacement text")))
                 .put("required", new org.json.JSONArray().put("file_path").put("old_string").put("new_string"));
     }
 

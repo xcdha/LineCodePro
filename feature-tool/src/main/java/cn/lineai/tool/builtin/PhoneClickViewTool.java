@@ -17,6 +17,7 @@ import org.json.JSONObject;
  */
 public final class PhoneClickViewTool extends BaseTool {
     public static final String NAME = "phone_click_view";
+    private static final String CLICK_VIEW_DESC = "Tap a View in the current window. Supports locating by resource id, visible text, or screen coordinates. Accessibility must be enabled.";
     private final Context context;
 
     public PhoneClickViewTool(Context context) {
@@ -30,7 +31,7 @@ public final class PhoneClickViewTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return context == null ? "Tap a View in the current window." : context.getString(R.string.phone_tool_click_view_description);
+        return context == null ? CLICK_VIEW_DESC : CLICK_VIEW_DESC;
     }
 
     @Override
@@ -72,10 +73,10 @@ public final class PhoneClickViewTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("resource_id", new JSONObject().put("type", "string").put("description", "View 的 resource id，可传完整 id 或简写 name"))
-                        .put("text", new JSONObject().put("type", "string").put("description", "View 上显示的文本"))
-                        .put("x", new JSONObject().put("type", "integer").put("description", "屏幕坐标 x"))
-                        .put("y", new JSONObject().put("type", "integer").put("description", "屏幕坐标 y")))
+                        .put("resource_id", new JSONObject().put("type", "string").put("description", "The View's resource id, either the full id or the short name"))
+                        .put("text", new JSONObject().put("type", "string").put("description", "Text displayed on the View"))
+                        .put("x", new JSONObject().put("type", "integer").put("description", "Screen coordinate x"))
+                        .put("y", new JSONObject().put("type", "integer").put("description", "Screen coordinate y")))
                 .put("required", new JSONArray());
     }
 

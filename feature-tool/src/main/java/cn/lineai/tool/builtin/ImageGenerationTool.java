@@ -38,14 +38,14 @@ public final class ImageGenerationTool extends BaseTool {
 
     @Override
     public String promptSupplement(String executionMode, boolean isSsh) {
-        return "image_generation 由应用侧生图模型配置执行，不依赖"
-                + (isSsh ? "SSH 主机环境" : "终端提供者环境")
-                + "；结果会以内联 Markdown 图片返回。";
+        return "image_generation is executed by the app-side image generation model configuration, independent of "
+                + (isSsh ? "the SSH host environment" : "the terminal provider environment")
+                + "; the result is returned as an inline Markdown image.";
     }
 
     @Override
     public String getDescription() {
-        return "根据提示词调用工具设置里选择的生图模型生成图片，成功后返回可直接嵌入 Markdown 的图片。支持 OpenAI Images API 和 Responses image_generation 工具。";
+        return "Generate an image using the image generation model selected in tool settings based on the prompt; on success returns an image that can be embedded directly in Markdown. Supports the OpenAI Images API and the Responses image_generation tool.";
     }
 
     @Override
@@ -80,16 +80,16 @@ public final class ImageGenerationTool extends BaseTool {
                 .put("properties", new JSONObject()
                         .put("prompt", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "图片生成提示词，包含主体、风格、构图、文字要求和限制"))
+                                .put("description", "Image generation prompt, including subject, style, composition, text requirements, and constraints"))
                         .put("size", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "图片尺寸，默认 1024x1024；常见值: 1024x1024、1024x1536、1536x1024、auto"))
+                                .put("description", "Image size, default 1024x1024; common values: 1024x1024, 1024x1536, 1536x1024, auto"))
                         .put("quality", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "质量选项，可留空；常见值: auto、low、medium、high、standard、hd"))
+                                .put("description", "Quality option, may be empty; common values: auto, low, medium, high, standard, hd"))
                         .put("background", new JSONObject()
                                 .put("type", "string")
-                                .put("description", "背景选项，可留空；常见值: auto、transparent、opaque")))
+                                .put("description", "Background option, may be empty; common values: auto, transparent, opaque")))
                 .put("required", new JSONArray().put("prompt"));
     }
 
@@ -120,7 +120,7 @@ public final class ImageGenerationTool extends BaseTool {
                 context.reportToolProgress(getName(), context.getString(R.string.tool_img_gen_progress), false);
             }
             ImageResponseParser.GeneratedImage image = model.getProtocolType() == ModelProtocolType.CODEX_RESPONSES
-                    ? generateWithResponsesApi(model, input, prompt)
+                    ? generateWithResponsesApi(model, input, prompt, context)
                     : generateWithImagesApi(model, input, prompt, context);
             String displayMarkdown = "![" + markdownAlt(prompt, context) + "](" + image.dataUrl + ")";
             String modelContent = context.getString(R.string.tool_img_gen_result, trimForModel(prompt))
@@ -159,10 +159,10 @@ public final class ImageGenerationTool extends BaseTool {
         return responseParser.parseImagesResponse(raw, context);
     }
 
-    private ImageResponseParser.GeneratedImage generateWithResponsesApi(ModelConfig model, JSONObject input, String prompt) throws Exception {
+    private ImageResponseParser.GeneratedImage generateWithResponsesApi(ModelConfig model, JSONObject input, String prompt, ToolContext context) throws Exception {
         JSONObject body = apiClient.responsesRequestBody(model, input, prompt);
         String raw = apiClient.postJson(apiClient.responsesEndpoint(model.getBaseUrl()), body, apiClient.codexHeaders(model));
-        return responseParser.parseResponsesImage(raw);
+        return responseParser.parseResponsesImage(raw, context);
     }
 
     private String responsesEndpoint(String baseUrl) {
@@ -181,8 +181,8 @@ public final class ImageGenerationTool extends BaseTool {
         return apiClient.imagesRequestBody(model, input, prompt, requestBase64);
     }
 
-    private ImageResponseParser.GeneratedImage parseResponsesImage(String raw) throws Exception {
-        return responseParser.parseResponsesImage(raw);
+    private ImageResponseParser.GeneratedImage parseResponsesImage(String raw, ToolContext context) throws Exception {
+        return responseParser.parseResponsesImage(raw, context);
     }
 
     private ImageResponseParser.GeneratedImage parseImagesResponse(String raw, ToolContext context) throws Exception {

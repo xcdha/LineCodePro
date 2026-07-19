@@ -94,9 +94,9 @@ public final class ImageGenerationToolTest {
                 .toString();
 
         Exception error = invokeFailure(tool, "parseResponsesImage",
-                new Class<?>[] {String.class}, raw);
+                new Class<?>[] {String.class, ToolContext.class}, raw, null);
 
-        assertTrue(error.getMessage().contains("无效的图片数据"));
+        assertTrue(error.getMessage().contains("Responses API returned invalid image data."));
     }
 
     @Test
@@ -112,7 +112,7 @@ public final class ImageGenerationToolTest {
         Exception error = invokeFailure(tool, "parseImagesResponse",
                 new Class<?>[] {String.class, ToolContext.class}, raw, null);
 
-        assertTrue(error.getMessage().contains("无效的图片数据"));
+        assertTrue(error.getMessage().contains("API returned invalid image data."));
     }
 
     @Test
@@ -125,7 +125,7 @@ public final class ImageGenerationToolTest {
                 .toString();
 
         Object image = invokeObject(tool, "parseResponsesImage",
-                new Class<?>[] {String.class}, raw);
+                new Class<?>[] {String.class, ToolContext.class}, raw, null);
 
         assertEquals("data:image/png;base64," + PNG_1X1_BASE64, fieldString(image, "dataUrl"));
     }

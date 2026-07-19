@@ -33,11 +33,11 @@ public final class CustomMcpHttpTool extends BaseTool {
     @Override
     public String getDescription() {
         StringBuilder builder = new StringBuilder();
-        builder.append("调用自定义 HTTP MCP「").append(mcp.getName()).append("」的工具 ").append(tool.getName()).append("。");
+        builder.append("Invoke the tool ").append(tool.getName()).append(" of the custom HTTP MCP \"").append(mcp.getName()).append("\".");
         if (tool.getDescription().length() > 0) {
             builder.append('\n').append(tool.getDescription());
         }
-        builder.append("\nMCP 地址: ").append(mcp.getUrl());
+        builder.append("\nMCP address: ").append(mcp.getUrl());
         return builder.toString();
     }
 

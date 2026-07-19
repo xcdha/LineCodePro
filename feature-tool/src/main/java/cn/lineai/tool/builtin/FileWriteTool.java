@@ -22,7 +22,7 @@ public final class FileWriteTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "将内容写入文件。如果文件或目录不存在会自动创建。";
+        return "Write content to a file. Automatically creates the file or directory if it does not exist.";
     }
 
     @Override
@@ -45,8 +45,8 @@ public final class FileWriteTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("file_path", new JSONObject().put("type", "string").put("description", "文件的绝对或相对路径"))
-                        .put("content", new JSONObject().put("type", "string").put("description", "要写入的内容")))
+                        .put("file_path", new JSONObject().put("type", "string").put("description", "Absolute or relative file path"))
+                        .put("content", new JSONObject().put("type", "string").put("description", "Content to write")))
                 .put("required", new org.json.JSONArray().put("file_path").put("content"));
     }
 

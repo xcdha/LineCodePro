@@ -21,7 +21,7 @@ public final class ListDirectoryTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "列出目录下的直接文件和文件夹。";
+        return "List the immediate files and folders under a directory.";
     }
 
     @Override
@@ -63,7 +63,7 @@ public final class ListDirectoryTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("path", new JSONObject().put("type", "string").put("description", "目录的绝对或相对路径，可选，默认为 home 目录")));
+                        .put("path", new JSONObject().put("type", "string").put("description", "Absolute or relative directory path, optional, defaults to the home directory")));
     }
 
     @Override

@@ -20,7 +20,7 @@ public final class WebFetchTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "查看并提取指定网页的文本内容。URL 必须使用 HTTPS，或使用 localhost/127.0.0.1/10.0.2.2 的 HTTP。";
+        return "View and extract the text content of a specified web page. The URL must use HTTPS, or HTTP on localhost/127.0.0.1/10.0.2.2.";
     }
 
     @Override
@@ -53,8 +53,8 @@ public final class WebFetchTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("url", new JSONObject().put("type", "string").put("description", "要查看的网页 URL"))
-                        .put("maxChars", new JSONObject().put("type", "number").put("description", "最多返回字符数，默认 12000，最大 30000")))
+                        .put("url", new JSONObject().put("type", "string").put("description", "The web page URL to view"))
+                        .put("maxChars", new JSONObject().put("type", "number").put("description", "Maximum characters to return, default 12000, max 30000")))
                 .put("required", new org.json.JSONArray().put("url"));
     }
 

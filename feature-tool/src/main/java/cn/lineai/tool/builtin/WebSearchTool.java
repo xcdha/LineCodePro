@@ -33,14 +33,14 @@ public final class WebSearchTool extends BaseTool {
     @Override
     public String promptSupplement(String executionMode, boolean isSsh) {
         if (isSsh) {
-            return "web_search 和 web_fetch 由应用侧网络配置执行，不依赖 SSH 主机环境。";
+            return "web_search and web_fetch are executed by the app-side network configuration and do not depend on the SSH host environment.";
         }
-        return "web_search 和 web_fetch 由应用侧网络配置执行，不依赖终端提供者环境。";
+        return "web_search and web_fetch are executed by the app-side network configuration and do not depend on the terminal provider environment.";
     }
 
     @Override
     public String getDescription() {
-        return "搜索互联网信息。需要用户先在 MCP 工具设置中配置搜索 API、模型/搜索源和密钥。适合查询最新事实、文档、新闻和网页资料。";
+        return "Search the internet. Requires the user to configure the search API, model/search source, and key in MCP tool settings first. Suitable for querying the latest facts, documentation, news, and web materials.";
     }
 
     @Override
@@ -73,8 +73,8 @@ public final class WebSearchTool extends BaseTool {
         return new JSONObject()
                 .put("type", "object")
                 .put("properties", new JSONObject()
-                        .put("query", new JSONObject().put("type", "string").put("description", "搜索关键词或问题"))
-                        .put("limit", new JSONObject().put("type", "number").put("description", "返回结果数量，1-10，默认 5")))
+                        .put("query", new JSONObject().put("type", "string").put("description", "Search keyword or question"))
+                        .put("limit", new JSONObject().put("type", "number").put("description", "Number of results to return, 1-10, default 5")))
                 .put("required", new org.json.JSONArray().put("query"));
     }
 
