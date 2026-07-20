@@ -3,13 +3,10 @@ package cn.lineai.ui;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
@@ -36,7 +33,7 @@ import cn.lineai.ui.component.BottomSheetView;
 import cn.lineai.ui.component.ChatMessageListView;
 import cn.lineai.ui.component.ComposerView;
 import cn.lineai.ui.component.DataSettingsScreenView;
-import cn.lineai.ui.component.DialogDimensions;
+import cn.lineai.ui.component.DialogBuilder;
 import cn.lineai.ui.component.DialogManager;
 import cn.lineai.ui.component.DirectoryPickerSheetView;
 import cn.lineai.ui.component.DrawerView;
@@ -60,6 +57,7 @@ import cn.lineai.ui.component.ModelListScreenView;
 import cn.lineai.ui.component.MainChatViewLayoutBuilder;
 import cn.lineai.ui.component.OutputSettingsScreenView;
 import cn.lineai.ui.component.PromptTemplatesScreenView;
+import cn.lineai.ui.component.OverlayManager;
 import cn.lineai.ui.component.ScreenFactories;
 import cn.lineai.ui.component.ScreenRegistry;
 import cn.lineai.ui.component.SettingsScreenView;
@@ -96,6 +94,13 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         void openDocumentPicker(String mimeType, String[] extensions, DocumentPickCallback callback);
 
         void createDocument(String mimeType, String displayName, DocumentCreateCallback callback);
+
+        /**
+         * 启动系统图片选择器。Android 13+ 使用 Photo Picker
+         * ({@link android.provider.MediaStore#ACTION_PICK_IMAGES})，低版本回退到 SAF
+         * ({@link android.content.Intent#ACTION_OPEN_DOCUMENT})。
+         */
+        void pickImage(DocumentPickCallback callback);
     }
 
     public interface DocumentPickCallback {
@@ -112,6 +117,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
 
     private final MainUiController presenter;
     private final DialogManager dialogManager = new DialogManager();
+    private OverlayManager overlayManager;
     private final HeaderView headerView;
     private final LinearLayout contentView;
     private final ChatMessageListView messageListView;
@@ -254,8 +260,21 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             }
 
             @Override
+            public void onSendWithImage(String text, List<InputAttachment> attachments,
+                                        String imageBase64, String imageMimeType, String imageName) {
+                String finalText = quoteController.composeWithQuote(text);
+                MainChatView.this.presenter.onSendMessageWithImage(
+                        finalText, attachments, imageBase64, imageMimeType, imageName);
+            }
+
+            @Override
             public void onAttachClick() {
                 MainChatView.this.presenter.onAttachmentPickerRequested();
+            }
+
+            @Override
+            public void onImagePickerClick() {
+                MainChatView.this.presenter.onImagePickerRequested();
             }
 
             @Override
@@ -281,6 +300,11 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             @Override
             public void onAiReasoningEffortChanged(String effort) {
                 MainChatView.this.presenter.onAiReasoningEffortChanged(effort);
+            }
+
+            @Override
+            public int onQueryModelCount(String baseUrl) throws Exception {
+                return MainChatView.this.presenter.queryModelCount(baseUrl);
             }
         });
         quoteController.setPreview(composerView);
@@ -390,6 +414,8 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         });
         addView(attachmentPickerSheetView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
+        overlayManager = new OverlayManager(drawerView, bottomSheetView, directoryPickerSheetView, attachmentPickerSheetView);
+
         MainChatViewLayoutBuilder.installSystemBarInsetsHandling(this, contentView, screenHost);
         registerScreenFactories();
     }
@@ -460,9 +486,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     @Override
     public void showDrawer() {
         KeyboardController.clearFocusAndHide(this);
-        bottomSheetView.close();
-        directoryPickerSheetView.close();
-        attachmentPickerSheetView.close();
+        overlayManager.closeAllExcept(drawerView);
         renderDrawer(lastState);
         drawerView.open();
     }
@@ -470,21 +494,16 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     @Override
     public void showSheet(String title, List<SheetOption> options) {
         KeyboardController.clearFocusAndHide(this);
-        drawerView.close();
-        directoryPickerSheetView.close();
-        attachmentPickerSheetView.close();
+        overlayManager.closeAllExcept(bottomSheetView);
         bottomSheetView.show(title, options);
     }
 
     @Override
     public void showFileActionDialog(String title, String subtitle, List<SheetOption> options) {
         KeyboardController.clearFocusAndHide(this);
-        bottomSheetView.close();
-        directoryPickerSheetView.close();
-        attachmentPickerSheetView.close();
+        overlayManager.closeAllExcept(drawerView);
 
-        Dialog dialog = new Dialog(getContext());
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        Dialog dialog = DialogBuilder.create(getContext());
         dialog.setCanceledOnTouchOutside(true);
 
         LinearLayout panel = new LinearLayout(getContext());
@@ -519,24 +538,13 @@ public final class MainChatView extends FrameLayout implements MainContract.View
             }
         }
 
-        dialog.setContentView(panel);
-        dialog.setOnShowListener(d -> {
-            Window shown = dialog.getWindow();
-            if (shown != null) {
-                shown.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                shown.setLayout(DialogDimensions.insetDialogWidth(getContext()), LayoutParams.WRAP_CONTENT);
-            }
-        });
-        dialog.show();
+        DialogBuilder.showInset(dialog, panel);
     }
 
     @Override
     public void showInputDialog(String title, String message, String initialValue, String actionId) {
         KeyboardController.clearFocusAndHide(this);
-        drawerView.close();
-        bottomSheetView.close();
-        directoryPickerSheetView.close();
-        attachmentPickerSheetView.close();
+        overlayManager.closeAll();
         final String capturedActionId = actionId;
         dialogManager.showInput(getContext(), title, message, null, initialValue,
                 value -> presenter.onDialogInputSubmitted(capturedActionId, value));
@@ -545,10 +553,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     @Override
     public void showConfirmationDialog(String title, String message, String confirmLabel, boolean danger, String actionId) {
         KeyboardController.clearFocusAndHide(this);
-        drawerView.close();
-        bottomSheetView.close();
-        directoryPickerSheetView.close();
-        attachmentPickerSheetView.close();
+        overlayManager.closeAll();
         final String capturedActionId = actionId;
         dialogManager.showConfirm(getContext(), title, message, confirmLabel, danger,
                 () -> presenter.onDialogConfirmed(capturedActionId),
@@ -558,18 +563,14 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     @Override
     public void showDirectoryPicker(String title, String subtitle, FileTreeNode tree, String selectedPath, boolean loading, String message) {
         KeyboardController.clearFocusAndHide(this);
-        drawerView.close();
-        bottomSheetView.close();
-        attachmentPickerSheetView.close();
+        overlayManager.closeAllExcept(directoryPickerSheetView);
         directoryPickerSheetView.show(title, subtitle, tree, selectedPath, loading, message);
     }
 
     @Override
     public void showAttachmentPicker(String title, FileTreeNode tree, boolean loading, String message, String source) {
         KeyboardController.clearFocusAndHide(this);
-        drawerView.close();
-        bottomSheetView.close();
-        directoryPickerSheetView.close();
+        overlayManager.closeAllExcept(attachmentPickerSheetView);
         attachmentPickerTitle = title == null ? "" : title;
         attachmentPickerTree = tree;
         attachmentPickerLoading = loading;
@@ -583,10 +584,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     @Override
     public void hideOverlays() {
         KeyboardController.clearFocusAndHide(this);
-        drawerView.close();
-        bottomSheetView.close();
-        directoryPickerSheetView.close();
-        attachmentPickerSheetView.close();
+        overlayManager.closeAll();
         composerView.dismissSlashPopup();
     }
 
@@ -603,7 +601,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
     @Override
     public void exportCurrentChat() {
         if (lastState == null || lastState.getMessages().isEmpty()) {
-            Toast.makeText(getContext(), "当前没有对话内容", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), R.string.toast_chat_empty_export, Toast.LENGTH_SHORT).show();
             return;
         }
         shareController.showFormatPicker(getContext(), lastState.getMessages());
@@ -630,10 +628,7 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         currentScreenId = screenId == null ? "" : screenId;
         KeyboardController.clearFocusAndHide(screenHost);
         KeyboardController.clearFocusAndHide(this);
-        drawerView.close();
-        bottomSheetView.close();
-        directoryPickerSheetView.close();
-        attachmentPickerSheetView.close();
+        overlayManager.closeAll();
         screenHost.animate().cancel();
         View existing = previousScreenId.length() > 0 ? screenCache.get(previousScreenId) : null;
         if (existing == null || existing.getParent() != screenHost) {
@@ -816,6 +811,145 @@ public final class MainChatView extends FrameLayout implements MainContract.View
                 presenter.onLineCodeImportCancelled();
             }
         });
+    }
+
+    @Override
+    public void openImagePicker() {
+        Context context = getContext();
+        if (!(context instanceof WorkspaceHost)) {
+            return;
+        }
+        ((WorkspaceHost) context).pickImage(new DocumentPickCallback() {
+            @Override
+            public void onDocumentPicked(String uri, String displayName) {
+                handleImagePicked(uri, displayName);
+            }
+
+            @Override
+            public void onDocumentPickCancelled() {
+                // 用户取消，无需处理
+            }
+        });
+    }
+
+    private void handleImagePicked(final String uriString, final String displayName) {
+        if (uriString == null || uriString.length() == 0) {
+            return;
+        }
+        final Uri uri;
+        try {
+            uri = Uri.parse(uriString);
+        } catch (Exception ignored) {
+            return;
+        }
+        if (uri == null) {
+            return;
+        }
+        final Context context = getContext();
+        Toast.makeText(context, context.getString(R.string.composer_image_loading), Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String mimeType = "";
+            String base64 = "";
+            try {
+                android.content.ContentResolver resolver = context.getContentResolver();
+                byte[] bytes = readAndCompressImage(resolver, uri);
+                if (bytes != null && bytes.length > 0) {
+                    base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP);
+                    // 统一使用 image/jpeg，因为压缩后输出的是 JPEG
+                    mimeType = "image/jpeg";
+                }
+            } catch (Exception ignored) {
+            }
+            final String finalMimeType = mimeType;
+            final String finalBase64 = base64;
+            post(() -> {
+                if (finalBase64.length() == 0) {
+                    Toast.makeText(context, context.getString(R.string.composer_image_load_failed), Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                composerView.onImagePicked(uri, finalBase64, finalMimeType, displayName);
+            });
+        }, "linecode-image-load").start();
+    }
+
+    /**
+     * 读取图片并按需压缩：长边超过 1568 时缩放至 1568；压缩后总字节超过 3.5MB 时进一步降低质量。
+     * 这是 OpenAI / Anthropic 视觉模型对单图大小的常见上限的折中。
+     */
+    private byte[] readAndCompressImage(android.content.ContentResolver resolver, Uri uri) throws Exception {
+        android.graphics.Bitmap bitmap = null;
+        java.io.InputStream input = resolver.openInputStream(uri);
+        if (input == null) {
+            return null;
+        }
+        try {
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeStream(input, null, opts);
+            int width = opts.outWidth;
+            int height = opts.outHeight;
+            int sampleSize = computeSampleSize(width, height, 1568);
+            java.io.InputStream decodeInput = resolver.openInputStream(uri);
+            if (decodeInput == null) {
+                return null;
+            }
+            try {
+                android.graphics.BitmapFactory.Options decodeOpts = new android.graphics.BitmapFactory.Options();
+                decodeOpts.inSampleSize = sampleSize;
+                bitmap = android.graphics.BitmapFactory.decodeStream(decodeInput, null, decodeOpts);
+            } finally {
+                decodeInput.close();
+            }
+        } finally {
+            input.close();
+        }
+        if (bitmap == null) {
+            return null;
+        }
+        try {
+            int maxEdge = 1568;
+            int bw = bitmap.getWidth();
+            int bh = bitmap.getHeight();
+            if (Math.max(bw, bh) > maxEdge) {
+                float scale = (float) maxEdge / Math.max(bw, bh);
+                int newW = Math.max(1, Math.round(bw * scale));
+                int newH = Math.max(1, Math.round(bh * scale));
+                android.graphics.Bitmap scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, newW, newH, true);
+                if (scaled != bitmap) {
+                    bitmap.recycle();
+                    bitmap = scaled;
+                }
+            }
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            int quality = 85;
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output);
+            byte[] result = output.toByteArray();
+            // 超过 3.5 MB 时进一步压缩
+            while (result.length > 3_500_000 && quality > 30) {
+                quality -= 15;
+                output.reset();
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output);
+                result = output.toByteArray();
+            }
+            return result;
+        } finally {
+            bitmap.recycle();
+        }
+    }
+
+    private int computeSampleSize(int width, int height, int targetMaxEdge) {
+        if (width <= 0 || height <= 0) {
+            return 1;
+        }
+        int maxEdge = Math.max(width, height);
+        if (maxEdge <= targetMaxEdge) {
+            return 1;
+        }
+        int sample = 1;
+        while ((maxEdge / sample) > targetMaxEdge * 2) {
+            sample *= 2;
+        }
+        return sample;
     }
 
     @Override

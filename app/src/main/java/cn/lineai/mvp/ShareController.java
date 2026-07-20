@@ -3,6 +3,7 @@ package cn.lineai.mvp;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.widget.Toast;
+import cn.lineai.R;
 import cn.lineai.model.ChatMessage;
 import cn.lineai.share.ExportFormat;
 import cn.lineai.share.ExportFormatResolver;
@@ -33,7 +34,7 @@ public final class ShareController {
     public void showFormatPicker(Context context, List<ChatMessage> selected) {
         String[] names = resolver.getDisplayNames();
         new AlertDialog.Builder(context)
-                .setTitle("导出格式")
+                .setTitle(R.string.dialog_export_format_title)
                 .setItems(names, (dialog, which) -> {
                     ExportFormat format = resolver.get(which);
                     ExportResult result = format.execute(context, selected);
@@ -55,7 +56,7 @@ public final class ShareController {
                 if (format instanceof ClipboardFormat) {
                     ClipboardFormat clipFormat = (ClipboardFormat) format;
                     if (clipFormat.shouldWarn(text)) {
-                        Toast.makeText(context, "内容较长，仅部分可能被复制", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(context, R.string.toast_clipboard_large, Toast.LENGTH_SHORT).show();
                     }
                 }
                 ShareHelper.copy(context, text);

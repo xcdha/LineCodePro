@@ -70,7 +70,7 @@ final class ContextCompactionController {
             MainThreadDispatcher mainThread,
             Host host
     ) {
-        this.context = context;
+        this.context = context.getApplicationContext();
         this.messages = messages;
         this.chatSessionStore = chatSessionStore;
         this.modelRepository = modelRepository;
@@ -87,7 +87,7 @@ final class ContextCompactionController {
             return false;
         }
         AiBehaviorSettings aiSettings = aiBehaviorSettingsRepository.get();
-        int contextTokens = ModelContextParser.parse(selectedModel.getModelId()).getContextTokens();
+        int contextTokens = ModelContextParser.parse(selectedModel).getContextTokens();
         if (!contextCompactionService.shouldCompact(messages, contextTokens, contextManager, aiSettings.isPreserveReasoningEnabled())) {
             return false;
         }
@@ -108,12 +108,42 @@ final class ContextCompactionController {
         return false;
     }
 
+    /**
+     * 软触发判断：上下文占用达到 SOFT_COMPACT_TRIGGER_RATIO（50%）但未达硬触发（80%）时，
+     * 对最早的一部分消息做增量压缩，保留近期消息不动。需要存在可拆分的 head 才会触发。
+     */
+    boolean shouldAutoSoftCompactBeforeRequest(ModelConfig selectedModel, String activeUserMessageId) {
+        if (selectedModel == null) {
+            return false;
+        }
+        AiBehaviorSettings aiSettings = aiBehaviorSettingsRepository.get();
+        int contextTokens = ModelContextParser.parse(selectedModel).getContextTokens();
+        if (!contextCompactionService.shouldSoftCompact(messages, contextTokens, contextManager, aiSettings.isPreserveReasoningEnabled())) {
+            return false;
+        }
+        ArrayList<ChatMessage> preservedTail = getAutoCompactPreservedTail(activeUserMessageId);
+        HashSet<String> preservedIds = messageIdSet(preservedTail);
+        ArrayList<ChatMessage> baseMessages = new ArrayList<>();
+        for (ChatMessage message : messages) {
+            if (preservedIds.contains(message.getId())) {
+                continue;
+            }
+            baseMessages.add(message);
+        }
+        List<List<ChatMessage>> split = contextCompactionService.splitForSoftCompact(baseMessages);
+        List<ChatMessage> head = split.get(0);
+        return hasCompactableBaseMessages(head);
+    }
+
     void showCompactConfirmation() {
         ArrayList<SheetOption> options = new ArrayList<>();
-        options.add(new SheetOption("compact:confirm", "确认压缩",
-                "把早期上下文总结成隐藏摘要，旧消息仍保留在历史中。", false));
-        options.add(new SheetOption("compact:cancel", context.getString(R.string.common_cancel), "返回当前对话", false));
-        host.showSheet("压缩上下文", options);
+        options.add(new SheetOption("compact:confirm",
+                context.getString(R.string.context_compact_confirm),
+                context.getString(R.string.context_compact_confirm_desc), false));
+        options.add(new SheetOption("compact:cancel",
+                context.getString(R.string.common_cancel),
+                context.getString(R.string.context_compact_cancel_desc), false));
+        host.showSheet(context.getString(R.string.sheet_more_compact), options);
     }
 
     void startManualContextCompaction() {
@@ -122,11 +152,11 @@ final class ContextCompactionController {
         }
         ModelConfig selectedModel = modelRepository.getSelectedModel();
         if (selectedModel == null) {
-            host.showNotice("还没有可用模型。请先配置模型，再压缩上下文。");
+            host.showNotice(context.getString(R.string.context_compact_no_model));
             return;
         }
         if (messages.size() < 4) {
-            host.showNotice("当前上下文不足，无需压缩。");
+            host.showNotice(context.getString(R.string.context_compact_insufficient));
             return;
         }
         chatSessionStore.ensureCurrentConversation(System.currentTimeMillis());
@@ -197,6 +227,104 @@ final class ContextCompactionController {
                         progressId,
                         "上下文压缩失败：" + e.getMessage()
                 ));
+            } catch (OutOfMemoryError oom) {
+                // 兜底：service 内部已捕获 OOM 并转换为 ModelCompletionException，
+                // 但 modelClient/responsesSummaryProtocol 自身的字符串累积仍可能
+                // 在后台线程上抛 OOM。这里释放 baseSnapshot 引用并降级到失败路径，
+                // 避免整个进程被默认 UncaughtExceptionHandler 杀掉。
+                baseSnapshot.clear();
+                System.gc();
+                mainThread.post(() -> failContextCompaction(
+                        generationId,
+                        selectedModel,
+                        cancellationToken,
+                        continueAfterCompaction,
+                        userInput,
+                        progressId,
+                        "上下文过大，压缩时内存不足，请手动清理早期对话后重试"
+                ));
+            }
+        });
+    }
+
+    /**
+     * 启动软触发增量压缩：把早期消息（head）压缩成摘要，保留近期消息（tail）不动。
+     * 与 {@link #startContextCompaction} 不同，这里只压缩最早的一部分消息，
+     * 避免一次性处理大量历史导致 transcript 字符串过大。
+     */
+    void startSoftContextCompaction(
+            int generationId,
+            ModelConfig selectedModel,
+            ModelCancellationToken cancellationToken,
+            boolean continueAfterCompaction,
+            String activeUserMessageId,
+            String userInput
+    ) {
+        ArrayList<ChatMessage> preservedTail = continueAfterCompaction
+                ? getAutoCompactPreservedTail(activeUserMessageId)
+                : new ArrayList<>();
+        HashSet<String> preservedIds = messageIdSet(preservedTail);
+        ArrayList<ChatMessage> baseMessages = new ArrayList<>();
+        for (ChatMessage message : messages) {
+            if (!preservedIds.contains(message.getId())) {
+                baseMessages.add(message);
+            }
+        }
+        List<List<ChatMessage>> split = contextCompactionService.splitForSoftCompact(baseMessages);
+        ArrayList<ChatMessage> headSnapshot = new ArrayList<>(split.get(0));
+        if (!hasCompactableBaseMessages(headSnapshot)) {
+            // 没有可压缩的 head：直接继续后续请求，不阻塞流程。
+            if (continueAfterCompaction) {
+                host.startInitialModelRequest(generationId, selectedModel, cancellationToken, userInput);
+            } else {
+                chatSessionStore.setStreaming(false);
+                host.setCurrentCancellationToken(null);
+                host.stopGenerationKeepAlive();
+                host.render();
+            }
+            return;
+        }
+        String progressId = host.nextId();
+        messages.add(ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_RUNNING));
+        host.persistCurrentConversation();
+        host.render();
+
+        backgroundTasks.execute("linecode-context-compact-soft", () -> {
+            try {
+                ContextCompactionResult result = contextCompactionService.compact(selectedModel, headSnapshot, cancellationToken);
+                mainThread.post(() -> finishSoftContextCompaction(
+                        generationId,
+                        selectedModel,
+                        cancellationToken,
+                        continueAfterCompaction,
+                        userInput,
+                        headSnapshot,
+                        preservedIds,
+                        progressId,
+                        result
+                ));
+            } catch (ModelCompletionException e) {
+                mainThread.post(() -> failContextCompaction(
+                        generationId,
+                        selectedModel,
+                        cancellationToken,
+                        continueAfterCompaction,
+                        userInput,
+                        progressId,
+                        "上下文压缩失败：" + e.getMessage()
+                ));
+            } catch (OutOfMemoryError oom) {
+                headSnapshot.clear();
+                System.gc();
+                mainThread.post(() -> failContextCompaction(
+                        generationId,
+                        selectedModel,
+                        cancellationToken,
+                        continueAfterCompaction,
+                        userInput,
+                        progressId,
+                        "上下文过大，压缩时内存不足，请手动清理早期对话后重试"
+                ));
             }
         });
     }
@@ -256,6 +384,95 @@ final class ContextCompactionController {
                 "",
                 result.getResponseInputItemJson());
         compacted.add(summaryMessage);
+        for (ChatMessage message : messages) {
+            if (preservedIds.contains(message.getId())) {
+                compacted.add(message);
+            }
+        }
+        compacted.add(ChatMessage.compactProgress(progressId, ChatMessage.COMPACT_STATUS_DONE)
+                .withCompactStatus(ChatMessage.COMPACT_STATUS_DONE, false));
+        messages.clear();
+        messages.addAll(compacted);
+        host.persistCurrentConversation();
+        host.render();
+        if (continueAfterCompaction) {
+            host.startInitialModelRequest(generationId, selectedModel, cancellationToken, userInput);
+            return;
+        }
+        chatSessionStore.setStreaming(false);
+        host.setCurrentCancellationToken(null);
+        host.stopGenerationKeepAlive();
+        host.render();
+    }
+
+    /**
+     * 软触发压缩完成后的合并逻辑：仅把 headSnapshot 中的消息标记 excludeFromContext，
+     * 摘要插在 head 之后；tail（不在 head 也不在 preservedTail 的近期消息）原样保留。
+     * 这保证近期上下文不被压缩，模型仍能看到最近几轮的真实对话。
+     */
+    private void finishSoftContextCompaction(
+            int generationId,
+            ModelConfig selectedModel,
+            ModelCancellationToken cancellationToken,
+            boolean continueAfterCompaction,
+            String userInput,
+            ArrayList<ChatMessage> headSnapshot,
+            HashSet<String> preservedIds,
+            String progressId,
+            ContextCompactionResult result
+    ) {
+        if (cancellationToken != null && cancellationToken.isCancelled()) {
+            markCompactProgress(progressId, ChatMessage.COMPACT_STATUS_ERROR, false);
+            host.persistCurrentConversation();
+            host.render();
+            return;
+        }
+        if (!chatSessionStore.isActiveGeneration(generationId)) {
+            return;
+        }
+        if (result == null || result.getSummaryContent().trim().length() == 0) {
+            failContextCompaction(generationId, selectedModel, cancellationToken, continueAfterCompaction, userInput,
+                    progressId, "上下文压缩失败：模型没有返回摘要。");
+            return;
+        }
+        HashSet<String> headIds = messageIdSet(headSnapshot);
+        // 期望最终顺序：[head(标记 excludeFromContext)] + [summary] + [tail(原样)] + [preservedTail] + [progressDone]
+        // head 是被压缩成摘要的早期消息；tail 是保留的近期消息；preservedTail 是当前 user 消息或
+        // assistant+tool 序列。把摘要插在 head 与 tail 之间，让模型看到"前情提要 → 近期上下文 → 当前问题"。
+        ArrayList<ChatMessage> headCompacted = new ArrayList<>();
+        ArrayList<ChatMessage> tailCompacted = new ArrayList<>();
+        for (ChatMessage message : messages) {
+            if (progressId.equals(message.getId()) || preservedIds.contains(message.getId())) {
+                continue;
+            }
+            if (headIds.contains(message.getId())) {
+                headCompacted.add(message.withExcludeFromContext(true));
+            } else {
+                tailCompacted.add(message);
+            }
+        }
+        ChatMessage summaryMessage = new ChatMessage(
+                host.nextId(),
+                ChatMessage.Role.USER,
+                result.getSummaryContent(),
+                "",
+                false,
+                true,
+                false,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                "",
+                "",
+                false,
+                "",
+                "",
+                "",
+                "",
+                result.getResponseInputItemJson());
+        ArrayList<ChatMessage> compacted = new ArrayList<>();
+        compacted.addAll(headCompacted);
+        compacted.add(summaryMessage);
+        compacted.addAll(tailCompacted);
         for (ChatMessage message : messages) {
             if (preservedIds.contains(message.getId())) {
                 compacted.add(message);

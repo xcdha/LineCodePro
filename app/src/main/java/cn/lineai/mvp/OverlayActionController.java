@@ -41,7 +41,7 @@ final class OverlayActionController {
             LineCodeArchiveController lineCodeArchiveController,
             Host host
     ) {
-        this.context = context;
+        this.context = context.getApplicationContext();
         this.projectWorkspaceController = projectWorkspaceController;
         this.fileOperationController = fileOperationController;
         this.permissionModeController = permissionModeController;
@@ -85,13 +85,25 @@ final class OverlayActionController {
             return;
         }
         ArrayList<SheetOption> options = new ArrayList<>();
-        options.add(new SheetOption("tutorial", "教程", "打开初学者教程", false));
-        options.add(new SheetOption("settings", context.getString(R.string.screen_settings_title), "模型、主题、数据管理", false));
-        options.add(new SheetOption("export", "导出对话", "将当前对话导出为 Markdown 或分享", false));
-        options.add(new SheetOption("select_export", "选择消息导出", "多选消息后合并导出/分享", false));
-        options.add(new SheetOption("compact", "压缩上下文", "将早期上下文总结为隐藏摘要", false));
-        options.add(new SheetOption("clear", "清空对话", "清空当前对话消息", false));
-        host.showSheet("更多", options);
+        options.add(new SheetOption("tutorial",
+                context.getString(R.string.sheet_more_tutorial),
+                context.getString(R.string.sheet_more_tutorial_desc), false));
+        options.add(new SheetOption("settings",
+                context.getString(R.string.screen_settings_title),
+                context.getString(R.string.sheet_more_settings_desc), false));
+        options.add(new SheetOption("export",
+                context.getString(R.string.sheet_more_export),
+                context.getString(R.string.sheet_more_export_desc), false));
+        options.add(new SheetOption("select_export",
+                context.getString(R.string.sheet_more_select_export),
+                context.getString(R.string.sheet_more_select_export_desc), false));
+        options.add(new SheetOption("compact",
+                context.getString(R.string.sheet_more_compact),
+                context.getString(R.string.sheet_more_compact_desc), false));
+        options.add(new SheetOption("clear",
+                context.getString(R.string.sheet_more_clear),
+                context.getString(R.string.sheet_more_clear_desc), false));
+        host.showSheet(context.getString(R.string.common_more), options);
     }
 
     void handleSheetOption(String id) {

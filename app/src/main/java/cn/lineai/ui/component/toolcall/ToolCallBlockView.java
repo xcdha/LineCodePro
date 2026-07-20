@@ -6,6 +6,8 @@ import android.widget.LinearLayout;
 import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolResult;
+import cn.lineai.tool.builtin.AgentPipelineTool;
+import cn.lineai.tool.builtin.AgentTool;
 
 public final class ToolCallBlockView extends LinearLayout {
     private final ToolCallViewFactoryRegistry registry;
@@ -30,7 +32,7 @@ public final class ToolCallBlockView extends LinearLayout {
         }
         lastSignature = signature;
         String name = toolCall == null ? "" : toolCall.getName();
-        ToolDisplayCategory category = ToolCallUtils.getDisplayCategory(name);
+        ToolDisplayCategory category = resolveDisplayCategory(name);
         ToolCallCardView childView = registry.createView(getContext(), category);
         if (childView != null) {
             removeAllViews();
@@ -53,6 +55,16 @@ public final class ToolCallBlockView extends LinearLayout {
         if (getChildCount() > 0 && getChildAt(0) instanceof ToolCallCardView) {
             ((ToolCallCardView) getChildAt(0)).setProjectPath(this.projectPath);
         }
+    }
+
+    private ToolDisplayCategory resolveDisplayCategory(String name) {
+        if (AgentTool.NAME.equals(name)) {
+            return ToolDisplayCategory.AGENT;
+        }
+        if (AgentPipelineTool.NAME.equals(name)) {
+            return ToolDisplayCategory.AGENT_PIPELINE;
+        }
+        return ToolCallUtils.getDisplayCategory(name);
     }
 
     private String signature(ToolCall toolCall, ToolResult result) {

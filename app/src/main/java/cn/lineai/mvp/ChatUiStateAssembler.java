@@ -49,9 +49,7 @@ public final class ChatUiStateAssembler {
     ) {
         ModelConfig selectedModel = modelRepository.getSelectedModel();
         boolean hasConfiguredModel = selectedModel != null;
-        ModelContextInfo contextInfo = selectedModel == null
-                ? ModelContextParser.parse("")
-                : ModelContextParser.parse(selectedModel.getModelId());
+        ModelContextInfo contextInfo = ModelContextParser.parse(selectedModel);
         AiBehaviorSettings aiSettings = aiBehaviorSettingsRepository.get();
         InputSettings inputSettings = inputSettingsRepository.get();
         OutputSettings outputSettings = outputSettingsRepository.get();

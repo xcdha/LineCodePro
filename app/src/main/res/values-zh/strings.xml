@@ -49,6 +49,10 @@
     <string name="composer_hint_default">输入消息…</string>
     <string name="composer_hint_no_model">请先到设置 → 模型管理配置模型</string>
     <string name="composer_attachment_remove_desc">移除附件</string>
+    <string name="composer_image_button_desc">选择图片发送</string>
+    <string name="composer_image_remove_desc">移除已选图片</string>
+    <string name="composer_image_loading">正在加载图片…</string>
+    <string name="composer_image_load_failed">加载图片失败</string>
     <string name="chat_mode_control_label">控制</string>
 
     <string name="slash_command_main_title">快速切换</string>
@@ -219,6 +223,11 @@
     <string name="screen_security_title">安全</string>
     <string name="screen_security_section_http">HTTP 限制</string>
     <string name="screen_security_section_browser">内置浏览器</string>
+    <string name="screen_security_section_path">路径保护</string>
+    <string name="settings_row_security_bypass_path_title">无视路径保护</string>
+    <string name="settings_row_security_bypass_path_desc">允许工具和 Agent 访问任意路径,不限制在工作区内</string>
+    <string name="settings_row_security_bypass_path_warning_title">警告</string>
+    <string name="settings_row_security_bypass_path_warning_message">开启此选项后,AI 将能够访问设备上的任意文件,包括系统文件和应用数据。请确保你信任当前的 AI 模型和 Agent。是否继续?</string>
     <string name="settings_row_security_desc">HTTP 限制与内置浏览器脚本执行</string>
     <string name="screen_settings_section_info">信息</string>
 
@@ -265,6 +274,9 @@
     <string name="screen_model_add_local_picker_pending">本地文件选择器稍后接入。</string>
     <string name="screen_model_add_context_length_label">上下文长度</string>
     <string name="screen_model_add_context_length_hint">手机端建议从 4096 开始；保存后模型 ID 会自动带上上下文标记。</string>
+    <string name="model_field_context_size">上下文大小</string>
+    <string name="model_field_context_size_hint">如 128K 或 128000</string>
+    <string name="model_field_context_size_hint_desc">支持 k / m 单位（大小写不敏感）。留空则使用模型默认上下文。</string>
     <string name="screen_model_add_acceleration_label">加速</string>
     <string name="screen_model_add_acceleration_auto">自动</string>
     <string name="screen_model_add_acceleration_cpu">CPU</string>
@@ -331,6 +343,7 @@
     <string name="screen_tools_provider_brave">Brave Search</string>
     <string name="screen_tools_provider_serpapi">SerpAPI</string>
     <string name="screen_tools_provider_bing">Bing Search</string>
+    <string name="screen_tools_provider_bing_rss_free">Bing RSS Free</string>
     <string name="screen_tools_provider_custom">自定义</string>
     <string name="screen_tools_hint_api_key">搜索服务密钥</string>
     <string name="screen_tools_hint_model">如 basic、advanced、google，可留空</string>
@@ -635,8 +648,6 @@
     <string name="tool_call_output">返回值</string>
     <string name="tool_call_diff_truncated">… (diff 已截断，共 %1$d 行)</string>
 
-    <string name="markdown_image_label">[图片]</string>
-
     <string name="screen_about_title">关于</string>
     <string name="screen_about_section_version">版本</string>
     <string name="screen_about_section_developer">开发者</string>
@@ -762,6 +773,8 @@
     <string name="screen_theme_starter_saved">已保存</string>
     <string name="screen_theme_color_background">背景</string>
     <string name="screen_theme_color_background_desc">页面底色</string>
+    <string name="screen_theme_color_surface">基础表面</string>
+    <string name="screen_theme_color_surface_desc">列表和内容底色</string>
     <string name="screen_theme_color_panel">面板</string>
     <string name="screen_theme_color_panel_desc">卡片和弹层背景</string>
     <string name="screen_theme_color_panel_light">浅面板</string>
@@ -774,6 +787,8 @@
     <string name="screen_theme_color_text_secondary_desc">说明文字</string>
     <string name="screen_theme_color_text_tertiary">弱文字</string>
     <string name="screen_theme_color_text_tertiary_desc">占位和辅助文字</string>
+    <string name="screen_theme_color_text_on_color">彩色背景文字</string>
+    <string name="screen_theme_color_text_on_color_desc">强调色填充上的文字</string>
     <string name="screen_theme_color_accent">强调色</string>
     <string name="screen_theme_color_accent_desc">选中、按钮、链接</string>
     <string name="screen_theme_color_user_bubble">用户气泡</string>
@@ -782,8 +797,12 @@
     <string name="screen_theme_color_ai_bubble_desc">AI 消息背景</string>
     <string name="screen_theme_color_border">边框</string>
     <string name="screen_theme_color_border_desc">主分割线</string>
+    <string name="screen_theme_color_border_light">浅色边框</string>
+    <string name="screen_theme_color_border_light_desc">次级分割线和导轨</string>
     <string name="screen_theme_color_code_background">代码背景</string>
     <string name="screen_theme_color_code_background_desc">代码块背景</string>
+    <string name="screen_theme_color_code_border">代码边框</string>
+    <string name="screen_theme_color_code_border_desc">代码块边框</string>
     <string name="screen_theme_color_danger">危险</string>
     <string name="screen_theme_color_danger_desc">删除和错误</string>
     <string name="screen_theme_color_warning">警告</string>
@@ -1079,25 +1098,6 @@
     <string name="phone_tool_global_action_success">系统动作成功: %1$s</string>
     <string name="phone_tool_global_action_failed">系统动作失败或不支持: %1$s</string>
 
-    <string name="markdown_code_copy_desc">复制代码</string>
-    <string name="markdown_code_copied">已复制</string>
-
-    <!-- SshService user-visible messages -->
-    <string name="ssh_error_command_empty">命令不能为空</string>
-    <string name="ssh_error_not_configured">SSH 未配置完整，请填写 host、port、username，并填写 password 或 private key。</string>
-    <string name="ssh_error_sftp_empty">SFTP 操作不能为空</string>
-    <string name="ssh_error_termux_permission">LineCode 未获得 Termux RUN_COMMAND 权限，请在应用权限中允许"Run commands in Termux environment"。</string>
-    <string name="ssh_error_termux_no_result">Termux 未返回执行结果，请确认 Termux 版本 &gt;= 0.109。</string>
-    <string name="ssh_error_termux_command_failed">Termux 启动命令失败: %1$d</string>
-    <string name="ssh_error_termux_setup_timeout">等待 Termux 配置 OpenSSH 超时，请确认 Termux 已执行授权指令并开启 allow-external-apps=true。</string>
-    <string name="ssh_error_command_timeout">命令执行超时</string>
-    <string name="ssh_error_create_config_dir">无法创建 SSH 配置目录: %1$s</string>
-    <string name="ssh_error_create_known_hosts">无法创建 known_hosts 文件: %1$s</string>
-    <string name="ssh_error_termux_parse_failed">Termux 已返回结果，但未解析到 username 或 private key。\n%1$s</string>
-    <string name="ssh_error_termux_not_installed">未检测到 Termux，请先安装 Termux。</string>
-    <string name="ssh_redact_private_key">LINEAI_PRIVATE_KEY=[已保存到 SSH Private key]</string>
-    <string name="ssh_error_read_termux_script">无法读取 Termux 配置脚本: %1$s</string>
-
     <!-- MainCoordinator agent messages -->
     <string name="message_generation_interrupted">上次生成已中断。</string>
     <string name="message_agent_terminated">Agent 已终止。</string>
@@ -1121,4 +1121,67 @@
     <!-- StoragePermissionManager messages -->
     <string name="permission_denied_manage_all">缺少“管理所有文件”权限，无法访问外部工作区。请在系统设置中允许 LineCode 管理所有文件，然后重试。</string>
     <string name="permission_denied_read_write">缺少文件读写权限，无法访问外部工作区。请允许 LineCode 读取和写入存储空间后重试。</string>
+
+    <!-- i18n fixes for hardcoded UI strings -->
+    <string name="toast_chat_empty_export">当前没有对话内容</string>
+    <string name="toast_query_failed">查询失败</string>
+    <string name="toast_ai_generate_failed_no_result">AI 生成失败：未返回结果</string>
+    <string name="toast_ai_generate_failed">AI 生成失败</string>
+    <string name="composer_model_submenu_query_button">↓ 查询模型</string>
+    <string name="composer_model_submenu_count_label">↓ %1$d 个模型</string>
+    <string name="composer_model_submenu_query_done_toast">查到 %1$d 个模型，请在管理模型中导入</string>
+
+    <!-- Tool group titles and descriptions (ToolSettingsRepository.DEFAULT_CONFIGS) -->
+    <string name="tool_group_file_ops_name">文件操作</string>
+    <string name="tool_group_file_ops_desc">读取、写入、编辑和删除文件</string>
+    <string name="tool_group_agent_desc">分派 Agent 处理任务</string>
+    <string name="tool_group_phone_control_name">手机控制</string>
+    <string name="tool_group_phone_control_desc">通过无障碍服务控制本机操作</string>
+    <string name="tool_group_todo_name">任务清单</string>
+    <string name="tool_group_todo_desc">维护当前会话的 TODO 列表，状态会注入到 system prompt</string>
+    <string name="tool_group_image_understanding_name">图片理解</string>
+    <string name="tool_group_image_understanding_desc">读取本地或 SSH 工作区图片并调用已选择的视觉模型理解内容</string>
+    <string name="tool_group_image_generation_name">图片生成</string>
+    <string name="tool_group_image_generation_desc">调用已选择的生图模型生成图片，并以内联 Markdown 图片返回</string>
+    <string name="tool_group_shell_desc">通过 SSH 执行 shell 命令</string>
+    <string name="tool_group_web_search_name">网页搜索</string>
+    <string name="tool_group_web_search_desc">搜索互联网并查看网页内容</string>
+    <string name="tool_group_ipc_shell_desc">通过终端提供者 IPC 执行 shell 命令</string>
+
+    <!-- Overlay action sheet (more actions menu) -->
+    <string name="sheet_more_tutorial">教程</string>
+    <string name="sheet_more_tutorial_desc">打开初学者教程</string>
+    <string name="sheet_more_settings_desc">模型、主题、数据管理</string>
+    <string name="sheet_more_export">导出对话</string>
+    <string name="sheet_more_export_desc">将当前对话导出为 Markdown 或分享</string>
+    <string name="sheet_more_select_export">选择消息导出</string>
+    <string name="sheet_more_select_export_desc">多选消息后合并导出/分享</string>
+    <string name="sheet_more_compact">压缩上下文</string>
+    <string name="sheet_more_compact_desc">将早期上下文总结为隐藏摘要</string>
+    <string name="sheet_more_clear">清空对话</string>
+    <string name="sheet_more_clear_desc">清空当前对话消息</string>
+
+    <!-- Permission mode sheet -->
+    <string name="permission_mode_auto">自动</string>
+    <string name="permission_mode_auto_desc">自动执行已启用工具，危险工具按策略确认</string>
+    <string name="permission_mode_confirm">确认</string>
+    <string name="permission_mode_confirm_desc">危险操作需要确认后执行</string>
+    <string name="permission_mode_readonly">只读</string>
+    <string name="permission_mode_readonly_desc">仅允许读取、搜索和列目录，禁止写入与 Shell</string>
+    <string name="permission_mode_manage_all_files">管理所有文件权限</string>
+    <string name="permission_mode_storage_granted">已授权，可访问文件存储</string>
+
+    <!-- Context compaction sheet and notices -->
+    <string name="context_compact_confirm">确认压缩</string>
+    <string name="context_compact_confirm_desc">把早期上下文总结成隐藏摘要，旧消息仍保留在历史中。</string>
+    <string name="context_compact_cancel_desc">返回当前对话</string>
+    <string name="context_compact_no_model">还没有可用模型。请先配置模型，再压缩上下文。</string>
+    <string name="context_compact_insufficient">当前上下文不足，无需压缩。</string>
+
+    <!-- Attachment picker (composer + button) -->
+    <string name="attachment_picker_title_ssh">选择 SSH 文件</string>
+    <string name="attachment_picker_title_terminal_provider">选择终端提供者文件</string>
+    <string name="attachment_picker_title_local">选择本地文件</string>
+    <string name="attachment_picker_loading_ssh">正在通过 SFTP 读取 SSH 文件...</string>
+    <string name="attachment_picker_loading_terminal_provider">正在通过 IPC 读取终端提供者目录...</string>
 </resources>

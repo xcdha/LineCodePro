@@ -5,6 +5,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.widget.EditText;
 import android.widget.ScrollView;
+import cn.lineai.R;
 
 public final class TextSelectionDialog {
 
@@ -27,9 +28,9 @@ public final class TextSelectionDialog {
         scrollView.addView(editText);
 
         new AlertDialog.Builder(context)
-                .setTitle("长按选中文字")
+                .setTitle(R.string.dialog_select_text_title)
                 .setView(scrollView)
-                .setPositiveButton("关闭", null)
+                .setPositiveButton(R.string.common_close, null)
                 .show();
     }
 }

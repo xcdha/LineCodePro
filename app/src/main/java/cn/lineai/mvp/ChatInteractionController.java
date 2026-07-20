@@ -1,5 +1,6 @@
 package cn.lineai.mvp;
 
+import cn.lineai.ai.ImageInputPayload;
 import cn.lineai.ai.ModelCancellationToken;
 import cn.lineai.data.repository.ChatModeRepository;
 import cn.lineai.data.repository.ConversationStore;
@@ -57,6 +58,8 @@ final class ChatInteractionController {
     private final GenerationFlowController generationFlowController;
     private final Host host;
     private String lastMessageModelId = "";
+
+    private static final String ATTACHMENT_BLOCK_HEADER = "\n\n[引用文件]\n";
 
     ChatInteractionController(
             ArrayList<ChatMessage> messages,
@@ -144,14 +147,51 @@ final class ChatInteractionController {
     }
 
     void sendMessage(String text, List<InputAttachment> attachments) {
+        dispatchMessage(text, attachments, "");
+    }
+
+    void sendMessageWithImage(String text, List<InputAttachment> attachments,
+                              String imageBase64, String imageMimeType, String imageName) {
+        String imageNameSafe = imageName == null ? "" : imageName.trim();
+        String trimmed = text == null ? "" : text.trim();
+        // 有图片但无文本时，给 UI 一个占位说明，避免显示空消息；同时确保 Codex 协议拿到非空 prompt
+        if (trimmed.length() == 0) {
+            trimmed = imageNameSafe.length() > 0 ? "已附加图片：" + imageNameSafe : "已附加图片";
+        }
+        String rawInputJson = "";
+        if (imageBase64 != null && imageBase64.length() > 0) {
+            String mimeType = imageMimeType == null ? "" : imageMimeType;
+            try {
+                rawInputJson = ImageInputPayload.rawInputJson(trimmed, mimeType, imageBase64);
+            } catch (org.json.JSONException ignored) {
+                rawInputJson = "";
+            }
+        }
+        if (rawInputJson.length() == 0) {
+            // 图片解析失败则降级为普通文本发送
+            dispatchMessage(trimmed, attachments, "");
+            return;
+        }
+        dispatchMessage(trimmed, attachments, rawInputJson);
+    }
+
+    private void dispatchMessage(String text, List<InputAttachment> attachments, String rawInputJson) {
         String trimmed = text == null ? "" : text.trim();
         ArrayList<InputAttachment> safeAttachments = sanitizeAttachments(attachments);
-        if ((trimmed.isEmpty() && safeAttachments.isEmpty()) || chatSessionStore.isStreaming()) {
+        if ((trimmed.isEmpty() && safeAttachments.isEmpty() && rawInputJson.length() == 0)
+                || chatSessionStore.isStreaming()) {
             return;
         }
         host.ensureCurrentConversation();
         String userContent = composeUserContent(trimmed, safeAttachments);
-        messages.add(new ChatMessage(host.nextId(), ChatMessage.Role.USER, userContent, false, safeAttachments));
+        ChatMessage userMessage = new ChatMessage(
+                host.nextId(), ChatMessage.Role.USER, userContent, "",
+                false, false, false,
+                Collections.<cn.lineai.tool.ToolCall>emptyList(),
+                Collections.<cn.lineai.tool.ToolResult>emptyList(),
+                "", "", false, "", "", "",
+                "", rawInputJson, safeAttachments);
+        messages.add(userMessage);
         host.persistCurrentConversation();
         ModelConfig selectedModel = modelRepository.getSelectedModel();
         if (selectedModel == null) {
@@ -180,6 +220,19 @@ final class ChatInteractionController {
         String activeUserMessageId = messages.get(messages.size() - 1).getId();
         if (contextCompactionController.shouldAutoCompactBeforeRequest(selectedModel, activeUserMessageId)) {
             contextCompactionController.startContextCompaction(
+                    generationId,
+                    selectedModel,
+                    cancellationToken,
+                    true,
+                    activeUserMessageId,
+                    userContent
+            );
+            return;
+        }
+        // 软触发增量压缩：50% 占用时把最早的一部分消息压缩成摘要，避免上下文继续
+        // 增长到 80% 时才一次性处理大量历史。这是动态压缩的核心环节。
+        if (contextCompactionController.shouldAutoSoftCompactBeforeRequest(selectedModel, activeUserMessageId)) {
+            contextCompactionController.startSoftContextCompaction(
                     generationId,
                     selectedModel,
                     cancellationToken,
@@ -280,19 +333,50 @@ final class ChatInteractionController {
         return result;
     }
 
+    /**
+     * 把用户输入文本与附件路径合并为最终发送给模型的 user 消息内容。
+     *
+     * <p>当用户从输入框左下角的 + 号引用了文件时，必须让模型在 user 消息正文里
+     * 直接看到引用的文件路径，否则模型只能依赖 system prompt 末尾的「附加文件位置」
+     * 段落，在长上下文或弱模型下容易被忽略，表现为「AI 不知道文件被引用」。</p>
+     *
+     * <p>引用块使用 {@link #ATTACHMENT_BLOCK_HEADER} 作为唯一分隔符，便于
+     * {@link #recallText(String, List)} 在用户召回消息时剥离该块，回填到输入框
+     * 的内容只包含用户原始输入。</p>
+     */
     private String composeUserContent(String text, List<InputAttachment> attachments) {
         String trimmed = text == null ? "" : text.trim();
-        if (trimmed.length() > 0) {
+        if (attachments == null || attachments.isEmpty()) {
             return trimmed;
         }
-        return attachments == null || attachments.isEmpty() ? "" : "已附加文件";
+        StringBuilder attachmentInfo = new StringBuilder();
+        for (InputAttachment attachment : attachments) {
+            if (attachment == null || attachment.getPath().length() == 0) {
+                continue;
+            }
+            if (attachmentInfo.length() > 0) {
+                attachmentInfo.append('\n');
+            }
+            attachmentInfo.append("- ").append(attachment.getPath());
+        }
+        if (attachmentInfo.length() == 0) {
+            return trimmed.length() > 0 ? trimmed : "已附加文件";
+        }
+        String attachmentBlock = ATTACHMENT_BLOCK_HEADER + attachmentInfo.toString();
+        if (trimmed.length() == 0) {
+            return "已附加文件" + attachmentBlock;
+        }
+        return trimmed + attachmentBlock;
     }
 
     private String recallText(String content, List<InputAttachment> attachments) {
-        String value = content == null ? "" : content.trim();
-        if ("已附加文件".equals(value) && attachments != null && !attachments.isEmpty()) {
+        String value = content == null ? "" : content;
+        // 剥离 composeUserContent 追加的引用文件块，回填到输入框的只是用户原始输入
+        int idx = value.indexOf(ATTACHMENT_BLOCK_HEADER);
+        String base = idx >= 0 ? value.substring(0, idx) : value;
+        if ("已附加文件".equals(base.trim()) && attachments != null && !attachments.isEmpty()) {
             return "";
         }
-        return content == null ? "" : content;
+        return base;
     }
 }
