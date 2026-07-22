@@ -24,6 +24,14 @@ public final class ToolContext {
     }
 
     /**
+     * Session store of completed/running agent results, keyed by {@code agent_id}.
+     * Parent models fetch full bodies via {@code agent_output}.
+     */
+    public interface AgentResultStore {
+        StoredAgentResult get(String agentId);
+    }
+
+    /**
      * Resolves Android string resources independently of a real {@link Context}.
      * Used by unit tests where {@code Context.getString} is stubbed and throws.
      */
@@ -48,6 +56,7 @@ public final class ToolContext {
     private final boolean bypassPathProtection;
     private final Context appContext;
     private final StringResolver stringResolver;
+    private final AgentResultStore agentResultStore;
 
     private ToolContext(
             String homePath,
@@ -64,7 +73,8 @@ public final class ToolContext {
             PromptTemplateRepository promptTemplateRepository,
             boolean bypassPathProtection,
             Context appContext,
-            StringResolver stringResolver
+            StringResolver stringResolver,
+            AgentResultStore agentResultStore
     ) {
         this.homePath = homePath == null ? "" : homePath;
         this.extraWriteRoots = immutableRoots(extraWriteRoots);
@@ -81,6 +91,7 @@ public final class ToolContext {
         this.bypassPathProtection = bypassPathProtection;
         this.appContext = appContext;
         this.stringResolver = stringResolver;
+        this.agentResultStore = agentResultStore;
     }
 
     public static Builder builder() {
@@ -108,7 +119,11 @@ public final class ToolContext {
     }
 
     public ToolContext withToolCallId(String nextToolCallId) {
-        return new ToolContext(homePath, extraWriteRoots, agentRunner, nextToolCallId, progressListener, todoStateStore, learningContextStore, toolSettingsStore, modelRepository, sshFileTreeRepository, modelServiceProvider, promptTemplateRepository, bypassPathProtection, appContext, stringResolver);
+        return new ToolContext(homePath, extraWriteRoots, agentRunner, nextToolCallId, progressListener, todoStateStore, learningContextStore, toolSettingsStore, modelRepository, sshFileTreeRepository, modelServiceProvider, promptTemplateRepository, bypassPathProtection, appContext, stringResolver, agentResultStore);
+    }
+
+    public AgentResultStore getAgentResultStore() {
+        return agentResultStore;
     }
 
     public static final class Builder {
@@ -127,6 +142,7 @@ public final class ToolContext {
         private boolean bypassPathProtection;
         private Context appContext;
         private StringResolver stringResolver;
+        private AgentResultStore agentResultStore;
 
         public Builder homePath(String v) { this.homePath = v; return this; }
         public Builder extraWriteRoots(List<String> v) { this.extraWriteRoots = v; return this; }
@@ -143,12 +159,13 @@ public final class ToolContext {
         public Builder bypassPathProtection(boolean v) { this.bypassPathProtection = v; return this; }
         public Builder appContext(Context v) { this.appContext = v; return this; }
         public Builder stringResolver(StringResolver v) { this.stringResolver = v; return this; }
+        public Builder agentResultStore(AgentResultStore v) { this.agentResultStore = v; return this; }
 
         public ToolContext build() {
             return new ToolContext(homePath, extraWriteRoots, agentRunner, toolCallId,
                     progressListener, todoStateStore, learningContextStore, toolSettingsStore, modelRepository,
                     sshFileTreeRepository, modelServiceProvider, promptTemplateRepository,
-                    bypassPathProtection, appContext, stringResolver);
+                    bypassPathProtection, appContext, stringResolver, agentResultStore);
         }
     }
 

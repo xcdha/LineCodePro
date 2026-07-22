@@ -26,7 +26,22 @@ public final class AgentTool extends BaseTool {
 
     @Override
     public String getDescription() {
-        return "Dispatch a sub-Agent to handle a task. explore is read-only; sub-coding must have a clear and unique write scope and must not modify the same files as other Agents.";
+        return "Dispatch a sub-Agent to handle a task. explore is read-only; sub-coding must have a clear and unique write scope. "
+                + "Returns a compact ref with agent_id (not full transcript). Use agent_output(agent_id) to fetch full output when needed. "
+                + "Optional async=true returns immediately for explore agents.";
+    }
+
+    @Override
+    public int getActionIcon() {
+        return ICON_BOT;
+    }
+
+    @Override
+    public String getActionName(android.content.Context context) {
+        if (context == null) {
+            return "Agent";
+        }
+        return context.getString(R.string.tool_agent_action);
     }
 
     @Override
@@ -61,7 +76,10 @@ public final class AgentTool extends BaseTool {
                         .put("write_scope", new JSONObject()
                                 .put("type", "array")
                                 .put("items", new JSONObject().put("type", "string"))
-                                .put("description", "Unique list of files or directories sub-coding is allowed to write; explore must be empty. Do not assign the same file to multiple Agents")))
+                                .put("description", "Unique list of files or directories sub-coding is allowed to write; explore must be empty. Do not assign the same file to multiple Agents"))
+                        .put("async", new JSONObject()
+                                .put("type", "boolean")
+                                .put("description", "If true, return immediately with agent_id (explore only; default false). Fetch full output later via agent_output.")))
                 .put("required", new JSONArray().put("type").put("description").put("prompt"));
     }
 

@@ -1050,6 +1050,8 @@
     <string name="tool_call_action_list_dir">Список каталога</string>
     <string name="tool_call_action_read">Чтение</string>
     <string name="tool_call_action_write">Запись</string>
+    <string name="tool_call_action_agent">Агент</string>
+    <string name="tool_call_agent_fetch_hint">Полный вывод: agent_output(agent_id=%1$s)</string>
 
     <string name="tool_call_write_unnamed">Безымянный файл</string>
     <string name="tool_call_write_revert">Отменить</string>

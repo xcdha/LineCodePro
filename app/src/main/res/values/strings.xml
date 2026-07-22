@@ -1050,6 +1050,8 @@
     <string name="tool_call_action_list_dir">List dir</string>
     <string name="tool_call_action_read">Read</string>
     <string name="tool_call_action_write">Write</string>
+    <string name="tool_call_action_agent">Agent</string>
+    <string name="tool_call_agent_fetch_hint">Full output: agent_output(agent_id=%1$s)</string>
 
     <string name="tool_call_write_unnamed">Unnamed file</string>
     <string name="tool_call_write_revert">Revert</string>

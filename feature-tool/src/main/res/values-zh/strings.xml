@@ -234,4 +234,16 @@
     <string name="phone_tool_global_action_missing">缺少 action</string>
     <string name="phone_tool_global_action_success">系统动作成功: %1$s</string>
     <string name="phone_tool_global_action_failed">系统动作失败或不支持: %1$s</string>
+
+    <!-- AgentTool -->
+    <string name="tool_agent_action">Agent</string>
+
+    <!-- AgentOutputTool -->
+    <string name="tool_agent_output_action">Agent 输出</string>
+    <string name="tool_agent_output_id_missing">必须提供 agent_id。</string>
+    <string name="tool_agent_output_store_missing">Agent 结果存储不可用。</string>
+    <string name="tool_agent_output_not_found">未知 agent_id: %1$s</string>
+    <string name="tool_agent_output_still_running">Agent 仍在运行。请稍后再次查询，或等待其完成。</string>
+    <string name="tool_agent_output_failed">Agent 以错误结束。</string>
+    <string name="tool_agent_output_empty">Agent 结束但输出为空。</string>
 </resources>

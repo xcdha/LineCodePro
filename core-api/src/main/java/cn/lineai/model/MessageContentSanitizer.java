@@ -37,6 +37,9 @@ public final class MessageContentSanitizer {
         }
         try {
             JSONObject object = new JSONObject(content);
+            if (object.optBoolean("linecode_agent_ref")) {
+                return stripInlineDataImages(content);
+            }
             if (!object.optBoolean("linecode_agent_progress")) {
                 return stripInlineDataImages(content);
             }

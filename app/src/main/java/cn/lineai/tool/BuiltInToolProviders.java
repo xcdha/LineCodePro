@@ -5,6 +5,7 @@ import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.repository.SettingsRepository;
 import cn.lineai.data.repository.WebSearchConfigRepository;
 import cn.lineai.ipc.IpcProviderManager;
+import cn.lineai.tool.builtin.AgentOutputTool;
 import cn.lineai.tool.builtin.AgentPipelineTool;
 import cn.lineai.tool.builtin.AgentTool;
 import cn.lineai.tool.builtin.FileDeleteTool;
@@ -49,6 +50,7 @@ public final class BuiltInToolProviders {
         list.add((context, ipc) -> new ListDirectoryTool());
         list.add((context, ipc) -> new AgentTool());
         list.add((context, ipc) -> new AgentPipelineTool());
+        list.add((context, ipc) -> new AgentOutputTool());
         list.add((context, ipc) -> new TodoUpdateTool());
         list.add((context, ipc) -> new MemoryUpdateTool());
         list.add((context, ipc) -> new WebFetchTool());

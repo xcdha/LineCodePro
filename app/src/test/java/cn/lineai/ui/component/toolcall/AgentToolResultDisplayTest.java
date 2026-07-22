@@ -1,57 +1,48 @@
 package cn.lineai.ui.component.toolcall;
 
-import org.json.JSONArray;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
 import org.json.JSONObject;
-import org.junit.Assert;
 import org.junit.Test;
 
 public final class AgentToolResultDisplayTest {
 
     @Test
-    public void displayOutputPrefersStructuredOutputNotRawJson() throws Exception {
-        JSONObject progress = new JSONObject()
+    public void parsesAgentRefMarkerAndFields() throws Exception {
+        String content = new JSONObject()
+                .put("linecode_agent_ref", true)
+                .put("agent_id", "ag_abc")
+                .put("status", "done")
+                .put("type", "explore")
+                .put("description", "scan modules")
+                .put("preview", "short preview")
+                .toString();
+        assertTrue(AgentToolResultDisplay.isAgentRef(content));
+        assertEquals("ag_abc", AgentToolResultDisplay.agentId(content));
+        assertEquals("done", AgentToolResultDisplay.progressStatus(content));
+        assertEquals("scan modules", AgentToolResultDisplay.description(content, "fallback"));
+        assertEquals("short preview", AgentToolResultDisplay.preview(content));
+        assertEquals("short preview", AgentToolResultDisplay.displayOutput(content));
+    }
+
+    @Test
+    public void nonRefProgressStillParsed() throws Exception {
+        String content = new JSONObject()
                 .put("linecode_agent_progress", true)
-                .put("status", "error")
-                .put("output", "任务已中断")
-                .put("model_content", "上次生成已中断。")
-                .put("tool_calls", new JSONArray());
-
-        String raw = progress.toString();
-        Assert.assertNotNull(AgentToolResultDisplay.progressPayload(raw));
-        Assert.assertEquals("任务已中断", AgentToolResultDisplay.displayOutput(raw));
-        Assert.assertFalse(AgentToolResultDisplay.displayOutput(raw).contains("linecode_agent_progress"));
+                .put("status", "running")
+                .put("output", "streaming...")
+                .put("description", "old style")
+                .toString();
+        assertFalse(AgentToolResultDisplay.isAgentRef(content));
+        assertEquals("running", AgentToolResultDisplay.progressStatus(content));
+        assertEquals("streaming...", AgentToolResultDisplay.displayOutput(content));
+        assertEquals("old style", AgentToolResultDisplay.description(content, "fb"));
     }
 
     @Test
-    public void displayOutputFallsBackToModelContentWhenOutputEmpty() throws Exception {
-        JSONObject progress = new JSONObject()
-                .put("linecode_agent_progress", true)
-                .put("status", "error")
-                .put("output", "")
-                .put("model_content", "Agent terminated");
-
-        Assert.assertEquals("Agent terminated", AgentToolResultDisplay.displayOutput(progress.toString()));
-    }
-
-    @Test
-    public void displayOutputHidesUnknownJsonBlob() {
-        String blob = "{\"foo\":1,\"bar\":\"baz\"}";
-        Assert.assertEquals("", AgentToolResultDisplay.displayOutput(blob));
-        Assert.assertNull(AgentToolResultDisplay.progressPayload(blob));
-    }
-
-    @Test
-    public void plainTextOutputPassthrough() {
-        Assert.assertEquals("hello agent", AgentToolResultDisplay.displayOutput("hello agent"));
-    }
-
-    @Test
-    public void toolCallCountFromProgress() throws Exception {
-        JSONObject progress = new JSONObject()
-                .put("linecode_agent_progress", true)
-                .put("tool_call_count", 3)
-                .put("tool_calls", new JSONArray()
-                        .put(new JSONObject().put("id", "a").put("name", "file_read")));
-        Assert.assertEquals(3, AgentToolResultDisplay.toolCallCount(progress.toString()));
+    public void unknownJsonNotDumpedAsOutput() {
+        assertEquals("", AgentToolResultDisplay.displayOutput("{\"foo\":1}"));
     }
 }

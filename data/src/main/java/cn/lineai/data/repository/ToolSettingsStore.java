@@ -139,6 +139,7 @@ public interface ToolSettingsStore {
         Set<String> names = new java.util.HashSet<>();
         names.add("agent");
         names.add("agent_pipeline");
+        names.add("agent_output");
         return names;
     }
 

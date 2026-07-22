@@ -234,4 +234,16 @@
     <string name="phone_tool_global_action_missing">Отсутствует действие</string>
     <string name="phone_tool_global_action_success">Системное действие выполнено: %1$s</string>
     <string name="phone_tool_global_action_failed">Сбой системного действия или действие не поддерживается: %1$s</string>
+
+    <!-- AgentTool -->
+    <string name="tool_agent_action">Агент</string>
+
+    <!-- AgentOutputTool -->
+    <string name="tool_agent_output_action">Вывод агента</string>
+    <string name="tool_agent_output_id_missing">Требуется agent_id.</string>
+    <string name="tool_agent_output_store_missing">Хранилище результатов агента недоступно.</string>
+    <string name="tool_agent_output_not_found">Неизвестный agent_id: %1$s</string>
+    <string name="tool_agent_output_still_running">Агент ещё выполняется. Опросите позже или дождитесь завершения.</string>
+    <string name="tool_agent_output_failed">Агент завершился с ошибкой.</string>
+    <string name="tool_agent_output_empty">Агент завершился с пустым выводом.</string>
 </resources>

@@ -54,7 +54,9 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
                 isCustomAgent ? "sub-coding" : input.optString("type")));
         String outerReviewState = result == null ? "" : result.getReviewState();
         String progressStatus = AgentToolResultDisplay.progressStatus(resultContent);
-        boolean running = progress != null && ("running".equals(progressStatus) || "waiting_unlock".equals(progressStatus));
+        boolean running = "running".equals(progressStatus)
+                || "waiting_unlock".equals(progressStatus)
+                || "running".equals(outerReviewState);
         boolean pendingReview = "pending".equals(progressStatus) || "pending".equals(outerReviewState);
         boolean resultHasError = result != null && result.isError();
         boolean interrupted = resultHasError && running;
@@ -63,13 +65,13 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         }
         boolean complete = result != null && !running && !pendingReview;
         boolean error = resultHasError || "error".equals(progressStatus) || interrupted;
-        // Never dump raw linecode_agent_progress JSON into Markdown.
         String output = AgentToolResultDisplay.displayOutput(resultContent);
         String thinking = AgentToolResultDisplay.thinking(resultContent);
         JSONArray nestedToolCalls = AgentToolResultDisplay.nestedToolCalls(resultContent);
         int toolCount = progress == null
                 ? toolCount(result)
                 : AgentToolResultDisplay.toolCallCount(resultContent);
+        String agentId = AgentToolResultDisplay.agentId(resultContent);
         String status = error ? getContext().getString(R.string.tool_call_status_failed) : pendingReview ? getContext().getString(R.string.tool_call_status_pending_review) : complete ? getContext().getString(R.string.tool_call_status_done) : getContext().getString(R.string.tool_call_status_running);
         int typeColor = "explore".equals(type) ? LineTheme.ACCENT : LineTheme.DANGER;
         int statusColor = error ? LineTheme.DANGER : pendingReview ? LineTheme.WARNING : complete ? LineTheme.SUCCESS : LineTheme.ACCENT;
@@ -105,6 +107,9 @@ public final class ToolCallAgentView extends BaseToolCallView implements ToolCal
         FlowLayoutView meta = new FlowLayoutView(getContext());
         meta.setSpacingDp(LineTheme.XS, 3);
         meta.addView(pill(typeLabel(type), typeColor, LineTheme.CODE_BG, LineTheme.CODE_BORDER));
+        if (agentId.length() > 0) {
+            meta.addView(pill(agentId, LineTheme.TEXT_TERTIARY, LineTheme.SURFACE_LIGHT, LineTheme.CODE_BORDER));
+        }
         if (toolCount > 0) {
             meta.addView(pill(getContext().getString(R.string.tool_call_agent_tool_count, toolCount), LineTheme.TEXT_TERTIARY, LineTheme.SURFACE_LIGHT, LineTheme.CODE_BORDER));
         }

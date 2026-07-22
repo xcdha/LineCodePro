@@ -16,6 +16,7 @@ public final class ToolNames {
     public static final String SHELL_EXECUTE = "shell_execute";
     public static final String AGENT = "agent";
     public static final String AGENT_PIPELINE = "agent_pipeline";
+    public static final String AGENT_OUTPUT = "agent_output";
     public static final String TODO_UPDATE = "todo_update";
     public static final String MEMORY_UPDATE = "memory_update";
     public static final String WEB_SEARCH = "web_search";

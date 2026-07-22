@@ -166,6 +166,11 @@ final class GenerationFlowController {
                 host.render();
             });
         }
+
+        @Override
+        public void runInBackground(String name, Runnable runnable) {
+            backgroundTasks.execute(name, runnable);
+        }
     };
 
     private final ToolConfirmationController.Callback reviewCallback = new ToolConfirmationController.Callback() {
@@ -740,6 +745,9 @@ final class GenerationFlowController {
                 .progressListener((toolCallId, toolName, content, error) ->
                         postToolProgress(generationId, cancellationToken, toolCallId, toolName, content, error))
                 .todoStateStore(todoStateStore)
+                .agentResultStore(agentExecutionController == null
+                        ? null
+                        : agentExecutionController.getAgentResultRegistry())
                 .bypassPathProtection(isBypassPathProtection())
                 .build();
     }

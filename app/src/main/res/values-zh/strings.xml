@@ -1051,6 +1051,8 @@
     <string name="tool_call_action_list_dir">列目录</string>
     <string name="tool_call_action_read">读取</string>
     <string name="tool_call_action_write">写入</string>
+    <string name="tool_call_action_agent">Agent</string>
+    <string name="tool_call_agent_fetch_hint">完整输出：agent_output(agent_id=%1$s)</string>
 
     <string name="tool_call_write_unnamed">未命名文件</string>
     <string name="tool_call_write_revert">撤销</string>

@@ -234,4 +234,16 @@
     <string name="phone_tool_global_action_missing">Missing action</string>
     <string name="phone_tool_global_action_success">System action succeeded: %1$s</string>
     <string name="phone_tool_global_action_failed">System action failed or is unsupported: %1$s</string>
+
+    <!-- AgentTool -->
+    <string name="tool_agent_action">Agent</string>
+
+    <!-- AgentOutputTool -->
+    <string name="tool_agent_output_action">Agent output</string>
+    <string name="tool_agent_output_id_missing">agent_id is required.</string>
+    <string name="tool_agent_output_store_missing">Agent result store is not available.</string>
+    <string name="tool_agent_output_not_found">Unknown agent_id: %1$s</string>
+    <string name="tool_agent_output_still_running">Agent is still running. Poll again later or wait for completion.</string>
+    <string name="tool_agent_output_failed">Agent finished with error.</string>
+    <string name="tool_agent_output_empty">Agent finished with empty output.</string>
 </resources>
