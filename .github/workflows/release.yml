@@ -107,8 +107,18 @@ jobs:
       - name: Validate signing config
         run: ./gradlew :app:validateReleaseSigning
 
+      # ===== 修改点1：添加 --info 参数以输出详细断言信息 =====
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest
+        run: ./gradlew :app:testDebugUnitTest --info
+
+      # ===== 修改点2：新增上传测试报告步骤，以便下载 HTML 报告 =====
+      - name: Upload test reports
+        if: always()   # 即使测试失败也执行
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/
+          retention-days: 30
 
       - name: Run lint
         run: ./gradlew :app:lintDebug
