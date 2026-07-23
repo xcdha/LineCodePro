@@ -35,8 +35,18 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      # ===== 修改点1：添加 --info 以输出详细断言 =====
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest
+        run: ./gradlew :app:testDebugUnitTest --info
+
+      # ===== 修改点2：上传测试报告（无论成功或失败） =====
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/
+          retention-days: 30
 
       - name: Run lint
         run: ./gradlew :app:lintDebug
@@ -71,4 +81,3 @@ jobs:
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: warn
           retention-days: 14
-
