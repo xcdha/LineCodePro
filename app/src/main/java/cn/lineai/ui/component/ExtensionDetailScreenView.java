@@ -40,6 +40,8 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
 
         void onInstallSkillFromUri(String location, String uri, String displayName);
 
+        void onInstallSkillFromSkillsSh(String location, String sourceUrl, String name);
+
         void onEnabledChanged(String kind, String id, boolean enabled);
 
         void onDelete(String kind, String id);
