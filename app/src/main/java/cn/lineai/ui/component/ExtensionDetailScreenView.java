@@ -133,6 +133,10 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
         addHandle(panel);
         addSheetTitle(panel, getContext().getString(R.string.screen_extension_detail_sheet_title_skills));
         addDivider(panel);
+        addActionRow(panel, "从 skills.sh 安装", "粘贴 skills.sh 的公开 Skill 详情页链接，在线下载并安装 SKILL.md", () -> {
+            dialog.dismiss();
+            showSkillsShInstallDialog();
+        });
         addActionRow(panel, getContext().getString(R.string.screen_extension_detail_install_zip), getContext().getString(R.string.screen_extension_detail_install_zip_desc), () -> {
             dialog.dismiss();
             chooseSkillDocument();
