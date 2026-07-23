@@ -89,6 +89,13 @@ final class ExtensionManagementController {
         return skill;
     }
 
+    SkillRecord installSkillMarkdown(String location, String name, String markdown) {
+        SkillRecord skill = extensionRepository.installSkillMarkdown(host.projectPath(), location, name, markdown);
+        host.returnToScreen("extension:skills");
+        host.render();
+        return skill;
+    }
+
     void setExtensionEnabled(String kind, String id, boolean enabled) {
         ExtensionKindDescriptor descriptor = ExtensionKindRegistry.getInstance().get(kind);
         if (descriptor != null) {

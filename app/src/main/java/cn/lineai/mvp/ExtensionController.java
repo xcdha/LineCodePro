@@ -30,6 +30,8 @@ public interface ExtensionController {
 
     SkillRecord onSkillInstalledFromUri(String location, String uri, String displayName) throws Exception;
 
+    SkillRecord onSkillMarkdownInstalled(String location, String name, String markdown);
+
     void onExtensionEnabledChanged(String kind, String id, boolean enabled);
 
     void onExtensionDeleted(String kind, String id);

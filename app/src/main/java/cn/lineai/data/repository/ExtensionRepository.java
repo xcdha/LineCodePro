@@ -101,6 +101,11 @@ public final class ExtensionRepository extends BaseRepository implements Extensi
     }
 
     @Override
+    public synchronized SkillRecord installSkillMarkdown(String homePath, String location, String name, String markdown) {
+        return skillRepository.installSkillMarkdown(homePath, location, name, markdown);
+    }
+
+    @Override
     public synchronized void setSkillEnabled(String id, boolean enabled) {
         skillRepository.setSkillEnabled(id, enabled);
     }

@@ -112,6 +112,23 @@ public final class SkillRepository extends BaseRepository {
         }
     }
 
+    public synchronized SkillRecord installSkillMarkdown(String homePath, String location, String name, String markdown) {
+        fileManager.ensureSkillRoots(homePath);
+        String content = safe(markdown).trim();
+        if (content.length() == 0) {
+            throw new IllegalArgumentException("下载的 Skill 内容为空。");
+        }
+        String normalizedLocation = SkillRecord.normalizeLocation(location);
+        File root = fileManager.localSkillRoot(homePath, normalizedLocation);
+        String safeName = fileManager.sanitizeFileName(safe(name).trim().length() == 0 ? "skills-sh-skill" : name);
+        File skillDir = fileManager.uniqueChild(root, safeName);
+        File skillFile = new File(skillDir, "SKILL.md");
+        fileManager.writeUtf8(skillFile, content);
+        SkillRecord record = fileManager.parseSkill(skillDir, skillFile, normalizedLocation);
+        upsertDiscoveredSkills(Collections.singletonList(record));
+        return record;
+    }
+
     public synchronized void setSkillEnabled(String id, boolean enabled) {
         updateEnabled("skills", id, enabled);
     }

@@ -5,10 +5,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Toast;
 import cn.lineai.R;
+import cn.lineai.data.service.SkillsShInstaller;
 import cn.lineai.model.KeepAliveSettings;
 import cn.lineai.model.StorageStatsUiModel;
 import cn.lineai.ipc.IpcProviderConfig;
@@ -1228,6 +1231,32 @@ public final class ScreenFactories {
                     } catch (Exception e) {
                         Toast.makeText(view.getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
                     }
+                }
+
+                @Override
+                public void onInstallSkillFromSkillsSh(String location, String sourceUrl, String name) {
+                    if (sourceUrl == null || sourceUrl.trim().length() == 0) {
+                        Toast.makeText(view.getContext(), "请填写 skills.sh 链接。", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Toast.makeText(view.getContext(), "正在从 skills.sh 下载 Skill…", Toast.LENGTH_SHORT).show();
+                    new Thread(() -> {
+                        try {
+                            String markdown = SkillsShInstaller.downloadSkill(sourceUrl);
+                            new Handler(Looper.getMainLooper()).post(() -> {
+                                try {
+                                    controller.onSkillMarkdownInstalled(location, name, markdown);
+                                    Toast.makeText(view.getContext(), "Skill 已从 skills.sh 安装。", Toast.LENGTH_SHORT).show();
+                                } catch (Exception e) {
+                                    Toast.makeText(view.getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                                }
+                            });
+                        } catch (Exception e) {
+                            String message = e.getMessage() == null ? "从 skills.sh 安装失败。" : e.getMessage();
+                            new Handler(Looper.getMainLooper()).post(() ->
+                                    Toast.makeText(view.getContext(), message, Toast.LENGTH_LONG).show());
+                        }
+                    }, "linecode-skills-sh-install").start();
                 }
 
                 @Override

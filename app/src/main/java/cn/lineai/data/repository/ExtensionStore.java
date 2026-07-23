@@ -86,6 +86,11 @@ public interface ExtensionStore {
     SkillRecord installSkillFromUri(String homePath, String location, String uri, String displayName) throws Exception;
 
     /**
+     * 安装已下载的 SKILL.md 内容。
+     */
+    SkillRecord installSkillMarkdown(String homePath, String location, String name, String markdown);
+
+    /**
      * 设置 Skill 启用状态。
      */
     void setSkillEnabled(String id, boolean enabled);

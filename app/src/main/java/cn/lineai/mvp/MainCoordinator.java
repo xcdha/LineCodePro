@@ -770,6 +770,11 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public SkillRecord onSkillMarkdownInstalled(String location, String name, String markdown) {
+        return extensionManagementController.installSkillMarkdown(location, name, markdown);
+    }
+
+    @Override
     public void onExtensionEnabledChanged(String kind, String id, boolean enabled) {
         extensionManagementController.setExtensionEnabled(kind, id, enabled);
     }

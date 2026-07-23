@@ -206,6 +206,22 @@ public final class ExtensionDetailScreenView extends ScreenScaffoldView {
         showPanel(dialog, panel);
     }
 
+    private void showSkillsShInstallDialog() {
+        Dialog dialog = createDialog();
+        LinearLayout panel = panel("从 skills.sh 安装");
+        FormTextFieldView url = new FormTextFieldView(getContext(), "skills.sh 链接", "", "https://skills.sh/...", "仅接受 skills.sh 的公开 Skill 详情页链接。", false, false);
+        FormTextFieldView name = new FormTextFieldView(getContext(), getContext().getString(R.string.screen_extension_detail_field_name_optional), "", getContext().getString(R.string.screen_extension_detail_hint_optional_name), null, false, false);
+        RadioGroup scope = locationGroup();
+        panel.addView(url);
+        panel.addView(name, top());
+        panel.addView(scope, top());
+        panel.addView(actionButton(getContext().getString(R.string.common_install), () -> {
+            listener.onInstallSkillFromSkillsSh(checkedLocation(scope), value(url), value(name));
+            dialog.dismiss();
+        }), top());
+        showPanel(dialog, panel);
+    }
+
     private void showInstallSkillDialog() {
         Dialog dialog = createDialog();
         LinearLayout panel = panel(getContext().getString(R.string.screen_extension_detail_dialog_install_skill));
