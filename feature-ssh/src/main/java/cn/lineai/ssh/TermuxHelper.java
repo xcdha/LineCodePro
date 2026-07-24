@@ -179,7 +179,90 @@ public final class TermuxHelper {
         }
     }
 
+    /**
+     * 在 Termux 进程内同步执行 shell 脚本并返回输出；调用方必须在后台线程执行。
+     */
+    public String executeShell(String script, int timeoutMs) throws Exception {
+        ensureTermuxInstalled();
+        if (context.checkSelfPermission(TERMUX_RUN_COMMAND_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            throw new IllegalStateException(context.getString(R.string.ssh_error_termux_permission));
+        }
+        int boundedTimeout = Math.max(15000, Math.min(timeoutMs <= 0 ? 120000 : timeoutMs, 900000));
+        String action = context.getPackageName() + ".TERMUX_COMMAND_RESULT." + System.currentTimeMillis();
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> outputRef = new AtomicReference<>("");
+        AtomicReference<Exception> errorRef = new AtomicReference<>();
+        BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context receivedContext, Intent intent) {
+                try {
+                    android.os.Bundle result = intent == null ? null : intent.getBundleExtra(TERMUX_RESULT_BUNDLE);
+                    if (result == null) {
+                        errorRef.set(new IllegalStateException(context.getString(R.string.ssh_error_termux_no_result)));
+                        return;
+                    }
+                    String stdout = result.getString(TERMUX_RESULT_STDOUT, "");
+                    String stderr = result.getString(TERMUX_RESULT_STDERR, "");
+                    int exitCode = result.getInt(TERMUX_RESULT_EXIT_CODE, 0);
+                    int err = result.getInt(TERMUX_RESULT_ERR, Activity.RESULT_OK);
+                    String errmsg = result.getString(TERMUX_RESULT_ERRMSG, "");
+                    String combined = combine(stdout, stderr, "");
+                    if (err != Activity.RESULT_OK) {
+                        errorRef.set(new IllegalStateException(errmsg.length() == 0
+                                ? context.getString(R.string.ssh_error_termux_command_failed, err) : errmsg));
+                    } else if (exitCode != 0) {
+                        errorRef.set(new IllegalStateException("Termux 命令执行失败 (" + exitCode + "): " + combined));
+                    } else {
+                        outputRef.set(combined);
+                    }
+                } finally {
+                    latch.countDown();
+                }
+            }
+        };
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(receiver, new IntentFilter(action), Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                context.registerReceiver(receiver, new IntentFilter(action));
+            }
+            int flags = PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags |= PendingIntent.FLAG_MUTABLE;
+            }
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(context,
+                    (int) (System.currentTimeMillis() & 0x7fffffff),
+                    new Intent(action).setPackage(context.getPackageName()), flags);
+            Intent intent = new Intent()
+                    .setClassName(TERMUX_PACKAGE, TERMUX_RUN_COMMAND_SERVICE)
+                    .setAction(TERMUX_ACTION_RUN_COMMAND)
+                    .putExtra(TERMUX_EXTRA_COMMAND_PATH, TERMUX_SH)
+                    .putExtra(TERMUX_EXTRA_ARGUMENTS, new String[] {"-s"})
+                    .putExtra(TERMUX_EXTRA_STDIN, script == null ? "" : script)
+                    .putExtra(TERMUX_EXTRA_WORKDIR, TERMUX_HOME)
+                    .putExtra(TERMUX_EXTRA_BACKGROUND, true)
+                    .putExtra(TERMUX_EXTRA_RUNNER, "app-shell")
+                    .putExtra(TERMUX_EXTRA_COMMAND_LABEL, "LineCode project Skills")
+                    .putExtra(TERMUX_EXTRA_COMMAND_DESCRIPTION, "Manage project Skills in Termux workspace.")
+                    .putExtra(TERMUX_EXTRA_PENDING_INTENT, pendingIntent);
+            context.startService(intent);
+            if (!latch.await(boundedTimeout, TimeUnit.MILLISECONDS)) {
+                throw new IllegalStateException("等待 Termux 写入项目 Skill 超时。");
+            }
+            if (errorRef.get() != null) {
+                throw errorRef.get();
+            }
+            return outputRef.get();
+        } finally {
+            try {
+                context.unregisterReceiver(receiver);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     public void ensureTermuxInstalled() {
+
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.getPackageManager().getPackageInfo(TERMUX_PACKAGE, PackageManager.PackageInfoFlags.of(0));

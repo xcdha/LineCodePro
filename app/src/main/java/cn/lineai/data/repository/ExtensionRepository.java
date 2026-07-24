@@ -1,6 +1,9 @@
 package cn.lineai.data.repository;
 
+import android.content.Context;
 import cn.lineai.ai.SkillPromptProvider;
+import cn.lineai.ssh.TermuxHelper;
+
 import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.service.SkillFileManager;
 import cn.lineai.model.ExtensionAgentConfig;
@@ -22,11 +25,11 @@ public final class ExtensionRepository extends BaseRepository implements Extensi
     private final McpExtensionRepository mcpRepository;
     private final SkillRepository skillRepository;
 
-    public ExtensionRepository(LineCodeDatabase database, ResourceProvider resourceProvider, SkillFileManager fileManager, SkillPromptProvider promptProvider) {
+    public ExtensionRepository(Context context, LineCodeDatabase database, ResourceProvider resourceProvider, SkillFileManager fileManager, SkillPromptProvider promptProvider) {
         super(database);
         this.agentRepository = new AgentExtensionRepository(database);
         this.mcpRepository = new McpExtensionRepository(database);
-        this.skillRepository = new SkillRepository(database, resourceProvider, fileManager, this.agentRepository, this.mcpRepository, promptProvider);
+        this.skillRepository = new SkillRepository(database, resourceProvider, fileManager, this.agentRepository, this.mcpRepository, promptProvider, new TermuxHelper(context));
     }
 
     @Override

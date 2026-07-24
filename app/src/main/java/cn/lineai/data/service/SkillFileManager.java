@@ -55,6 +55,25 @@ public final class SkillFileManager {
         return workspacePaths;
     }
 
+    public boolean isTermuxPrivateWorkspace(String path) {
+        return safe(path).startsWith("/data/data/com.termux/");
+    }
+
+    public SkillRecord parseSkillMarkdown(String rootPath, String skillMdPath, String location, String content) {
+        String fallbackName = new File(safe(rootPath)).getName();
+        String name = firstNonEmpty(
+                SkillFrontmatterParser.frontmatterValue(content, "name"),
+                SkillFrontmatterParser.markdownTitle(content),
+                fallbackName.length() == 0 ? "Skill" : fallbackName);
+        String description = firstNonEmpty(
+                SkillFrontmatterParser.frontmatterValue(content, "description"),
+                SkillFrontmatterParser.descriptionLine(content),
+                "");
+        long now = System.currentTimeMillis();
+        return new SkillRecord(skillId(location, skillMdPath), name, description, rootPath,
+                skillMdPath, location, true, now, now);
+    }
+
     // ── Skill 发现 ──
 
     /**
@@ -63,8 +82,9 @@ public final class SkillFileManager {
     public List<SkillRecord> discoverSkills(String homePath) {
         ArrayList<SkillRecord> found = new ArrayList<>();
         scanSkillRoot(workspacePaths.getSkillsRoot(), SkillRecord.LOCATION_APP, found);
-        if (safe(homePath).trim().length() > 0) {
-            scanSkillRoot(new File(homePath, ".linecode/skills"), SkillRecord.LOCATION_PROJECT, found);
+        String workspace = safe(homePath).trim();
+        if (workspace.length() > 0 && !WorkspacePaths.isContentUri(workspace)) {
+            scanSkillRoot(new File(workspace, ".linecode/skills"), SkillRecord.LOCATION_PROJECT, found);
         }
         return found;
     }
@@ -162,8 +182,12 @@ public final class SkillFileManager {
     public ArrayList<String> skillWriteRoots(String homePath) {
         ArrayList<String> roots = new ArrayList<>();
         roots.add(workspacePaths.getSkillsRoot().getAbsolutePath());
-        if (safe(homePath).trim().length() > 0) {
-            roots.add(new File(homePath, ".linecode/skills").getAbsolutePath());
+        String workspace = safe(homePath).trim();
+        if (workspace.length() > 0 && !WorkspacePaths.isContentUri(workspace) && !isTermuxPrivateWorkspace(workspace)) {
+            try {
+                roots.add(localSkillRoot(workspace, SkillRecord.LOCATION_PROJECT).getAbsolutePath());
+            } catch (IllegalArgumentException ignored) {
+            }
         }
         return roots;
     }

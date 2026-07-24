@@ -55,6 +55,8 @@ import cn.lineai.data.repository.ModelRepository;
 import cn.lineai.model.ModelStore;
 import cn.lineai.share.ExportFormatResolver;
 import cn.lineai.ssh.SshService;
+import cn.lineai.ssh.TermuxHelper;
+
 import cn.lineai.state.TodoStateStore;
 import cn.lineai.tool.ToolCategoryResolver;
 import cn.lineai.tool.ToolExecutionCoordinator;
@@ -165,7 +167,8 @@ public final class MainDependencies {
         ToolSettingsRepository toolSettingsRepo = new ToolSettingsRepository(resourceProvider, settingsRepository, webSearchConfigRepository, phoneControlRepository, categoryResolver);
         toolSettingsRepository = toolSettingsRepo;
         cn.lineai.data.service.SkillFileManager skillFileManager = new cn.lineai.data.service.SkillFileManager(workspacePaths, appContext, resourceProvider);
-        extensionRepository = new ExtensionRepository(database, resourceProvider, skillFileManager, new cn.lineai.ai.SkillPromptProvider() {
+        extensionRepository = new ExtensionRepository(appContext, database, resourceProvider, skillFileManager, new cn.lineai.ai.SkillPromptProvider() {
+
             @Override
             public String buildExtensionPrompt(String skillName, String skillContent, String workDirectory) {
                 StringBuilder sb = new StringBuilder();

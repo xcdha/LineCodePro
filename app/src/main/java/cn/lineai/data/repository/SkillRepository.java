@@ -12,7 +12,10 @@ import cn.lineai.model.ExtensionMcpConfig;
 import cn.lineai.model.McpToolSummary;
 import cn.lineai.model.SkillRecord;
 import cn.lineai.resource.ResourceProvider;
+import cn.lineai.ssh.TermuxHelper;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -35,11 +38,12 @@ public final class SkillRepository extends BaseRepository {
     private final AgentExtensionRepository agentRepository;
     private final McpExtensionRepository mcpRepository;
 
-    public SkillRepository(LineCodeDatabase database, ResourceProvider resourceProvider, SkillFileManager fileManager, AgentExtensionRepository agentRepository, McpExtensionRepository mcpRepository, SkillPromptProvider promptProvider) {
+    public SkillRepository(LineCodeDatabase database, ResourceProvider resourceProvider, SkillFileManager fileManager, AgentExtensionRepository agentRepository, McpExtensionRepository mcpRepository, SkillPromptProvider promptProvider, TermuxHelper termuxHelper) {
         super(database);
         this.resourceProvider = resourceProvider;
         this.fileManager = fileManager;
         this.promptProvider = promptProvider;
+        this.termuxHelper = termuxHelper;
         this.agentRepository = agentRepository;
         this.mcpRepository = mcpRepository;
     }
@@ -57,13 +61,17 @@ public final class SkillRepository extends BaseRepository {
             safeName = "linecode-skill-" + System.currentTimeMillis();
         }
         String normalizedLocation = SkillRecord.normalizeLocation(location);
+        String markdown = fileManager.buildSkillMarkdown(safeName, description, content);
+        if (isTermuxProject(homePath, normalizedLocation)) {
+            SkillRecord record = writeTermuxProjectSkill(homePath, safeName, markdown);
+            upsertDiscoveredSkills(Collections.singletonList(record));
+            return record;
+        }
         File root = fileManager.localSkillRoot(homePath, normalizedLocation);
         File skillDir = fileManager.uniqueChild(root, fileManager.sanitizeFileName(safeName));
-        if (!skillDir.exists()) {
-            skillDir.mkdirs();
-        }
+        ensureSkillDirectory(skillDir);
         File skillFile = new File(skillDir, "SKILL.md");
-        fileManager.writeUtf8(skillFile, fileManager.buildSkillMarkdown(safeName, description, content));
+        fileManager.writeUtf8(skillFile, markdown);
         SkillRecord record = fileManager.parseSkill(skillDir, skillFile, normalizedLocation);
         upsertDiscoveredSkills(Collections.singletonList(record));
         return record;
@@ -76,8 +84,11 @@ public final class SkillRepository extends BaseRepository {
             throw new IllegalArgumentException(resourceProvider.getString(R.string.skill_source_not_found, sourcePath));
         }
         String normalizedLocation = SkillRecord.normalizeLocation(location);
-        File root = fileManager.localSkillRoot(homePath, normalizedLocation);
         String baseName = fileManager.sanitizeFileName(safe(name).trim().length() == 0 ? fileManager.stripExtension(source.getName()) : name);
+        if (isTermuxProject(homePath, normalizedLocation)) {
+            return installTermuxProjectSkill(homePath, source, baseName);
+        }
+        File root = fileManager.localSkillRoot(homePath, normalizedLocation);
         File target = fileManager.uniqueChild(root, baseName);
         if (source.isDirectory()) {
             fileManager.copyDirectory(source, target);
@@ -119,9 +130,15 @@ public final class SkillRepository extends BaseRepository {
             throw new IllegalArgumentException("下载的 Skill 内容为空。");
         }
         String normalizedLocation = SkillRecord.normalizeLocation(location);
-        File root = fileManager.localSkillRoot(homePath, normalizedLocation);
         String safeName = fileManager.sanitizeFileName(safe(name).trim().length() == 0 ? "skills-sh-skill" : name);
+        if (isTermuxProject(homePath, normalizedLocation)) {
+            SkillRecord record = writeTermuxProjectSkill(homePath, safeName, content);
+            upsertDiscoveredSkills(Collections.singletonList(record));
+            return record;
+        }
+        File root = fileManager.localSkillRoot(homePath, normalizedLocation);
         File skillDir = fileManager.uniqueChild(root, safeName);
+        ensureSkillDirectory(skillDir);
         File skillFile = new File(skillDir, "SKILL.md");
         fileManager.writeUtf8(skillFile, content);
         SkillRecord record = fileManager.parseSkill(skillDir, skillFile, normalizedLocation);
@@ -247,6 +264,73 @@ public final class SkillRepository extends BaseRepository {
     public ArrayList<String> skillWriteRoots(String homePath) {
         fileManager.ensureSkillRoots(homePath);
         return fileManager.skillWriteRoots(homePath);
+    }
+
+    // ── 项目级 Termux Skill 写入 ──
+
+    private boolean isTermuxProject(String homePath, String location) {
+        return SkillRecord.LOCATION_PROJECT.equals(location)
+                && fileManager.isTermuxPrivateWorkspace(homePath);
+    }
+
+    private SkillRecord installTermuxProjectSkill(String homePath, File source, String name) throws Exception {
+        File skillMd = source;
+        File temporaryDirectory = null;
+        if (source.isDirectory()) {
+            skillMd = fileManager.findSkillMd(source, 0);
+        } else if (source.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) {
+            File tempRoot = new File(fileManager.getWorkspacePaths().getLinecodeRoot(), "tmp/termux-skills");
+            temporaryDirectory = fileManager.uniqueChild(tempRoot, name);
+            fileManager.unzip(source, temporaryDirectory);
+            skillMd = fileManager.findSkillMd(temporaryDirectory, 0);
+        } else if (!"skill.md".equalsIgnoreCase(source.getName())) {
+            throw new IllegalArgumentException("仅支持目录、SKILL.md 或 .zip 技能包。");
+        }
+        try {
+            if (skillMd == null || !skillMd.isFile()) {
+                throw new IllegalArgumentException("安装来源中没有找到 SKILL.md。");
+            }
+            SkillRecord record = writeTermuxProjectSkill(homePath, name, fileManager.readUtf8(skillMd, 512 * 1024));
+            upsertDiscoveredSkills(Collections.singletonList(record));
+            return record;
+        } finally {
+            if (temporaryDirectory != null) {
+                fileManager.deleteRecursive(temporaryDirectory);
+            }
+        }
+    }
+
+    private SkillRecord writeTermuxProjectSkill(String homePath, String name, String markdown) {
+        if (safe(markdown).trim().length() == 0) {
+            throw new IllegalArgumentException("SKILL.md 内容为空。");
+        }
+        String skillName = fileManager.sanitizeFileName(name);
+        String skillRoot = new File(new File(homePath, ".linecode/skills"),
+                skillName + "_" + System.currentTimeMillis()).getPath();
+        String skillMdPath = new File(skillRoot, "SKILL.md").getPath();
+        String encodedRoot = Base64.getEncoder().encodeToString(skillRoot.getBytes(StandardCharsets.UTF_8));
+        String encodedMarkdown = Base64.getEncoder().encodeToString(markdown.getBytes(StandardCharsets.UTF_8));
+        String script = "set -eu\n"
+                + "skill_root=$(printf '%s' '" + encodedRoot + "' | base64 -d)\n"
+                + "mkdir -p \"$skill_root\"\n"
+                + "printf '%s' '" + encodedMarkdown + "' | base64 -d > \"$skill_root/SKILL.md\"\n"
+                + "test -s \"$skill_root/SKILL.md\"\n";
+        try {
+            termuxHelper.executeShell(script, 120000);
+        } catch (Exception e) {
+            throw new IllegalStateException("无法通过 Termux 写入项目 Skill。请在 Termux 启用 allow-external-apps=true，并向 LineCode 授予 Termux RUN_COMMAND 权限。", e);
+        }
+        return fileManager.parseSkillMarkdown(skillRoot, skillMdPath,
+                SkillRecord.LOCATION_PROJECT, markdown);
+    }
+
+    private void ensureSkillDirectory(File directory) {
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw new IllegalArgumentException("无法创建 Skill 目录: " + directory.getAbsolutePath());
+        }
+        if (!directory.isDirectory() || !directory.canWrite()) {
+            throw new IllegalArgumentException("Skill 目录不可写: " + directory.getAbsolutePath());
+        }
     }
 
     // ── 数据库操作 ──
