@@ -35,6 +35,7 @@ public final class SkillRepository extends BaseRepository {
     private final ResourceProvider resourceProvider;
     private final SkillFileManager fileManager;
     private final SkillPromptProvider promptProvider;
+    private final TermuxHelper termuxHelper;
     private final AgentExtensionRepository agentRepository;
     private final McpExtensionRepository mcpRepository;
 
