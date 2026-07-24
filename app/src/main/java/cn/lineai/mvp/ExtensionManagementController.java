@@ -1,5 +1,7 @@
 package cn.lineai.mvp;
 
+import android.os.Handler;
+import android.os.Looper;
 import cn.lineai.data.repository.ExtensionStore;
 import cn.lineai.data.repository.IpcProviderStore;
 import cn.lineai.ipc.IpcProviderType;
@@ -70,30 +72,33 @@ final class ExtensionManagementController {
 
     SkillRecord createSkill(String location, String name, String description, String content) {
         SkillRecord skill = extensionRepository.createSkill(host.projectPath(), location, name, description, content);
-        host.returnToScreen("extension:skills");
-        host.render();
+        finishSkillOperation();
         return skill;
     }
 
     SkillRecord installSkill(String location, String sourcePath, String name) throws Exception {
         SkillRecord skill = extensionRepository.installSkill(host.projectPath(), location, sourcePath, name);
-        host.returnToScreen("extension:skills");
-        host.render();
+        finishSkillOperation();
         return skill;
     }
 
     SkillRecord installSkillFromUri(String location, String uri, String displayName) throws Exception {
         SkillRecord skill = extensionRepository.installSkillFromUri(host.projectPath(), location, uri, displayName);
-        host.returnToScreen("extension:skills");
-        host.render();
+        finishSkillOperation();
         return skill;
     }
 
     SkillRecord installSkillMarkdown(String location, String name, String markdown) {
         SkillRecord skill = extensionRepository.installSkillMarkdown(host.projectPath(), location, name, markdown);
-        host.returnToScreen("extension:skills");
-        host.render();
+        finishSkillOperation();
         return skill;
+    }
+
+    private void finishSkillOperation() {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            host.returnToScreen("extension:skills");
+            host.render();
+        });
     }
 
     void setExtensionEnabled(String kind, String id, boolean enabled) {

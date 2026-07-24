@@ -183,6 +183,9 @@ public final class TermuxHelper {
      * 在 Termux 进程内同步执行 shell 脚本并返回输出；调用方必须在后台线程执行。
      */
     public String executeShell(String script, int timeoutMs) throws Exception {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            throw new IllegalStateException("Termux 项目 Skill 写入必须在后台线程执行。");
+        }
         ensureTermuxInstalled();
         if (context.checkSelfPermission(TERMUX_RUN_COMMAND_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
             throw new IllegalStateException(context.getString(R.string.ssh_error_termux_permission));

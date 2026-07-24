@@ -42,6 +42,22 @@ public final class ScreenFactories {
     private ScreenFactories() {
     }
 
+    private interface SkillOperation {
+        void run() throws Exception;
+    }
+
+    private static void runSkillOperation(MainChatView view, SkillOperation operation) {
+        new Thread(() -> {
+            try {
+                operation.run();
+            } catch (Exception e) {
+                String message = e.getMessage() == null ? "Skill 操作失败。" : e.getMessage();
+                new Handler(Looper.getMainLooper()).post(() ->
+                        Toast.makeText(view.getContext(), message, Toast.LENGTH_LONG).show());
+            }
+        }, "linecode-skill-operation").start();
+    }
+
     private static String currentScreenId(MainChatView view) {
         String id = view.getCurrentScreenId();
         return id == null ? "" : id;
@@ -1212,25 +1228,17 @@ public final class ScreenFactories {
 
                 @Override
                 public void onCreateSkill(String location, String name, String description, String content) {
-                    controller.onSkillCreated(location, name, description, content);
+                    runSkillOperation(view, () -> controller.onSkillCreated(location, name, description, content));
                 }
 
                 @Override
                 public void onInstallSkill(String location, String sourcePath, String name) {
-                    try {
-                        controller.onSkillInstalled(location, sourcePath, name);
-                    } catch (Exception e) {
-                        Toast.makeText(view.getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
-                    }
+                    runSkillOperation(view, () -> controller.onSkillInstalled(location, sourcePath, name));
                 }
 
                 @Override
                 public void onInstallSkillFromUri(String location, String uri, String displayName) {
-                    try {
-                        controller.onSkillInstalledFromUri(location, uri, displayName);
-                    } catch (Exception e) {
-                        Toast.makeText(view.getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
-                    }
+                    runSkillOperation(view, () -> controller.onSkillInstalledFromUri(location, uri, displayName));
                 }
 
                 @Override
@@ -1243,14 +1251,9 @@ public final class ScreenFactories {
                     new Thread(() -> {
                         try {
                             String markdown = SkillsShInstaller.downloadSkill(sourceUrl);
-                            new Handler(Looper.getMainLooper()).post(() -> {
-                                try {
-                                    controller.onSkillMarkdownInstalled(location, name, markdown);
-                                    Toast.makeText(view.getContext(), "Skill 已从 skills.sh 安装。", Toast.LENGTH_SHORT).show();
-                                } catch (Exception e) {
-                                    Toast.makeText(view.getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
-                                }
-                            });
+                            controller.onSkillMarkdownInstalled(location, name, markdown);
+                            new Handler(Looper.getMainLooper()).post(() ->
+                                    Toast.makeText(view.getContext(), "Skill 已从 skills.sh 安装。", Toast.LENGTH_SHORT).show());
                         } catch (Exception e) {
                             String message = e.getMessage() == null ? "从 skills.sh 安装失败。" : e.getMessage();
                             new Handler(Looper.getMainLooper()).post(() ->
