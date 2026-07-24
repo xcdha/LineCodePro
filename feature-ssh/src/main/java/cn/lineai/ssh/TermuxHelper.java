@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Looper;
 import android.util.Log;
 import cn.lineai.ssh.R;
 import cn.lineai.data.repository.SshConfigRepository;
