@@ -257,6 +257,9 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         if (config != null && config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
             return config.getTemperature();
         }
+        if (OpenAiCompatibleCapabilities.requiresTemperatureOne(config)) {
+            return 1.0;
+        }
         return 0.2;
     }
 
