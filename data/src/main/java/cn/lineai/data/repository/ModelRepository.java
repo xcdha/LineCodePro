@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 public final class ModelRepository implements ModelStore {
     private static final String PREFS = "linecode_models";
@@ -244,6 +245,18 @@ public final class ModelRepository implements ModelStore {
     }
 
     private ModelConfig readModel(Cursor cursor) {
+        // 优先从 raw_json 完整还原，保留 temperature 等全部字段；
+        // 仅当 raw_json 缺失或解析失败时回退到独立列。
+        int rawIndex = cursor.getColumnIndex("raw_json");
+        if (rawIndex >= 0 && !cursor.isNull(rawIndex)) {
+            String raw = cursor.getString(rawIndex);
+            if (raw != null && raw.length() > 0) {
+                try {
+                    return ModelConfig.fromJson(new JSONObject(raw));
+                } catch (JSONException ignored) {
+                }
+            }
+        }
         int contextSize = ModelConfig.CONTEXT_SIZE_UNSET;
         int contextSizeIndex = cursor.getColumnIndex("context_size");
         if (contextSizeIndex >= 0 && !cursor.isNull(contextSizeIndex)) {
