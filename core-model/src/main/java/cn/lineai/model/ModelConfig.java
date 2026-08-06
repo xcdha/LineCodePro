@@ -9,6 +9,8 @@ public final class ModelConfig {
     public static final boolean DEFAULT_COMPRESSION_MODEL_AUTO = true;
     /** contextSize 字段未设置时的哨兵值，表示沿用旧 {@code {id}[{大小}]} 后缀解析或默认值。 */
     public static final int CONTEXT_SIZE_UNSET = 0;
+    /** temperature 未设置时的哨兵值，表示交给协议使用默认值。 */
+    public static final double TEMPERATURE_UNSET = -1.0;
 
     private final String id;
     private final String name;
@@ -22,6 +24,7 @@ public final class ModelConfig {
     private final boolean compressionModelAuto;
     private final String compressionModelId;
     private final int contextSize;
+    private final double temperature;
 
     /**
      * 显式带上 contextSize 的构造函数。新代码请优先使用 {@link Builder}。
@@ -43,6 +46,30 @@ public final class ModelConfig {
             String compressionModelId,
             int contextSize
     ) {
+        this(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
+                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize, TEMPERATURE_UNSET);
+    }
+
+    /**
+     * 显式带上 contextSize 与 temperature 的构造函数。新代码请优先使用 {@link Builder}。
+     *
+     * @param temperature 采样温度；传 {@link #TEMPERATURE_UNSET} 表示未设置，由协议决定默认值。
+     */
+    public ModelConfig(
+            String id,
+            String name,
+            ModelProtocolType protocolType,
+            String providerLabel,
+            String baseUrl,
+            String apiKey,
+            String modelId,
+            int toolCallLimit,
+            boolean compressionModelEnabled,
+            boolean compressionModelAuto,
+            String compressionModelId,
+            int contextSize,
+            double temperature
+    ) {
         this.id = Strings.nullToEmpty(id);
         this.name = Strings.nullToEmpty(name);
         this.protocolType = protocolType == null ? ModelProtocolType.OPENAI_COMPATIBLE : protocolType;
@@ -55,6 +82,7 @@ public final class ModelConfig {
         this.compressionModelAuto = compressionModelAuto;
         this.compressionModelId = Strings.nullToEmpty(compressionModelId).trim();
         this.contextSize = contextSize < 0 ? CONTEXT_SIZE_UNSET : contextSize;
+        this.temperature = normalizeTemperature(temperature);
     }
 
     private ModelConfig(Builder builder) {
@@ -70,6 +98,7 @@ public final class ModelConfig {
         this.compressionModelAuto = builder.compressionModelAuto;
         this.compressionModelId = Strings.nullToEmpty(builder.compressionModelId).trim();
         this.contextSize = builder.contextSize < 0 ? CONTEXT_SIZE_UNSET : builder.contextSize;
+        this.temperature = normalizeTemperature(builder.temperature);
     }
 
     public static Builder builder(String id, String name, ModelProtocolType protocolType,
@@ -90,6 +119,7 @@ public final class ModelConfig {
         private boolean compressionModelAuto = DEFAULT_COMPRESSION_MODEL_AUTO;
         private String compressionModelId = "";
         private int contextSize = CONTEXT_SIZE_UNSET;
+        private double temperature = TEMPERATURE_UNSET;
 
         private Builder(String id, String name, ModelProtocolType protocolType,
                         String providerLabel, String baseUrl, String apiKey, String modelId) {
@@ -129,6 +159,11 @@ public final class ModelConfig {
 
         public Builder contextSize(int contextSize) {
             this.contextSize = contextSize;
+            return this;
+        }
+
+        public Builder temperature(double temperature) {
+            this.temperature = temperature;
             return this;
         }
 
@@ -189,6 +224,13 @@ public final class ModelConfig {
         return contextSize;
     }
 
+    /**
+     * 采样温度。返回 {@link #TEMPERATURE_UNSET} 表示未设置，由协议决定默认值。
+     */
+    public double getTemperature() {
+        return temperature;
+    }
+
     public String getEffectiveCompressionModelId() {
         if (!compressionModelEnabled || compressionModelAuto || compressionModelId.length() == 0) {
             return modelId;
@@ -198,18 +240,18 @@ public final class ModelConfig {
 
     public ModelConfig withId(String nextId) {
         return new ModelConfig(nextId, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
-                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize);
+                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize, temperature);
     }
 
     public ModelConfig withModelId(String nextModelId) {
         return new ModelConfig(id, name, protocolType, providerLabel, baseUrl, apiKey, nextModelId, toolCallLimit,
-                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize);
+                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize, temperature);
     }
 
     /** 返回一个更新了 contextSize 的副本。 */
     public ModelConfig withContextSize(int nextContextSize) {
         return new ModelConfig(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
-                compressionModelEnabled, compressionModelAuto, compressionModelId, nextContextSize);
+                compressionModelEnabled, compressionModelAuto, compressionModelId, nextContextSize, temperature);
     }
 
     public JSONObject toJson() throws JSONException {
@@ -226,6 +268,9 @@ public final class ModelConfig {
         object.put("compressionModelAuto", compressionModelAuto);
         object.put("compressionModelId", compressionModelId);
         object.put("contextSize", contextSize);
+        if (temperature != TEMPERATURE_UNSET) {
+            object.put("temperature", temperature);
+        }
         return object;
     }
 
@@ -262,6 +307,10 @@ public final class ModelConfig {
         if (contextSize < 0) {
             contextSize = CONTEXT_SIZE_UNSET;
         }
+        double temperature = TEMPERATURE_UNSET;
+        if (object.has("temperature")) {
+            temperature = object.optDouble("temperature", TEMPERATURE_UNSET);
+        }
         return new ModelConfig(
                 object.optString("id"),
                 object.optString("name"),
@@ -274,7 +323,8 @@ public final class ModelConfig {
                 compressionModelEnabled,
                 compressionModelAuto,
                 compressionModelId,
-                contextSize
+                contextSize,
+                temperature
         );
     }
 
@@ -283,5 +333,12 @@ public final class ModelConfig {
             return UNLIMITED_TOOL_CALLS;
         }
         return Math.max(0, limit);
+    }
+
+    public static double normalizeTemperature(double temperature) {
+        if (Double.isNaN(temperature) || temperature < 0.0 || temperature > 2.0) {
+            return TEMPERATURE_UNSET;
+        }
+        return temperature;
     }
 }

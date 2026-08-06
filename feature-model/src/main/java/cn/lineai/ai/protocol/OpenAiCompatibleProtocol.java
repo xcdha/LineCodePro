@@ -64,7 +64,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages));
-            body.put("temperature", 0.2);
+            body.put("temperature", temperatureFor(config));
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
@@ -100,7 +100,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages, requestOptions.isPreserveReasoning()));
-            body.put("temperature", 0.2);
+            body.put("temperature", temperatureFor(config));
             body.put("stream", true);
             if (!requestOptions.getTools().isEmpty()) {
                 body.put("tools", ToolInfo.toJsonArray(requestOptions.getTools()));
@@ -251,6 +251,13 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 callback.onTextDelta(parsed.getText());
             }
         }
+    }
+
+    private static double temperatureFor(ModelConfig config) {
+        if (config != null && config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
+            return config.getTemperature();
+        }
+        return 0.2;
     }
 
     private void applyReasoningRequest(ModelConfig config, JSONObject body, ModelRequestOptions options) throws Exception {
