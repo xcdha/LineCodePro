@@ -356,6 +356,9 @@
     <string name="model_field_context_size">上下文大小</string>
     <string name="model_field_context_size_hint">如 128K 或 128000</string>
     <string name="model_field_context_size_hint_desc">支持 k / m 单位（大小写不敏感）。留空则使用模型默认上下文。</string>
+    <string name="model_field_temperature">采样温度</string>
+    <string name="model_field_temperature_hint">如 0.2</string>
+    <string name="model_field_temperature_hint_desc">采样温度 0–2。留空则使用协议默认值。部分推理模型只接受 1。</string>
     <string name="screen_model_add_acceleration_label">加速</string>
     <string name="screen_model_add_acceleration_auto">自动</string>
     <string name="screen_model_add_acceleration_cpu">CPU</string>
