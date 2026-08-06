@@ -1,4 +1,6 @@
 package cn.lineai.ai.protocol;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -8,15 +10,14 @@ import cn.lineai.ai.ImageInputPayload;
 import cn.lineai.ai.ModelRequestOptions;
 import cn.lineai.ai.ModelStreamCallback;
 import cn.lineai.ai.message.ModelMessage;
+import cn.lineai.ai.message.ToolModelMessage;
 import cn.lineai.ai.message.UserModelMessage;
 import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ModelConfig;
 import cn.lineai.model.ModelProtocolType;
 import cn.lineai.tool.BaseTool;
-import cn.lineai.tool.ToolCall;
 import cn.lineai.tool.ToolCategory;
 import cn.lineai.tool.ToolContext;
-import cn.lineai.tool.ToolResult;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -45,6 +46,30 @@ public final class OpenAiCompatibleProtocolTest {
         assertEquals("image_url", content.getJSONObject(1).getString("type"));
         assertEquals("data:image/jpeg;base64,abc123",
                 content.getJSONObject(1).getJSONObject("image_url").getString("url"));
+    }
+
+    @Test
+    public void serializesToolErrorWithFailurePrefix() throws Exception {
+        ArrayList<ModelMessage> messages = new ArrayList<>();
+        messages.add(new ToolModelMessage("No matching text found", "call_1", "file_edit", true));
+
+        JSONArray json = new OpenAiMessageSerializer().messagesJsonForTest(messages);
+
+        JSONObject tool = json.getJSONObject(0);
+        assertEquals("tool", tool.getString("role"));
+        assertEquals("call_1", tool.getString("tool_call_id"));
+        assertEquals("Tool file_edit failed:\nNo matching text found", tool.getString("content"));
+    }
+
+    @Test
+    public void serializesToolSuccessWithoutPrefix() throws Exception {
+        ArrayList<ModelMessage> messages = new ArrayList<>();
+        messages.add(new ToolModelMessage("Successfully edited demo.txt", "call_1", "file_edit", false));
+
+        JSONArray json = new OpenAiMessageSerializer().messagesJsonForTest(messages);
+
+        JSONObject tool = json.getJSONObject(0);
+        assertEquals("Successfully edited demo.txt", tool.getString("content"));
     }
 
     @Test

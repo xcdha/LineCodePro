@@ -1,4 +1,5 @@
 package cn.lineai.ui.component;
+import cn.lineai.ui.theme.IconButtonView;
 
 import android.content.Context;
 import android.widget.LinearLayout;
@@ -23,6 +24,8 @@ public final class LLMSettingsScreenView extends ScreenScaffoldView {
 
         void onLearningModeChanged(boolean enabled);
 
+        void onSoftCompactionChanged(boolean enabled);
+
         void onOpenPromptTemplates();
     }
 
@@ -38,6 +41,7 @@ public final class LLMSettingsScreenView extends ScreenScaffoldView {
 
         SettingsSectionView reasoning = new SettingsSectionView(context, context.getString(R.string.screen_llm_section_thinking));
         addReasoningRow(reasoning, listener, AiBehaviorSettings.REASONING_OFF, context.getString(R.string.screen_llm_thinking_off_label), context.getString(R.string.screen_llm_thinking_off_desc), value.getReasoningEffort(), true);
+        addReasoningRow(reasoning, listener, AiBehaviorSettings.REASONING_AUTO, context.getString(R.string.screen_llm_thinking_auto_label), context.getString(R.string.screen_llm_thinking_auto), value.getReasoningEffort(), true);
         addReasoningRow(reasoning, listener, AiBehaviorSettings.REASONING_LOW, context.getString(R.string.screen_llm_thinking_low_label), context.getString(R.string.screen_llm_thinking_low), value.getReasoningEffort(), true);
         addReasoningRow(reasoning, listener, AiBehaviorSettings.REASONING_MEDIUM, context.getString(R.string.screen_llm_thinking_medium_label), context.getString(R.string.screen_llm_thinking_medium), value.getReasoningEffort(), true);
         addReasoningRow(reasoning, listener, AiBehaviorSettings.REASONING_HIGH, context.getString(R.string.screen_llm_thinking_high_label), context.getString(R.string.screen_llm_thinking_high), value.getReasoningEffort(), true);
@@ -52,6 +56,14 @@ public final class LLMSettingsScreenView extends ScreenScaffoldView {
                 context.getString(R.string.screen_llm_learning_desc),
                 value.isLearningModeEnabled(),
                 (buttonView, isChecked) -> listener.onLearningModeChanged(isChecked)
+        ), true);
+        learning.addRow(new SwitchRowView(
+                context,
+                IconButtonView.ROTATE_CCW,
+                context.getString(R.string.screen_llm_soft_compact_label),
+                context.getString(R.string.screen_llm_soft_compact_desc),
+                value.isSoftCompactionEnabled(),
+                (buttonView, isChecked) -> listener.onSoftCompactionChanged(isChecked)
         ), false);
         content.addView(learning, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 

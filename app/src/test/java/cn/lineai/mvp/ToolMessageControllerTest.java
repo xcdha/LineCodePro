@@ -1,8 +1,8 @@
 package cn.lineai.mvp;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.model.ChatMessage;
-import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.Arrays;
 import org.junit.Assert;
@@ -78,6 +78,57 @@ public final class ToolMessageControllerTest {
         Assert.assertTrue(result.isError());
         Assert.assertEquals("用户已停止生成。", result.getContent());
         Assert.assertEquals("", result.getReviewState());
+    }
+
+    @Test
+    public void rejectReviewMarksToolResultAsErrorAndRewritesContent() {
+        ArrayList<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.toolResult(
+                "t1",
+                "Successfully edited demo.txt (1 match(es) replaced)",
+                "call_edit",
+                "file_edit",
+                false,
+                "diff_1",
+                "",
+                ""
+        ));
+        ToolMessageController controller = new ToolMessageController(messages, new IncrementingIdProvider());
+
+        controller.updateToolReview("call_edit", "diff_1", "rejected", "Reverted change to demo.txt");
+
+        ChatMessage result = toolMessage(messages, "call_edit");
+        Assert.assertNotNull(result);
+        Assert.assertTrue(result.isError());
+        Assert.assertEquals("rejected", result.getReviewState());
+        Assert.assertEquals("diff_1", result.getDiffId());
+        Assert.assertTrue(result.getContent().contains("User rejected this change"));
+        Assert.assertTrue(result.getContent().contains("Reverted change to demo.txt"));
+        Assert.assertFalse(result.getContent().contains("Successfully edited"));
+    }
+
+    @Test
+    public void acceptReviewKeepsSuccessContent() {
+        ArrayList<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.toolResult(
+                "t1",
+                "Successfully edited demo.txt (1 match(es) replaced)",
+                "call_edit",
+                "file_edit",
+                false,
+                "diff_1",
+                "",
+                ""
+        ));
+        ToolMessageController controller = new ToolMessageController(messages, new IncrementingIdProvider());
+
+        controller.updateToolReview("call_edit", "diff_1", "accepted", "");
+
+        ChatMessage result = toolMessage(messages, "call_edit");
+        Assert.assertNotNull(result);
+        Assert.assertFalse(result.isError());
+        Assert.assertEquals("accepted", result.getReviewState());
+        Assert.assertEquals("Successfully edited demo.txt (1 match(es) replaced)", result.getContent());
     }
 
     private static ChatMessage toolMessage(ArrayList<ChatMessage> messages, String toolCallId) {

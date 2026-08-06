@@ -34,7 +34,7 @@ import cn.lineai.model.AiBehaviorSettings;
 import cn.lineai.model.ConversationUiModel;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
-import cn.lineai.model.ExtensionOverviewState;
+import cn.lineai.data.model.ExtensionOverviewState;
 import cn.lineai.model.InputSettings;
 import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpSettingsState;
@@ -565,6 +565,11 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public void onAiSoftCompactionChanged(boolean enabled) {
+        settingsManagementController.setAiSoftCompactionEnabled(enabled);
+    }
+
+    @Override
     public InputSettings getInputSettings() {
         return settingsManagementController.getInputSettings();
     }
@@ -775,6 +780,11 @@ public final class MainCoordinator implements MainUiController {
     }
 
     @Override
+    public SkillRecord onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception {
+        return extensionManagementController.installSkillFromGitHub(location, githubUrl);
+    }
+
+    @Override
     public void onExtensionEnabledChanged(String kind, String id, boolean enabled) {
         extensionManagementController.setExtensionEnabled(kind, id, enabled);
     }
@@ -782,6 +792,11 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onExtensionDeleted(String kind, String id) {
         extensionManagementController.deleteExtension(kind, id);
+    }
+
+    @Override
+    public void onExtensionsDeleted(String kind, List<String> ids) {
+        extensionManagementController.deleteExtensions(kind, ids);
     }
 
     @Override
@@ -865,6 +880,7 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onEnterBackground() {
         viewProxy.hideOverlays();
+        persistCurrentConversation();
     }
 
     void reloadAfterLineCodeImport() {
@@ -1033,6 +1049,7 @@ public final class MainCoordinator implements MainUiController {
 
     void loadConversation(String id) {
         conversationPersistenceController.loadConversation(id);
+        contextCompactionController.onConversationChanged();
         chatInteractionController.resetModelTracking();
     }
 
@@ -1111,18 +1128,18 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public StorageStatsUiModel getStorageStats() {
         StorageStatsRepository.StorageStats stats = storageStatsRepository.getStats();
-        StorageStatsUiModel ui = new StorageStatsUiModel();
-        ui.totalSize = stats.totalSize;
-        ui.totalCount = stats.totalCount;
-        ui.diffCacheSize = stats.diffCacheSize;
-        ui.diffCacheCount = stats.diffCacheCount;
-        ui.chatSize = stats.chatSize;
-        ui.chatCount = stats.chatCount;
-        ui.configSize = stats.configSize;
-        ui.configCount = stats.configCount;
-        ui.homeSize = stats.homeSize;
-        ui.homeCount = stats.homeCount;
-        return ui;
+        return new StorageStatsUiModel(
+                stats.totalSize,
+                stats.totalCount,
+                stats.diffCacheSize,
+                stats.diffCacheCount,
+                stats.chatSize,
+                stats.chatCount,
+                stats.configSize,
+                stats.configCount,
+                stats.homeSize,
+                stats.homeCount
+        );
     }
 
     // ===== Keep alive =====

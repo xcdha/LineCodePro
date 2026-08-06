@@ -7,7 +7,7 @@ import cn.lineai.data.repository.IpcProviderStore;
 import cn.lineai.ipc.IpcProviderType;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
-import cn.lineai.model.ExtensionOverviewState;
+import cn.lineai.data.model.ExtensionOverviewState;
 import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpToolSummary;
 import cn.lineai.model.SkillRecord;
@@ -92,6 +92,29 @@ final class ExtensionManagementController {
         SkillRecord skill = extensionRepository.installSkillMarkdown(host.projectPath(), location, name, markdown);
         finishSkillOperation();
         return skill;
+    }
+
+    SkillRecord installSkillFromGitHub(String location, String githubUrl) throws Exception {
+        SkillRecord skill = extensionRepository.installSkillFromGitHub(host.projectPath(), location, githubUrl);
+        finishSkillOperation();
+        return skill;
+    }
+
+    void deleteExtensions(String kind, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        if ("skills".equals(kind)) {
+            extensionRepository.deleteSkills(ids);
+        } else {
+            for (String id : ids) {
+                deleteExtension(kind, id);
+            }
+            return;
+        }
+        reloadExtensions();
+        host.refreshVisibleScreen("extension:" + kind);
+        host.render();
     }
 
     private void finishSkillOperation() {

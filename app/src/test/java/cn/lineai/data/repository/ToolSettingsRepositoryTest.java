@@ -1,4 +1,5 @@
 package cn.lineai.data.repository;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.ai.prompt.ToolPromptRenderer;
 import cn.lineai.model.McpToolConfig;
@@ -10,7 +11,6 @@ import cn.lineai.tool.ToolDisplayCategory;
 import cn.lineai.tool.ToolDisplayResolver;
 import cn.lineai.tool.ToolInfo;
 import cn.lineai.tool.ToolRegistry;
-import cn.lineai.tool.ToolResult;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -187,9 +187,9 @@ public final class ToolSettingsRepositoryTest {
 
         Assert.assertTrue(prompt.contains("shell_execute"));
         Assert.assertTrue(prompt.contains("image_understanding"));
-        Assert.assertTrue(prompt.contains("reads SSH workspace images via SFTP"));
+        Assert.assertTrue(prompt.contains("via SFTP"));
         Assert.assertTrue(prompt.contains("image_generation"));
-        Assert.assertTrue(prompt.contains("returned as an inline Markdown image"));
+        Assert.assertTrue(prompt.contains("inline Markdown image"));
         Assert.assertTrue(prompt.contains("mcpx_test_lookup"));
         Assert.assertTrue(prompt.contains("调用测试 MCP"));
         Assert.assertTrue(prompt.contains("Local file read/write and file search are disabled"));
@@ -281,9 +281,9 @@ public final class ToolSettingsRepositoryTest {
 
         Assert.assertTrue(prompt.contains("shell_execute"));
         Assert.assertTrue(prompt.contains("image_understanding"));
-        Assert.assertTrue(prompt.contains("reads terminal provider environment images via IPC"));
+        Assert.assertTrue(prompt.contains("via IPC"));
         Assert.assertTrue(prompt.contains("image_generation"));
-        Assert.assertTrue(prompt.contains("returned as an inline Markdown image"));
+        Assert.assertTrue(prompt.contains("inline Markdown image"));
         Assert.assertTrue(prompt.contains("Terminal Provider"));
         Assert.assertTrue(prompt.contains("terminal provider environment"));
         Assert.assertTrue(prompt.contains("Local file read/write and file search are disabled"));

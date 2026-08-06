@@ -1,7 +1,7 @@
 package cn.lineai.model;
+import cn.lineai.model.tool.ToolCall;
+import cn.lineai.model.tool.ToolResult;
 
-import cn.lineai.tool.ToolCall;
-import cn.lineai.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -311,8 +311,18 @@ public final class ChatMessage {
     }
 
     public ChatMessage withToolReview(String nextDiffId, String nextReviewState, String nextReviewMessage) {
-        return new ChatMessage(id, role, content, reasoningContent, streaming, hidden,
-                excludeFromContext, toolCalls, toolResults, toolCallId, toolName, error,
+        return withToolReview(nextDiffId, nextReviewState, nextReviewMessage, error, content);
+    }
+
+    public ChatMessage withToolReview(
+            String nextDiffId,
+            String nextReviewState,
+            String nextReviewMessage,
+            boolean nextError,
+            String nextContent
+    ) {
+        return new ChatMessage(id, role, nextContent, reasoningContent, streaming, hidden,
+                excludeFromContext, toolCalls, toolResults, toolCallId, toolName, nextError,
                 nextDiffId, nextReviewState, nextReviewMessage, compactStatus, responseInputItemJson, attachments, modelSwitchNotification);
     }
 

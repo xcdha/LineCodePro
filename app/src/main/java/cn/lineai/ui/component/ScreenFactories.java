@@ -18,7 +18,7 @@ import cn.lineai.ipc.IpcProviderConfig;
 import cn.lineai.log.ErrorLogEntry;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
-import cn.lineai.model.ExtensionOverviewState;
+import cn.lineai.data.model.ExtensionOverviewState;
 import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpToolConfig;
 import cn.lineai.model.McpToolSummary;
@@ -106,7 +106,7 @@ public final class ScreenFactories {
     }
 
     private static cn.lineai.model.ExtensionKindUiModel buildExtensionKindUiModel(
-            Context context, String kind, cn.lineai.model.ExtensionOverviewState state) {
+            Context context, String kind, cn.lineai.data.model.ExtensionOverviewState state) {
         cn.lineai.mvp.ExtensionKindDescriptor d = cn.lineai.mvp.ExtensionKindRegistry.getInstance().get(kind);
         if (d == null) {
             return null;
@@ -220,6 +220,11 @@ public final class ScreenFactories {
                 @Override
                 public void onLearningModeChanged(boolean enabled) {
                     controller.onAiLearningModeChanged(enabled);
+                }
+
+                @Override
+                public void onSoftCompactionChanged(boolean enabled) {
+                    controller.onAiSoftCompactionChanged(enabled);
                 }
 
                 @Override
@@ -378,12 +383,29 @@ public final class ScreenFactories {
                 public void onBrowserJavaScriptChanged(boolean enabled) {
                     controller.onBrowserJavaScriptChanged(enabled);
                 }
+
+                @Override
+                public void onToolCallPreviewClicked() {
+                    controller.onSettingsItemSelected("toolcall_preview");
+                }
             });
         }
 
         @Override
         public String screenId() {
             return "output";
+        }
+    }
+
+    public static final class ToolCallPreviewScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new ToolCallPreviewScreenView(context, view::handleScreenBack);
+        }
+
+        @Override
+        public String screenId() {
+            return "toolcall_preview";
         }
     }
 
@@ -827,6 +849,19 @@ public final class ScreenFactories {
         }
     }
 
+    /** 设置页顶部的教程入口：返回时回到设置页（区别于聊天"更多"菜单的 tutorial）。 */
+    public static final class TutorialFromSettingsScreenFactory implements ScreenFactory {
+        @Override
+        public View createScreen(MainChatView view, MainUiController controller, Context context) {
+            return new TutorialScreenView(context, view::handleScreenBack);
+        }
+
+        @Override
+        public String screenId() {
+            return "tutorialFromSettings";
+        }
+    }
+
     // ===== Model screens =====
 
     public static final class ModelListScreenFactory implements ScreenFactory {
@@ -1263,6 +1298,15 @@ public final class ScreenFactories {
                 }
 
                 @Override
+                public void onInstallSkillFromGitHub(String location, String githubUrl) {
+                    try {
+                        controller.onSkillInstalledFromGitHub(location, githubUrl);
+                    } catch (Exception e) {
+                        Toast.makeText(view.getContext(), e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                }
+
+                @Override
                 public void onEnabledChanged(String kind, String id, boolean enabled) {
                     controller.onExtensionEnabledChanged(kind, id, enabled);
                 }
@@ -1270,6 +1314,16 @@ public final class ScreenFactories {
                 @Override
                 public void onDelete(String kind, String id) {
                     controller.onExtensionDeleted(kind, id);
+                }
+
+                @Override
+                public void onDeleteMany(String kind, List<String> ids) {
+                    controller.onExtensionsDeleted(kind, ids);
+                }
+
+                @Override
+                public void onShareWorkspace() {
+                    cn.lineai.workspace.WorkspaceShareHelper.shareHome(view.getContext());
                 }
             });
         }

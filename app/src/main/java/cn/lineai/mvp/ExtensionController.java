@@ -4,7 +4,7 @@ import cn.lineai.ipc.IpcProviderConfig;
 import cn.lineai.ipc.ScannedProvider;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
-import cn.lineai.model.ExtensionOverviewState;
+import cn.lineai.data.model.ExtensionOverviewState;
 import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpToolSummary;
 import cn.lineai.model.SkillRecord;
@@ -32,9 +32,13 @@ public interface ExtensionController {
 
     SkillRecord onSkillMarkdownInstalled(String location, String name, String markdown);
 
+    SkillRecord onSkillInstalledFromGitHub(String location, String githubUrl) throws Exception;
+
     void onExtensionEnabledChanged(String kind, String id, boolean enabled);
 
     void onExtensionDeleted(String kind, String id);
+
+    void onExtensionsDeleted(String kind, List<String> ids);
 
     List<ScannedProvider> onTerminalProviderScan();
 

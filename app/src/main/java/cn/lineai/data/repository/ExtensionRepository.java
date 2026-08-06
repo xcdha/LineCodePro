@@ -8,7 +8,7 @@ import cn.lineai.data.db.LineCodeDatabase;
 import cn.lineai.data.service.SkillFileManager;
 import cn.lineai.model.ExtensionAgentConfig;
 import cn.lineai.model.ExtensionMcpConfig;
-import cn.lineai.model.ExtensionOverviewState;
+import cn.lineai.data.model.ExtensionOverviewState;
 import cn.lineai.model.McpRequestHeader;
 import cn.lineai.model.McpToolSummary;
 import cn.lineai.model.SkillRecord;
@@ -109,6 +109,11 @@ public final class ExtensionRepository extends BaseRepository implements Extensi
     }
 
     @Override
+    public synchronized SkillRecord installSkillFromGitHub(String homePath, String location, String githubUrl) throws Exception {
+        return skillRepository.installSkillFromGitHub(homePath, location, githubUrl);
+    }
+
+    @Override
     public synchronized void setSkillEnabled(String id, boolean enabled) {
         skillRepository.setSkillEnabled(id, enabled);
     }
@@ -116,6 +121,11 @@ public final class ExtensionRepository extends BaseRepository implements Extensi
     @Override
     public synchronized void deleteSkill(String id) {
         skillRepository.deleteSkill(id);
+    }
+
+    @Override
+    public synchronized void deleteSkills(List<String> ids) {
+        skillRepository.deleteSkills(ids);
     }
 
     @Override

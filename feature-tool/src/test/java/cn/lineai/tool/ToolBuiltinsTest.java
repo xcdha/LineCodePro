@@ -1,15 +1,19 @@
 package cn.lineai.tool;
+import cn.lineai.model.tool.ToolResult;
 
 import cn.lineai.data.repository.WebSearchConfigRepository;
 import cn.lineai.model.WebSearchConfig;
 import cn.lineai.tool.builtin.FileReadTool;
 import cn.lineai.tool.builtin.FileDeleteTool;
+import cn.lineai.tool.builtin.FileEditTool;
 import cn.lineai.tool.builtin.FileWriteTool;
 import cn.lineai.tool.builtin.GlobTool;
 import cn.lineai.tool.builtin.AgentTool;
 import cn.lineai.tool.builtin.AgentPipelineTool;
 import cn.lineai.tool.builtin.WebSearchTool;
 import cn.lineai.tool.builtin.WebFetchTool;
+import cn.lineai.tool.builtin.TodoUpdateTool;
+import cn.lineai.tool.builtin.ListDirectoryTool;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -97,6 +101,56 @@ public final class ToolBuiltinsTest {
 
         Assert.assertFalse(result.isError());
         Assert.assertEquals("hello", new String(Files.readAllBytes(new File(folder.getRoot(), "src/main.txt").toPath()), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void fileEditReplacesUniqueMatchOnce() throws Exception {
+        File file = folder.newFile("edit.txt");
+        Files.write(file.toPath(), "alpha\nbeta\nalpha\n".getBytes(StandardCharsets.UTF_8));
+
+        ToolResult result = new FileEditTool().execute(new JSONObject()
+                .put("file_path", "edit.txt")
+                .put("old_string", "beta")
+                .put("new_string", "gamma"), context());
+
+        Assert.assertFalse(result.isError());
+        Assert.assertEquals(
+                "alpha\ngamma\nalpha\n",
+                new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8)
+        );
+        Assert.assertTrue(result.getContent().contains("1 match"));
+    }
+
+    @Test
+    public void fileEditRejectsMultipleMatchesWithoutReplaceAll() throws Exception {
+        File file = folder.newFile("edit-multi.txt");
+        Files.write(file.toPath(), "x\nx\n".getBytes(StandardCharsets.UTF_8));
+
+        ToolResult result = new FileEditTool().execute(new JSONObject()
+                .put("file_path", "edit-multi.txt")
+                .put("old_string", "x")
+                .put("new_string", "y"), context());
+
+        Assert.assertTrue(result.isError());
+        Assert.assertTrue(result.getContent().contains("matched 2 places")
+                || result.getContent().contains("replace_all"));
+        Assert.assertEquals("x\nx\n", new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void fileEditReplaceAllReplacesEveryOccurrence() throws Exception {
+        File file = folder.newFile("edit-all.txt");
+        Files.write(file.toPath(), "x\nx\n".getBytes(StandardCharsets.UTF_8));
+
+        ToolResult result = new FileEditTool().execute(new JSONObject()
+                .put("file_path", "edit-all.txt")
+                .put("old_string", "x")
+                .put("new_string", "y")
+                .put("replace_all", true), context());
+
+        Assert.assertFalse(result.isError());
+        Assert.assertEquals("y\ny\n", new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8));
+        Assert.assertTrue(result.getContent().contains("2 match"));
     }
 
     @Test
@@ -273,5 +327,20 @@ public final class ToolBuiltinsTest {
             .homePath(folder.getRoot().getAbsolutePath())
             .stringResolver(new FakeResourceContext())
             .build();
+    }
+
+    @Test
+    public void builtinToolsDeclareViewClasses() {
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallReadView.class, new FileReadTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallWriteView.class, new FileWriteTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallWriteView.class, new FileEditTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallDeleteView.class, new FileDeleteTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallReadView.class, new GlobTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallReadView.class, new ListDirectoryTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallAgentView.class, new AgentTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallAgentPipelineView.class, new AgentPipelineTool().getToolCallViewClass());
+        Assert.assertEquals(cn.lineai.tool.ui.ToolCallTodoView.class, new TodoUpdateTool().getToolCallViewClass());
+        Assert.assertNull(new WebFetchTool().getToolCallViewClass());
+        Assert.assertNull(new WebSearchTool(new cn.lineai.data.repository.WebSearchConfigRepository(null)).getToolCallViewClass());
     }
 }
