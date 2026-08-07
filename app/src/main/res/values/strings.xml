@@ -358,7 +358,10 @@
     <string name="model_field_context_size_hint_desc">Supports k / m units (case-insensitive). Leave empty to fall back to the model default.</string>
     <string name="model_field_temperature">Temperature</string>
     <string name="model_field_temperature_hint">e.g. 0.2</string>
-    <string name="model_field_temperature_hint_desc">Sampling temperature 0–2. Leave empty to use the protocol default. Some reasoning models only accept 1.</string>
+    <string name="model_field_temperature_hint_desc">Sampling temperature 0–2. Leave empty to use the model required value or the upstream default.</string>
+    <string name="model_field_required_temperature">Required temperature</string>
+    <string name="model_field_required_temperature_hint">e.g. 1</string>
+    <string name="model_field_required_temperature_hint_desc">Temperature the model itself requires (e.g. kimi-k3 requires 1). Leave empty if the model has no such requirement. Used only when the temperature field above is empty.</string>
     <string name="screen_model_add_acceleration_label">Acceleration</string>
     <string name="screen_model_add_acceleration_auto">Auto</string>
     <string name="screen_model_add_acceleration_cpu">CPU</string>

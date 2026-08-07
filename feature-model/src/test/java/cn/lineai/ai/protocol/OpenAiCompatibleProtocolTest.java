@@ -176,6 +176,53 @@ public final class OpenAiCompatibleProtocolTest {
         return "data: " + object.toString() + "\n\n";
     }
 
+    @org.junit.Test
+    public void applyTemperatureUsesUserValueWhenSet() throws Exception {
+        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                        "https://api.x.com/v1", "k", "kimi-k3")
+                .temperature(0.7)
+                .requiredTemperature(1.0)
+                .build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+        org.junit.Assert.assertEquals(0.7, body.optDouble("temperature", Double.NaN), 0.0);
+    }
+
+    @org.junit.Test
+    public void applyTemperatureFallsBackToRequiredTemperature() throws Exception {
+        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                        "https://opencode.ai/zen/go/v1", "k", "kimi-k3")
+                .requiredTemperature(1.0)
+                .build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+        org.junit.Assert.assertEquals(1.0, body.optDouble("temperature", Double.NaN), 0.0);
+    }
+
+    @org.junit.Test
+    public void applyTemperatureOmitsFieldForPlainModelWithoutRequirements() throws Exception {
+        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                        "https://api.x.com/v1", "k", "gpt-4o")
+                .build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+        org.junit.Assert.assertFalse(body.has("temperature"));
+    }
+
+    @org.junit.Test
+    public void applyTemperatureFallsBackToReasoningInference() throws Exception {
+        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                        "https://api.openai.com/v1", "k", "o3-mini")
+                .build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+        org.junit.Assert.assertEquals(1.0, body.optDouble("temperature", Double.NaN), 0.0);
+    }
+
     private static final class LocalSseServer implements AutoCloseable {
         private final ServerSocket serverSocket;
         private final String responseBody;
