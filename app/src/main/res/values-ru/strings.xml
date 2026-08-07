@@ -358,7 +358,10 @@
     <string name="model_field_context_size_hint_desc">Поддерживаются единицы k / m (без учёта регистра). Оставьте пустым для использования значения модели по умолчанию.</string>
     <string name="model_field_temperature">Температура</string>
     <string name="model_field_temperature_hint">напр. 0.2</string>
-    <string name="model_field_temperature_hint_desc">Температура выборки 0–2. Оставьте пустым, чтобы использовать значение по умолчанию. Некоторые модели рассуждений принимают только 1.</string>
+    <string name="model_field_temperature_hint_desc">Температура выборки 0–2. Оставьте пустым, чтобы использовать требуемое моделью значение или значение по умолчанию.</string>
+    <string name="model_field_required_temperature">Требуемая температура</string>
+    <string name="model_field_required_temperature_hint">напр. 1</string>
+    <string name="model_field_required_temperature_hint_desc">Температура, требуемая самой моделью (например, kimi-k3 требует 1). Оставьте пустым, если модель не предъявляет таких требований. Используется только если поле температуры выше пусто.</string>
     <string name="screen_model_add_acceleration_label">Ускорение</string>
     <string name="screen_model_add_acceleration_auto">Авто</string>
     <string name="screen_model_add_acceleration_cpu">CPU</string>

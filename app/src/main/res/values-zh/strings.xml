@@ -358,7 +358,10 @@
     <string name="model_field_context_size_hint_desc">支持 k / m 单位（大小写不敏感）。留空则使用模型默认上下文。</string>
     <string name="model_field_temperature">采样温度</string>
     <string name="model_field_temperature_hint">如 0.2</string>
-    <string name="model_field_temperature_hint_desc">采样温度 0–2。留空则使用协议默认值。部分推理模型只接受 1。</string>
+    <string name="model_field_temperature_hint_desc">采样温度 0–2。留空则使用下方"模型所需温度"或上游默认值。</string>
+    <string name="model_field_required_temperature">模型所需温度</string>
+    <string name="model_field_required_temperature_hint">如 1</string>
+    <string name="model_field_required_temperature_hint_desc">模型本身要求的温度(例如 kimi-k3 要求 1)。模型无此要求时留空。仅当上方采样温度为空时使用。</string>
     <string name="screen_model_add_acceleration_label">加速</string>
     <string name="screen_model_add_acceleration_auto">自动</string>
     <string name="screen_model_add_acceleration_cpu">CPU</string>

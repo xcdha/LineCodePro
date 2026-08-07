@@ -11,6 +11,12 @@ public final class ModelConfig {
     public static final int CONTEXT_SIZE_UNSET = 0;
     /** temperature 未设置时的哨兵值，表示交给协议使用默认值。 */
     public static final double TEMPERATURE_UNSET = -1.0;
+    /**
+     * 模型未声明所需温度时的哨兵值。
+     * <p>语义：模型本身对 temperature 字段无强制要求，协议层在用户未自定义温度时不发送该字段，
+     * 让上游使用模型自身默认值。
+     */
+    public static final double REQUIRED_TEMPERATURE_UNSET = -1.0;
 
     private final String id;
     private final String name;
@@ -25,6 +31,7 @@ public final class ModelConfig {
     private final String compressionModelId;
     private final int contextSize;
     private final double temperature;
+    private final double requiredTemperature;
 
     /**
      * 显式带上 contextSize 的构造函数。新代码请优先使用 {@link Builder}。
@@ -70,6 +77,35 @@ public final class ModelConfig {
             int contextSize,
             double temperature
     ) {
+        this(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
+                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize,
+                temperature, REQUIRED_TEMPERATURE_UNSET);
+    }
+
+    /**
+     * 显式带上 contextSize、temperature 与 requiredTemperature 的构造函数。新代码请优先使用 {@link Builder}。
+     *
+     * @param temperature         用户自定义采样温度；传 {@link #TEMPERATURE_UNSET} 表示未自定义，
+     *                            协议会回退到 {@code requiredTemperature} 或不发送该字段。
+     * @param requiredTemperature 模型本身要求的温度值（如 kimi-k3 要求 1.0）；
+     *                            传 {@link #REQUIRED_TEMPERATURE_UNSET} 表示模型无强制要求。
+     */
+    public ModelConfig(
+            String id,
+            String name,
+            ModelProtocolType protocolType,
+            String providerLabel,
+            String baseUrl,
+            String apiKey,
+            String modelId,
+            int toolCallLimit,
+            boolean compressionModelEnabled,
+            boolean compressionModelAuto,
+            String compressionModelId,
+            int contextSize,
+            double temperature,
+            double requiredTemperature
+    ) {
         this.id = Strings.nullToEmpty(id);
         this.name = Strings.nullToEmpty(name);
         this.protocolType = protocolType == null ? ModelProtocolType.OPENAI_COMPATIBLE : protocolType;
@@ -83,6 +119,7 @@ public final class ModelConfig {
         this.compressionModelId = Strings.nullToEmpty(compressionModelId).trim();
         this.contextSize = contextSize < 0 ? CONTEXT_SIZE_UNSET : contextSize;
         this.temperature = normalizeTemperature(temperature);
+        this.requiredTemperature = normalizeTemperature(requiredTemperature);
     }
 
     private ModelConfig(Builder builder) {
@@ -99,6 +136,7 @@ public final class ModelConfig {
         this.compressionModelId = Strings.nullToEmpty(builder.compressionModelId).trim();
         this.contextSize = builder.contextSize < 0 ? CONTEXT_SIZE_UNSET : builder.contextSize;
         this.temperature = normalizeTemperature(builder.temperature);
+        this.requiredTemperature = normalizeTemperature(builder.requiredTemperature);
     }
 
     public static Builder builder(String id, String name, ModelProtocolType protocolType,
@@ -120,6 +158,7 @@ public final class ModelConfig {
         private String compressionModelId = "";
         private int contextSize = CONTEXT_SIZE_UNSET;
         private double temperature = TEMPERATURE_UNSET;
+        private double requiredTemperature = REQUIRED_TEMPERATURE_UNSET;
 
         private Builder(String id, String name, ModelProtocolType protocolType,
                         String providerLabel, String baseUrl, String apiKey, String modelId) {
@@ -164,6 +203,11 @@ public final class ModelConfig {
 
         public Builder temperature(double temperature) {
             this.temperature = temperature;
+            return this;
+        }
+
+        public Builder requiredTemperature(double requiredTemperature) {
+            this.requiredTemperature = requiredTemperature;
             return this;
         }
 
@@ -231,6 +275,15 @@ public final class ModelConfig {
         return temperature;
     }
 
+    /**
+     * 模型本身要求的温度值（如 kimi-k3 要求 1.0）。
+     * 返回 {@link #REQUIRED_TEMPERATURE_UNSET} 表示模型无强制要求，
+     * 此时若用户也未自定义温度，协议层不会发送 temperature 字段，让上游使用模型默认值。
+     */
+    public double getRequiredTemperature() {
+        return requiredTemperature;
+    }
+
     public String getEffectiveCompressionModelId() {
         if (!compressionModelEnabled || compressionModelAuto || compressionModelId.length() == 0) {
             return modelId;
@@ -240,18 +293,21 @@ public final class ModelConfig {
 
     public ModelConfig withId(String nextId) {
         return new ModelConfig(nextId, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
-                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize, temperature);
+                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize,
+                temperature, requiredTemperature);
     }
 
     public ModelConfig withModelId(String nextModelId) {
         return new ModelConfig(id, name, protocolType, providerLabel, baseUrl, apiKey, nextModelId, toolCallLimit,
-                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize, temperature);
+                compressionModelEnabled, compressionModelAuto, compressionModelId, contextSize,
+                temperature, requiredTemperature);
     }
 
     /** 返回一个更新了 contextSize 的副本。 */
     public ModelConfig withContextSize(int nextContextSize) {
         return new ModelConfig(id, name, protocolType, providerLabel, baseUrl, apiKey, modelId, toolCallLimit,
-                compressionModelEnabled, compressionModelAuto, compressionModelId, nextContextSize, temperature);
+                compressionModelEnabled, compressionModelAuto, compressionModelId, nextContextSize,
+                temperature, requiredTemperature);
     }
 
     public JSONObject toJson() throws JSONException {
@@ -270,6 +326,9 @@ public final class ModelConfig {
         object.put("contextSize", contextSize);
         if (temperature != TEMPERATURE_UNSET) {
             object.put("temperature", temperature);
+        }
+        if (requiredTemperature != REQUIRED_TEMPERATURE_UNSET) {
+            object.put("requiredTemperature", requiredTemperature);
         }
         return object;
     }
@@ -311,6 +370,10 @@ public final class ModelConfig {
         if (object.has("temperature")) {
             temperature = object.optDouble("temperature", TEMPERATURE_UNSET);
         }
+        double requiredTemperature = REQUIRED_TEMPERATURE_UNSET;
+        if (object.has("requiredTemperature")) {
+            requiredTemperature = object.optDouble("requiredTemperature", REQUIRED_TEMPERATURE_UNSET);
+        }
         return new ModelConfig(
                 object.optString("id"),
                 object.optString("name"),
@@ -324,7 +387,8 @@ public final class ModelConfig {
                 compressionModelAuto,
                 compressionModelId,
                 contextSize,
-                temperature
+                temperature,
+                requiredTemperature
         );
     }
 

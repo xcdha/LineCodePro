@@ -64,6 +64,7 @@ public final class ModelAddScreenView extends LinearLayout {
     private EditText toolCallLimitInput;
     private EditText contextSizeInput;
     private EditText temperatureInput;
+    private EditText requiredTemperatureInput;
     private final String[] selectedModelId = new String[] {""};
     private final boolean local;
     private final boolean lockedPreset;
@@ -262,6 +263,16 @@ public final class ModelAddScreenView extends LinearLayout {
             temperatureHintParams.topMargin = LineTheme.dp(context, LineTheme.SM);
             content.addView(temperatureHint, temperatureHintParams);
 
+            content.addView(ModelFormHelper.label(context, context.getString(R.string.model_field_required_temperature)), ModelFormHelper.labelParams(context, LineTheme.LG, LineTheme.SM));
+            requiredTemperatureInput = ModelFormHelper.input(context, editing && editingModel.getRequiredTemperature() != ModelConfig.REQUIRED_TEMPERATURE_UNSET ? String.valueOf(editingModel.getRequiredTemperature()) : "", context.getString(R.string.model_field_required_temperature_hint), false, false);
+            requiredTemperatureInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+            content.addView(requiredTemperatureInput, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            TextView requiredTemperatureHint = LineTheme.text(context, context.getString(R.string.model_field_required_temperature_hint_desc), LineTheme.FONT_XS, LineTheme.TEXT_TERTIARY, Typeface.NORMAL);
+            requiredTemperatureHint.setLineSpacing(LineTheme.dp(context, 3), 1f);
+            LinearLayout.LayoutParams requiredTemperatureHintParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+            requiredTemperatureHintParams.topMargin = LineTheme.dp(context, LineTheme.SM);
+            content.addView(requiredTemperatureHint, requiredTemperatureHintParams);
+
             compressionSection = new ModelCompressionSectionView(context, protocolType,
                     editing && editingModel.isCompressionModelEnabled(),
                     !editing || editingModel.isCompressionModelAuto(),
@@ -299,6 +310,7 @@ public final class ModelAddScreenView extends LinearLayout {
             toolCallLimitInput.addTextChangedListener(watcher);
             contextSizeInput.addTextChangedListener(watcher);
             temperatureInput.addTextChangedListener(watcher);
+            requiredTemperatureInput.addTextChangedListener(watcher);
             TextWatcher catalogWatcher = new TextWatcher() {
                 @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
                 @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
@@ -541,7 +553,7 @@ public final class ModelAddScreenView extends LinearLayout {
                 editingModel == null ? "" : editingModel.getId(),
                 name, protocolType[0], label, baseUrl, apiKey, modelId,
                 toolCallLimit, compressionEnabled, compressionAuto, compressionModelId, contextSize,
-                parseTemperature()
+                parseTemperature(), parseRequiredTemperature()
         );
     }
 
@@ -574,7 +586,7 @@ public final class ModelAddScreenView extends LinearLayout {
                 editingModel == null ? "" : editingModel.getId(),
                 name, protocolType[0], label, baseUrl, apiKey, modelId,
                 toolCallLimit, compressionEnabled, compressionAuto, compressionModelId, contextSize,
-                parseTemperature()
+                parseTemperature(), parseRequiredTemperature()
         );
     }
 
@@ -616,6 +628,21 @@ public final class ModelAddScreenView extends LinearLayout {
             return ModelConfig.normalizeTemperature(Double.parseDouble(value));
         } catch (NumberFormatException e) {
             return ModelConfig.TEMPERATURE_UNSET;
+        }
+    }
+
+    private double parseRequiredTemperature() {
+        if (local || requiredTemperatureInput == null) {
+            return ModelConfig.REQUIRED_TEMPERATURE_UNSET;
+        }
+        String value = ModelFormHelper.value(requiredTemperatureInput);
+        if (value.length() == 0) {
+            return ModelConfig.REQUIRED_TEMPERATURE_UNSET;
+        }
+        try {
+            return ModelConfig.normalizeTemperature(Double.parseDouble(value));
+        } catch (NumberFormatException e) {
+            return ModelConfig.REQUIRED_TEMPERATURE_UNSET;
         }
     }
 

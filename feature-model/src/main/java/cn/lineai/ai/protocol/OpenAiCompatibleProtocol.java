@@ -64,7 +64,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages));
-            body.put("temperature", temperatureFor(config));
+            applyTemperature(body, config);
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
@@ -100,7 +100,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages, requestOptions.isPreserveReasoning()));
-            body.put("temperature", temperatureFor(config));
+            applyTemperature(body, config);
             body.put("stream", true);
             if (!requestOptions.getTools().isEmpty()) {
                 body.put("tools", ToolInfo.toJsonArray(requestOptions.getTools()));
@@ -253,14 +253,49 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         }
     }
 
-    private static double temperatureFor(ModelConfig config) {
-        if (config != null && config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
+    /**
+     * 按 "用户自定义温度 > 模型所需温度 > 推断兜底 > 不传" 的优先级决定是否向请求体写入 temperature 字段。
+     * <p>设计目标：让每个模型能声明自身对 temperature 的硬性要求（如 kimi-k3 必须 1.0），
+     * 用户未自定义温度时使用模型所需值；模型也未声明且无法推断时不发送该字段，让上游使用模型默认值，
+     * 避免硬塞 0.2 误伤未知推理模型。
+     *
+     * @param body   请求体 JSON
+     * @param config 模型配置
+     */
+    private static void applyTemperature(JSONObject body, ModelConfig config) {
+        Double resolved = resolveTemperature(config);
+        if (resolved != null) {
+            try {
+                body.put("temperature", resolved);
+            } catch (org.json.JSONException ignored) {
+            }
+        }
+    }
+
+    /**
+     * 返回应当发送的 temperature 值；返回 {@code null} 表示不发送该字段，让上游使用模型默认值。
+     * <p>优先级：
+     * <ol>
+     *   <li>用户自定义温度 ({@link ModelConfig#getTemperature()})</li>
+     *   <li>模型所需温度 ({@link ModelConfig#getRequiredTemperature()})</li>
+     *   <li>{@link OpenAiCompatibleCapabilities#requiresTemperatureOne(ModelConfig)} 推断为 true 时返回 1.0</li>
+     *   <li>以上都不命中：返回 {@code null}（不发送字段）</li>
+     * </ol>
+     */
+    private static Double resolveTemperature(ModelConfig config) {
+        if (config == null) {
+            return null;
+        }
+        if (config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
             return config.getTemperature();
+        }
+        if (config.getRequiredTemperature() != ModelConfig.REQUIRED_TEMPERATURE_UNSET) {
+            return config.getRequiredTemperature();
         }
         if (OpenAiCompatibleCapabilities.requiresTemperatureOne(config)) {
             return 1.0;
         }
-        return 0.2;
+        return null;
     }
 
     private void applyReasoningRequest(ModelConfig config, JSONObject body, ModelRequestOptions options) throws Exception {
@@ -283,6 +318,16 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
     JSONObject reasoningRequestBodyForTest(ModelConfig config, ModelRequestOptions options) throws Exception {
         JSONObject body = new JSONObject();
         applyReasoningRequest(config, body, options == null ? ModelRequestOptions.defaults() : options);
+        return body;
+    }
+
+    /**
+     * 测试专用：返回经过 {@link #applyTemperature(JSONObject, ModelConfig)} 处理后的请求体，
+     * 用于验证 temperature 字段的优先级与是否被写入。
+     */
+    JSONObject temperatureBodyForTest(ModelConfig config) throws Exception {
+        JSONObject body = new JSONObject();
+        applyTemperature(body, config);
         return body;
     }
 
