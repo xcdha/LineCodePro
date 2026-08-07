@@ -70,6 +70,28 @@ public final class OpenAiCompatibleCapabilitiesTest {
                 "gpt-5").build();
         assertTrue(OpenAiCompatibleCapabilities.requiresTemperatureOne(gpt5));
 
+        // opencode.ai 是 Console Go 网关的新域名
+        ModelConfig consoleGoOpencode = ModelConfig.builder(
+                "opencode",
+                "Console Go",
+                ModelProtocolType.OPENAI_COMPATIBLE,
+                "Console Go",
+                "https://opencode.ai/zen/go/v1",
+                "sk-test",
+                "gpt-5").build();
+        assertTrue(OpenAiCompatibleCapabilities.requiresTemperatureOne(consoleGoOpencode));
+
+        // Kimi-K3 要求 temperature=1
+        ModelConfig kimiK3 = ModelConfig.builder(
+                "kimi-k3",
+                "Kimi K3",
+                ModelProtocolType.OPENAI_COMPATIBLE,
+                "Kimi",
+                "https://opencode.ai/zen/go/v1",
+                "sk-test",
+                "kimi-k3").build();
+        assertTrue(OpenAiCompatibleCapabilities.requiresTemperatureOne(kimiK3));
+
         ModelConfig regular = ModelConfig.builder(
                 "qwen",
                 "Qwen",
