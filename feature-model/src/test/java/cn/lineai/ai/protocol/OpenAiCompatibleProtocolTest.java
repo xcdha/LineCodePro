@@ -177,7 +177,8 @@ public final class OpenAiCompatibleProtocolTest {
     }
 
     @org.junit.Test
-    public void applyTemperatureUsesUserValueWhenSet() throws Exception {
+    public void applyTemperaturePrefersRequiredTemperatureWhenBothSet() throws Exception {
+        // 用户同时设置了采样温度与模型所需温度时，以模型所需温度为准
         ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
                         "https://api.x.com/v1", "k", "kimi-k3")
                 .temperature(0.7)
@@ -186,11 +187,25 @@ public final class OpenAiCompatibleProtocolTest {
 
         JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
 
+        org.junit.Assert.assertEquals(1.0, body.optDouble("temperature", Double.NaN), 0.0);
+    }
+
+    @org.junit.Test
+    public void applyTemperatureFallsBackToUserValueWhenRequiredUnset() throws Exception {
+        // 未设置模型所需温度时，使用用户自定义的采样温度
+        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                        "https://api.x.com/v1", "k", "qwen3-coder")
+                .temperature(0.7)
+                .build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
         org.junit.Assert.assertEquals(0.7, body.optDouble("temperature", Double.NaN), 0.0);
     }
 
     @org.junit.Test
-    public void applyTemperatureFallsBackToRequiredTemperature() throws Exception {
+    public void applyTemperatureFallsBackToRequiredTemperatureWhenUserUnset() throws Exception {
+        // 未设置采样温度时，使用模型所需温度（如 kimi-k3 必须为 1）
         ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
                         "https://opencode.ai/zen/go/v1", "k", "kimi-k3")
                 .requiredTemperature(1.0)

@@ -369,21 +369,21 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
      * 返回应当发送的 temperature 值；返回 {@code null} 表示不发送该字段，让上游使用模型默认值。
      * <p>优先级：
      * <ol>
+     *   <li>模型所需温度 ({@link ModelConfig#getRequiredTemperature()})，如 kimi-k3 必须为 1.0</li>
      *   <li>用户自定义温度 ({@link ModelConfig#getTemperature()})</li>
-     *   <li>模型所需温度 ({@link ModelConfig#getRequiredTemperature()})</li>
      *   <li>{@link OpenAiCompatibleCapabilities#requiresTemperatureOne(ModelConfig)} 推断为 true 时返回 1.0</li>
-     *   <li>以上都不命中：返回 {@code null}（不发送字段）</li>
+     *   <li>以上都不命中：返回 {@code null}（不发送字段，使用上游模型默认值）</li>
      * </ol>
      */
     private static Double resolveTemperature(ModelConfig config) {
         if (config == null) {
             return null;
         }
-        if (config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
-            return config.getTemperature();
-        }
         if (config.getRequiredTemperature() != ModelConfig.REQUIRED_TEMPERATURE_UNSET) {
             return config.getRequiredTemperature();
+        }
+        if (config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
+            return config.getTemperature();
         }
         if (OpenAiCompatibleCapabilities.requiresTemperatureOne(config)) {
             return 1.0;

@@ -18,12 +18,6 @@ final class ModelInteractionController {
 
         void showTestResult(String message);
 
-        /**
-         * 探测到模型硬性温度后回调，供表单自动回填。
-         */
-        default void onRequiredTemperatureDetected(double temperature) {
-        }
-
         void render();
     }
 
@@ -58,22 +52,6 @@ final class ModelInteractionController {
         host.render();
     }
 
-    private void probeRequiredTemperature(ModelConfig model) {
-        if (model == null || model.getRequiredTemperature() != ModelConfig.REQUIRED_TEMPERATURE_UNSET) {
-            return;
-        }
-        backgroundTasks.execute("linecode-model-probe-temperature", () -> {
-            try {
-                Double detected = modelClient.probeRequiredTemperature(model);
-                if (detected != null) {
-                    mainThread.post(() -> host.onRequiredTemperatureDetected(detected));
-                }
-            } catch (Exception ignored) {
-                // 探测失败不打扰用户，协议层已有错误驱动重试兜底
-            }
-        });
-    }
-
     void testModel(ModelConfig model) {
         backgroundTasks.execute("linecode-model-test", () -> {
             long startTime = System.currentTimeMillis();
@@ -92,7 +70,6 @@ final class ModelInteractionController {
                         host.showTestResult(message);
                     }
                 });
-                probeRequiredTemperature(model);
             } catch (Exception e) {
                 long duration = System.currentTimeMillis() - startTime;
                 String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
