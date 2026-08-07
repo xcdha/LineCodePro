@@ -131,8 +131,7 @@ class ArchiveSecretRedactor {
                 model.isCompressionModelAuto(),
                 model.getCompressionModelId(),
                 model.getContextSize(),
-                model.getTemperature(),
-                model.getRequiredTemperature()
+                model.getTemperature()
         );
     }
 

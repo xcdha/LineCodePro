@@ -291,26 +291,6 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         }
     }
 
-    @Override
-    public Double probeRequiredTemperature(ModelConfig config) throws ModelCompletionException {
-        if (config == null) {
-            return null;
-        }
-        // 静态推断优先：无需网络请求即可判断
-        if (OpenAiCompatibleCapabilities.requiresTemperatureOne(config)) {
-            return 1.0;
-        }
-        // 兜底：发送最小请求，若上游返回温度限制错误则解析出硬性温度
-        try {
-            completeOnce(config, java.util.Collections.singletonList(
-                    new cn.lineai.ai.message.UserModelMessage("Reply with OK.")), null);
-            return null;
-        } catch (ModelCompletionException e) {
-            Double hard = parseHardTemperature(e.getMessage());
-            return hard == null ? null : hard;
-        }
-    }
-
     /**
      * 按 "用户自定义温度 > 模型所需温度 > 推断兜底 > 不传" 的优先级决定是否向请求体写入 temperature 字段。
      * <p>设计目标：让每个模型能声明自身对 temperature 的硬性要求（如 kimi-k3 必须 1.0），
@@ -367,26 +347,14 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
     /**
      * 返回应当发送的 temperature 值；返回 {@code null} 表示不发送该字段，让上游使用模型默认值。
-     * <p>优先级：
-     * <ol>
-     *   <li>模型所需温度 ({@link ModelConfig#getRequiredTemperature()})，如 kimi-k3 必须为 1.0</li>
-     *   <li>用户自定义温度 ({@link ModelConfig#getTemperature()})</li>
-     *   <li>{@link OpenAiCompatibleCapabilities#requiresTemperatureOne(ModelConfig)} 推断为 true 时返回 1.0</li>
-     *   <li>以上都不命中：返回 {@code null}（不发送字段，使用上游模型默认值）</li>
-     * </ol>
+     * <p>用户在该模型的配置中设置了温度就用它；未设置则不发送，交由上游使用模型默认值。</p>
      */
     private static Double resolveTemperature(ModelConfig config) {
         if (config == null) {
             return null;
         }
-        if (config.getRequiredTemperature() != ModelConfig.REQUIRED_TEMPERATURE_UNSET) {
-            return config.getRequiredTemperature();
-        }
         if (config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
             return config.getTemperature();
-        }
-        if (OpenAiCompatibleCapabilities.requiresTemperatureOne(config)) {
-            return 1.0;
         }
         return null;
     }

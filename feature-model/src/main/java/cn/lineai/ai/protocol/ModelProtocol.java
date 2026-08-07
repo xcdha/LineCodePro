@@ -35,12 +35,4 @@ public interface ModelProtocol {
     default boolean supportsImageUnderstanding() {
         return true;
     }
-
-    /**
-     * 探测模型对 temperature 的硬性要求；返回 {@code null} 表示无硬性限制（或不支持探测）。
-     * 实现应当优先使用静态推断，避免发起无谓请求。
-     */
-    default Double probeRequiredTemperature(ModelConfig config) throws ModelCompletionException {
-        return null;
-    }
 }

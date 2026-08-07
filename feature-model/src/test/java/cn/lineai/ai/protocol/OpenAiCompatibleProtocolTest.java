@@ -177,12 +177,11 @@ public final class OpenAiCompatibleProtocolTest {
     }
 
     @org.junit.Test
-    public void applyTemperaturePrefersRequiredTemperatureWhenBothSet() throws Exception {
-        // 用户同时设置了采样温度与模型所需温度时，以模型所需温度为准
+    public void applyTemperatureUsesConfiguredValue() throws Exception {
+        // 用户在该模型的配置中设置了采样温度（如 kimi-k3 填 1），请求就使用该值
         ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
                         "https://api.x.com/v1", "k", "kimi-k3")
-                .temperature(0.7)
-                .requiredTemperature(1.0)
+                .temperature(1.0)
                 .build();
 
         JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
@@ -191,8 +190,8 @@ public final class OpenAiCompatibleProtocolTest {
     }
 
     @org.junit.Test
-    public void applyTemperatureFallsBackToUserValueWhenRequiredUnset() throws Exception {
-        // 未设置模型所需温度时，使用用户自定义的采样温度
+    public void applyTemperatureUsesConfiguredArbitraryValue() throws Exception {
+        // 采样温度支持 0–2 的任意合法值
         ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
                         "https://api.x.com/v1", "k", "qwen3-coder")
                 .temperature(0.7)
@@ -204,20 +203,8 @@ public final class OpenAiCompatibleProtocolTest {
     }
 
     @org.junit.Test
-    public void applyTemperatureFallsBackToRequiredTemperatureWhenUserUnset() throws Exception {
-        // 未设置采样温度时，使用模型所需温度（如 kimi-k3 必须为 1）
-        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
-                        "https://opencode.ai/zen/go/v1", "k", "kimi-k3")
-                .requiredTemperature(1.0)
-                .build();
-
-        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
-
-        org.junit.Assert.assertEquals(1.0, body.optDouble("temperature", Double.NaN), 0.0);
-    }
-
-    @org.junit.Test
-    public void applyTemperatureOmitsFieldForPlainModelWithoutRequirements() throws Exception {
+    public void applyTemperatureOmitsFieldWhenUnset() throws Exception {
+        // 未设置采样温度时不发送字段，让上游使用模型默认值
         ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
                         "https://api.x.com/v1", "k", "gpt-4o")
                 .build();
@@ -225,17 +212,6 @@ public final class OpenAiCompatibleProtocolTest {
         JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
 
         org.junit.Assert.assertFalse(body.has("temperature"));
-    }
-
-    @org.junit.Test
-    public void applyTemperatureFallsBackToReasoningInference() throws Exception {
-        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
-                        "https://api.openai.com/v1", "k", "o3-mini")
-                .build();
-
-        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
-
-        org.junit.Assert.assertEquals(1.0, body.optDouble("temperature", Double.NaN), 0.0);
     }
 
     private static final class LocalSseServer implements AutoCloseable {

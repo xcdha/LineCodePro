@@ -70,39 +70,25 @@ public final class ModelConfigTest {
     }
 
     @Test
-    public void requiredTemperatureRoundTripsJson() throws Exception {
-        ModelConfig model = new ModelConfig(
-                "k3",
-                "Kimi K3",
-                ModelProtocolType.OPENAI_COMPATIBLE,
-                "OpenCode Go",
-                "https://opencode.ai/zen/go/v1",
-                "sk-test",
-                "kimi-k3",
-                ModelConfig.DEFAULT_TOOL_CALL_LIMIT,
-                false,
-                ModelConfig.DEFAULT_COMPRESSION_MODEL_AUTO,
-                "",
-                ModelConfig.CONTEXT_SIZE_UNSET,
-                ModelConfig.TEMPERATURE_UNSET,
-                1.0
-        );
+    public void temperatureRoundTripsJson() throws Exception {
+        ModelConfig model = ModelConfig.builder("k3", "Kimi K3", ModelProtocolType.OPENAI_COMPATIBLE, "OpenCode Go",
+                        "https://opencode.ai/zen/go/v1", "sk-test", "kimi-k3")
+                .temperature(1.0)
+                .build();
 
         ModelConfig parsed = ModelConfig.fromJson(model.toJson());
 
-        assertEquals(ModelConfig.TEMPERATURE_UNSET, parsed.getTemperature(), 0.0);
-        assertEquals(1.0, parsed.getRequiredTemperature(), 0.0);
-        assertTrue(model.toJson().has("requiredTemperature"));
-        assertFalse(model.toJson().has("temperature"));
+        assertEquals(1.0, parsed.getTemperature(), 0.0);
+        assertTrue(model.toJson().has("temperature"));
     }
 
     @Test
-    public void unsetRequiredTemperatureOmitsField() throws Exception {
+    public void unsetTemperatureOmitsField() throws Exception {
         ModelConfig model = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
                         "https://x", "k", "mdl")
                 .build();
 
-        assertFalse(model.toJson().has("requiredTemperature"));
-        assertEquals(ModelConfig.REQUIRED_TEMPERATURE_UNSET, model.getRequiredTemperature(), 0.0);
+        assertFalse(model.toJson().has("temperature"));
+        assertEquals(ModelConfig.TEMPERATURE_UNSET, model.getTemperature(), 0.0);
     }
 }
