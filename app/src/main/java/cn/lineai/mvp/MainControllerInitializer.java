@@ -306,6 +306,11 @@ final class MainControllerInitializer {
                     }
 
                     @Override
+                    public void onRequiredTemperatureDetected(double temperature) {
+                        coordinator.applyModelRequiredTemperature(temperature);
+                    }
+
+                    @Override
                     public void render() {
                         coordinator.render();
                     }

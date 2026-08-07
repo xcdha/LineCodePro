@@ -514,6 +514,23 @@ public final class MainCoordinator implements MainUiController {
         modelInteractionController.testModel(model);
     }
 
+    /**
+     * 测试成功后将探测到的硬性温度回填到当前模型表单（若用户未手动填写）。
+     */
+    void applyModelRequiredTemperature(double temperature) {
+        if (temperature <= 0) {
+            return;
+        }
+        if (!viewProxy.isAttached() || !(viewProxy.raw() instanceof cn.lineai.ui.MainChatView)) {
+            return;
+        }
+        cn.lineai.ui.MainChatView chatView = (cn.lineai.ui.MainChatView) viewProxy.raw();
+        cn.lineai.ui.component.ModelAddScreenView screen = chatView.findModelAddScreenView();
+        if (screen != null) {
+            screen.applyDetectedRequiredTemperature(temperature);
+        }
+    }
+
     @Override
     public void onExternalProjectTreePicked(String treeUri) {
         projectWorkspaceController.onExternalProjectTreePicked(treeUri);

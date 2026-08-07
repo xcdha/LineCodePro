@@ -33,4 +33,14 @@ public final class ModelClient {
         ModelProtocol protocol = protocolFactory.create(config.getProtocolType());
         return protocol.stream(config, messages, callback, cancellationToken, options == null ? ModelRequestOptions.defaults() : options);
     }
+
+    /**
+     * 探测模型对 temperature 的硬性要求；返回 {@code null} 表示无硬性限制。
+     */
+    public Double probeRequiredTemperature(ModelConfig config) throws ModelCompletionException {
+        if (config == null) {
+            return null;
+        }
+        return protocolFactory.create(config.getProtocolType()).probeRequiredTemperature(config);
+    }
 }

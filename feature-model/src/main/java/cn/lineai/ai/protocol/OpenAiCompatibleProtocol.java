@@ -22,7 +22,10 @@ import cn.lineai.util.StringUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -59,12 +62,28 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
     @Override
     public ModelCompletionResponse complete(ModelConfig config, List<ModelMessage> messages) throws ModelCompletionException {
+        try {
+            return completeOnce(config, messages, null);
+        } catch (ModelCompletionException first) {
+            Double hard = parseHardTemperature(first.getMessage());
+            if (hard != null && config != null && config.getTemperature() != hard) {
+                return completeOnce(config, messages, hard);
+            }
+            throw first;
+        }
+    }
+
+    private ModelCompletionResponse completeOnce(
+            ModelConfig config,
+            List<ModelMessage> messages,
+            Double forcedTemperature
+    ) throws ModelCompletionException {
         String raw = "";
         try {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages));
-            applyTemperature(body, config);
+            applyTemperature(body, config, forcedTemperature);
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
@@ -96,11 +115,30 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             ModelRequestOptions options
     ) throws ModelCompletionException {
         try {
+            return streamOnce(config, messages, callback, cancellationToken, options, null);
+        } catch (ModelCompletionException first) {
+            Double hard = parseHardTemperature(first.getMessage());
+            if (hard != null && config != null && config.getTemperature() != hard) {
+                return streamOnce(config, messages, callback, cancellationToken, options, hard);
+            }
+            throw first;
+        }
+    }
+
+    private ModelCompletionResponse streamOnce(
+            ModelConfig config,
+            List<ModelMessage> messages,
+            ModelStreamCallback callback,
+            ModelCancellationToken cancellationToken,
+            ModelRequestOptions options,
+            Double forcedTemperature
+    ) throws ModelCompletionException {
+        try {
             ModelRequestOptions requestOptions = options == null ? ModelRequestOptions.defaults() : options;
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages, requestOptions.isPreserveReasoning()));
-            applyTemperature(body, config);
+            applyTemperature(body, config, forcedTemperature);
             body.put("stream", true);
             if (!requestOptions.getTools().isEmpty()) {
                 body.put("tools", ToolInfo.toJsonArray(requestOptions.getTools()));
@@ -253,6 +291,26 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         }
     }
 
+    @Override
+    public Double probeRequiredTemperature(ModelConfig config) throws ModelCompletionException {
+        if (config == null) {
+            return null;
+        }
+        // 静态推断优先：无需网络请求即可判断
+        if (OpenAiCompatibleCapabilities.requiresTemperatureOne(config)) {
+            return 1.0;
+        }
+        // 兜底：发送最小请求，若上游返回温度限制错误则解析出硬性温度
+        try {
+            completeOnce(config, java.util.Collections.singletonList(
+                    new cn.lineai.ai.message.UserModelMessage("Reply with OK.")), null);
+            return null;
+        } catch (ModelCompletionException e) {
+            Double hard = parseHardTemperature(e.getMessage());
+            return hard == null ? null : hard;
+        }
+    }
+
     /**
      * 按 "用户自定义温度 > 模型所需温度 > 推断兜底 > 不传" 的优先级决定是否向请求体写入 temperature 字段。
      * <p>设计目标：让每个模型能声明自身对 temperature 的硬性要求（如 kimi-k3 必须 1.0），
@@ -263,7 +321,15 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
      * @param config 模型配置
      */
     private static void applyTemperature(JSONObject body, ModelConfig config) {
-        Double resolved = resolveTemperature(config);
+        applyTemperature(body, config, null);
+    }
+
+    /**
+     * 写入 temperature 字段。{@code forcedTemperature} 非 null 时优先使用（错误驱动的硬性温度重试），
+     * 否则走 {@link #resolveTemperature(ModelConfig)} 的优先级决策。
+     */
+    private static void applyTemperature(JSONObject body, ModelConfig config, Double forcedTemperature) {
+        Double resolved = forcedTemperature != null ? forcedTemperature : resolveTemperature(config);
         if (resolved != null) {
             try {
                 body.put("temperature", resolved);
@@ -271,6 +337,33 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             }
         }
     }
+
+    /**
+     * 从上游错误消息中解析硬性温度要求，例如：
+     * {@code invalid temperature: only 1 is allowed for this model} → 1.0。
+     * 解析失败返回 {@code null}。
+     */
+    static Double parseHardTemperature(String message) {
+        if (message == null) {
+            return null;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        if (!lower.contains("temperature") || !lower.contains("is allowed")) {
+            return null;
+        }
+        Matcher matcher = HARD_TEMPERATURE_PATTERN.matcher(lower);
+        if (matcher.find()) {
+            try {
+                double value = Double.parseDouble(matcher.group(1));
+                return ModelConfig.normalizeTemperature(value);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static final Pattern HARD_TEMPERATURE_PATTERN =
+            Pattern.compile("only\\s+([0-9]+(?:\\.[0-9]+)?)\\s+is\\s+allowed");
 
     /**
      * 返回应当发送的 temperature 值；返回 {@code null} 表示不发送该字段，让上游使用模型默认值。

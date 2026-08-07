@@ -27,6 +27,7 @@ import cn.lineai.model.ModelContextInfo;
 import cn.lineai.model.ModelContextParser;
 import cn.lineai.model.ModelProtocolType;
 import cn.lineai.model.ModelProviderPreset;
+import cn.lineai.ai.protocol.OpenAiCompatibleCapabilities;
 import cn.lineai.ui.util.KeyboardController;
 import cn.lineai.ui.util.ModelProviderPresetStrings;
 import java.util.ArrayList;
@@ -334,12 +335,14 @@ public final class ModelAddScreenView extends LinearLayout {
             if (!saveEnabled) {
                 return;
             }
+            applyDetectedRequiredTemperature();
             ModelConfig model = buildModelConfig(context);
             if (model != null) {
                 listener.onSave(model);
             }
         });
         testAction.setOnClickListener(v -> {
+            applyDetectedRequiredTemperature();
             ModelConfig model = buildTestModelConfig();
             if (model != null) {
                 listener.onTest(model);
@@ -644,6 +647,56 @@ public final class ModelAddScreenView extends LinearLayout {
         } catch (NumberFormatException e) {
             return ModelConfig.REQUIRED_TEMPERATURE_UNSET;
         }
+    }
+
+    /**
+     * 自动探测硬性温度：当 required temperature 未填写时，若当前模型属于只接受
+     * {@code temperature: 1} 的类型（推理模型或 Console Go 网关），自动填入 1，免去手动输入。
+     * 用户仍可自由编辑该值。
+     */
+    /**
+     * 测试成功后由控制器回填探测到的硬性温度；仅当用户尚未手动填写时生效。
+     */
+    public void applyDetectedRequiredTemperature(double temperature) {
+        if (local || requiredTemperatureInput == null || temperature <= 0) {
+            return;
+        }
+        if (ModelFormHelper.value(requiredTemperatureInput).trim().length() > 0) {
+            return;
+        }
+        requiredTemperatureInput.setText(String.valueOf(temperature));
+        updateSaveState();
+    }
+
+    private void applyDetectedRequiredTemperature() {
+        if (local || requiredTemperatureInput == null) {
+            return;
+        }
+        if (ModelFormHelper.value(requiredTemperatureInput).trim().length() > 0) {
+            return;
+        }
+        ModelConfig probe = buildProbeModelConfig();
+        if (probe == null) {
+            return;
+        }
+        if (OpenAiCompatibleCapabilities.requiresTemperatureOne(probe)) {
+            requiredTemperatureInput.setText("1");
+        }
+    }
+
+    private ModelConfig buildProbeModelConfig() {
+        String baseUrl = effectiveBaseUrl();
+        String modelId = customIdSwitch.isChecked() ? ModelFormHelper.value(modelIdInput) : selectedModelId[0];
+        if (baseUrl.length() == 0 || modelId.length() == 0) {
+            return null;
+        }
+        String label = providerLabel != null ? providerLabel : protocolType[0].getLabel();
+        return new ModelConfig(
+                editingModel == null ? "" : editingModel.getId(),
+                "", protocolType[0], label, baseUrl, "", modelId,
+                ModelConfig.DEFAULT_TOOL_CALL_LIMIT,
+                false, true, "", ModelConfig.CONTEXT_SIZE_UNSET
+        );
     }
 
     private void updateProviderToggles(LinearLayout providerRow) {

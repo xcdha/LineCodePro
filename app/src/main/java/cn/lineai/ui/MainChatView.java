@@ -1117,6 +1117,20 @@ public final class MainChatView extends FrameLayout implements MainContract.View
         return currentScreenId;
     }
 
+    /**
+     * 返回当前可见屏幕上的 {@link cn.lineai.ui.component.ModelAddScreenView}，若当前屏幕不是模型表单则返回 {@code null}。
+     */
+    public cn.lineai.ui.component.ModelAddScreenView findModelAddScreenView() {
+        View visible = currentScreenId.length() > 0 ? screenCache.get(currentScreenId) : null;
+        if (visible == null && screenHost.getChildCount() > 0) {
+            visible = screenHost.getChildAt(screenHost.getChildCount() - 1);
+        }
+        if (visible instanceof cn.lineai.ui.component.ModelAddScreenView) {
+            return (cn.lineai.ui.component.ModelAddScreenView) visible;
+        }
+        return null;
+    }
+
     public String getShellCommandText() {
         return shellCommandText;
     }
