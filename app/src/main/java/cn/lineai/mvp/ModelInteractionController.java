@@ -55,6 +55,7 @@ final class ModelInteractionController {
     void testModel(ModelConfig model) {
         backgroundTasks.execute("linecode-model-test", () -> {
             long startTime = System.currentTimeMillis();
+            String requestHeader = buildRequestHeader(model);
             try {
                 ModelCompletionResponse response = modelClient.complete(model,
                         Collections.singletonList(new UserModelMessage("Calculate 1+1 and reply with any result.")));
@@ -64,7 +65,8 @@ final class ModelInteractionController {
                 String summary = context.getString(hasData
                         ? R.string.screen_model_add_test_success
                         : R.string.screen_model_add_test_success_no_data, duration);
-                String message = summary + "\n\n" + context.getString(R.string.screen_model_add_test_raw_response) + "\n" + rawText;
+                String message = requestHeader + "\n\n" + summary + "\n\n"
+                        + context.getString(R.string.screen_model_add_test_raw_response) + "\n" + rawText;
                 mainThread.post(() -> {
                     if (host.isViewAttached()) {
                         host.showTestResult(message);
@@ -74,9 +76,27 @@ final class ModelInteractionController {
                 long duration = System.currentTimeMillis() - startTime;
                 String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 mainThread.post(() -> Toast.makeText(context,
-                        context.getString(R.string.screen_model_add_test_error, message) + " (" + duration + "ms)",
+                        requestHeader + "\n" + context.getString(R.string.screen_model_add_test_error, message) + " (" + duration + "ms)",
                         Toast.LENGTH_LONG).show());
             }
         });
+    }
+
+    /**
+     * 组装请求标识（模型 ID 与端点），便于确认实际请求的是选中的模型。
+     */
+    private String buildRequestHeader(ModelConfig model) {
+        String modelId = model == null ? "" : model.getModelId();
+        String baseUrl = model == null ? "" : model.getBaseUrl();
+        if (modelId.length() > 0 && baseUrl.length() > 0) {
+            return context.getString(R.string.screen_model_add_test_model_endpoint, modelId, baseUrl);
+        }
+        if (modelId.length() > 0) {
+            return context.getString(R.string.screen_model_add_test_model, modelId);
+        }
+        if (baseUrl.length() > 0) {
+            return context.getString(R.string.screen_model_add_test_endpoint, baseUrl);
+        }
+        return context.getString(R.string.screen_model_add_test_model_unknown);
     }
 }

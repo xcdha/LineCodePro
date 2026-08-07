@@ -274,6 +274,10 @@
     <string name="screen_model_add_test_raw_response">Raw response:</string>
     <string name="screen_model_add_test_error">Test failed: %1$s</string>
     <string name="screen_model_add_test_missing">Please fill in Base URL, API Key and Model ID before testing</string>
+    <string name="screen_model_add_test_model_endpoint">Model: %1$s\nEndpoint: %2$s</string>
+    <string name="screen_model_add_test_model">Model: %1$s</string>
+    <string name="screen_model_add_test_endpoint">Endpoint: %1$s</string>
+    <string name="screen_model_add_test_model_unknown">Model: unknown</string>
 
     <string name="screen_data_title">Data management</string>
     <string name="screen_data_section_all">All data</string>

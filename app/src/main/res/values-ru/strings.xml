@@ -274,6 +274,10 @@
     <string name="screen_model_add_test_raw_response">Необработанный ответ:</string>
     <string name="screen_model_add_test_error">Тест не удался: %1$s</string>
     <string name="screen_model_add_test_missing">Заполните Base URL, API Key и Model ID перед тестированием</string>
+    <string name="screen_model_add_test_model_endpoint">Модель: %1$s\nКонечная точка: %2$s</string>
+    <string name="screen_model_add_test_model">Модель: %1$s</string>
+    <string name="screen_model_add_test_endpoint">Конечная точка: %1$s</string>
+    <string name="screen_model_add_test_model_unknown">Модель: неизвестна</string>
 
     <string name="screen_data_title">Управление данными</string>
     <string name="screen_data_section_all">Все данные</string>
