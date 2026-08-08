@@ -123,10 +123,61 @@ public final class SystemPromptProvider {
         }
         HashMap<String, String> values = new HashMap<>();
         values.put("MODEL_ID", modelId);
+        // 品牌从 modelId 推断,作为权威身份来源;用户填的 name/providerLabel 仅为元数据。
+        // providerLabel 实际存的是接口协议标签(OpenAI/Codex/Anthropic),不是真实提供商,
+        // 第三方网关接入时极易误导模型自称"由 OpenAI 提供",故身份以推断品牌为准。
+        values.put("MODEL_BRAND", resolveBrand(modelId));
         values.put("MODEL_NAME", safe(model.getName()));
         values.put("MODEL_PROVIDER", safe(model.getProviderLabel()));
         values.put("MODEL_PROTOCOL", protocolLabel(model.getProtocolType()));
         return new StringTemplate(promptTemplateRepository.getTemplateText(PromptTemplateRepository.ID_MODEL_IDENTITY)).render(values);
+    }
+
+    /**
+     * 从 modelId 推断模型真实品牌(提供商)。modelId 是请求时发送给上游的权威标识,
+     * 不受用户填写或第三方网关改名影响,因此推断结果比用户配置的 name/provider 更可靠。
+     * 使用品牌词锚点(contains)匹配,容忍第三方网关在品牌词前后插入任意字符(如 xkimi-k3)。
+     * 推断失败返回空串,模板会回退到 MODEL_ID 本身作为身份。
+     */
+    private static String resolveBrand(String modelId) {
+        if (modelId == null || modelId.length() == 0) {
+            return "";
+        }
+        String lower = modelId.toLowerCase();
+        if (lower.contains("kimi")) {
+            return "Kimi (Moonshot AI)";
+        }
+        if (lower.contains("deepseek")) {
+            return "DeepSeek";
+        }
+        if (lower.contains("claude")) {
+            return "Claude (Anthropic)";
+        }
+        if (lower.contains("glm") || lower.contains("chatglm")) {
+            return "GLM (Zhipu AI)";
+        }
+        if (lower.contains("qwen") || lower.contains("qwq")) {
+            return "Qwen (Alibaba)";
+        }
+        if (lower.contains("gpt") || lower.contains("o1") || lower.contains("o3") || lower.contains("o4")) {
+            return "OpenAI GPT";
+        }
+        if (lower.contains("gemini")) {
+            return "Gemini (Google)";
+        }
+        if (lower.contains("doubao")) {
+            return "Doubao (ByteDance)";
+        }
+        if (lower.contains("ernie") || lower.contains("wenxin")) {
+            return "ERNIE (Baidu)";
+        }
+        if (lower.contains("spark")) {
+            return "Spark (iFlytek)";
+        }
+        if (lower.contains("hunyuan")) {
+            return "Hunyuan (Tencent)";
+        }
+        return "";
     }
 
     private static String safe(String value) {
