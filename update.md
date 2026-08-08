@@ -102,6 +102,12 @@
 - **修复 2a** - `DeepseekReasoningStrategy` 和 `MoonshotReasoningStrategy` 新增 `isFlashModel`/`isFlashVariant` 检查，flash/lite/fast 变体跳过所有思考参数（thinking + reasoning_effort）
 - **修复 2b** - `isReasoningEffortError` 拓宽匹配：thinking 字段相关 HTTP 错误增加 "not allowed"/"invalid"/"bad request"/"not a valid" 匹配词；reasoning_effort 增加 "not allowed"/"bad request"，确保更多参数错误能触发自动降级而非冒泡到应用级重试
 
+### 通用"裸请求"降级（所有模型 HTTP 参数错误兜底）
+
+- **问题** - 不只是 DeepSeek flash，其他模型也会出现"正在第 3/3 次重试，错误：HTTP"。根因：很多模型不支持 thinking/reasoning_effort/tools 等可选参数，上游返回 HTTP 400/422；错误信息不匹配 `isReasoningEffortError` 和 `parseHardTemperature` 时直接 break，冒泡到应用级 3 次无脑重试（不修改任何参数，必然失败 3 次）
+- **修复** - `OpenAiCompatibleProtocol` 新增 `isClientParamError` 判断 HTTP 400/422 及通用参数错误关键词，stream 路径增加"裸请求"降级：当遇到参数错误且不匹配温度/effort 模式时，移除所有可选参数（thinking/reasoning_effort/tools）重试一次；complete 路径增加移除温度字段降级
+- **效果** - 无论什么模型、什么参数不兼容，协议层都能自动降级到最裸请求（只有 model + messages + stream），避免冒泡到应用级无脑重试
+
 ### 版本
 
 - 版本号升级到 `1.2.6`，versionCode 29

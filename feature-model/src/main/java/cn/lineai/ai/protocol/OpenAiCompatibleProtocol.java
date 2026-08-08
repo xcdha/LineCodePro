@@ -70,10 +70,11 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         boolean reasoningEnabled = OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted(modelId);
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
-        // 最多 2 次尝试:原始 → 温度修复(complete 路径不发 reasoning_effort,无 effort 降级)
-        for (int attempt = 0; attempt < 2; attempt++) {
+        // 最多 3 次尝试:原始 → 温度修复 → 裸请求(移除温度字段)
+        boolean stripTemperature = false;
+        for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                return completeOnce(config, messages, forcedTemperature, reasoningEnabled);
+                return completeOnce(config, messages, forcedTemperature, reasoningEnabled, stripTemperature);
             } catch (ModelCompletionException e) {
                 lastError = e;
                 String msg = e.getMessage();
@@ -82,6 +83,11 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 if (hard != null && config != null && config.getTemperature() != hard) {
                     HardTemperatureCache.put(modelId, reasoningEnabled, hard);
                     forcedTemperature = hard;
+                    continue;
+                }
+                // 裸请求降级:HTTP 参数错误且尚未 strip 时,移除温度字段重试
+                if (!stripTemperature && isClientParamError(msg)) {
+                    stripTemperature = true;
                     continue;
                 }
                 break;
@@ -94,14 +100,17 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             ModelConfig config,
             List<ModelMessage> messages,
             Double forcedTemperature,
-            boolean reasoningEnabled
+            boolean reasoningEnabled,
+            boolean stripTemperature
     ) throws ModelCompletionException {
         String raw = "";
         try {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages));
-            applyTemperature(body, config, forcedTemperature, reasoningEnabled);
+            if (!stripTemperature) {
+                applyTemperature(body, config, forcedTemperature, reasoningEnabled);
+            }
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
@@ -138,11 +147,14 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
         String modelId = ModelContextParser.apiModelId(config);
-        // 最多 6 次尝试:温度修复(1) + effort 全档降级(max/high/medium/low 共 4) + 禁用后重试(1)。
+        // 最多 8 次尝试:温度修复(1) + effort 全档降级(max/high/medium/low 共 4) + 禁用后重试(1) + 裸请求降级(1)。
         // effort 降级只影响 reasoning_effort 参数,不影响 thinking 字段:kimi-k2.5/k2.6 通过
         // thinking.type=enabled/disabled 控制思考开关,与 reasoning_effort 独立。故 effort 全部
         // 被拒不发 reasoning_effort 时,模型仍发 thinking.type=enabled(思考模式),温度必须按思考模式取。
-        for (int attempt = 0; attempt < 6; attempt++) {
+        // 裸请求降级:当遇到 HTTP 400/422 参数错误且不匹配温度/effort 模式时,移除所有可选参数
+        // (thinking/reasoning_effort/tools)重试,兼容不支持这些参数的模型(如各种 flash/lite 变体)。
+        boolean stripOptionalParams = false;
+        for (int attempt = 0; attempt < 8; attempt++) {
             // 每次尝试前算出本次实际发送的 effort(resolveEffort 会沿降级链降级)。
             // 温度的思考模式跟随用户设置(userReasoningEnabled),不跟随 effort 降级:
             // effort 降级到 null 仅表示不发 reasoning_effort,但 thinking 字段仍由用户设置决定,
@@ -152,7 +164,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     : null;
             boolean effectiveReasoningEnabled = userReasoningEnabled;
             try {
-                return streamOnce(config, messages, callback, cancellationToken, options, forcedTemperature, effectiveReasoningEnabled);
+                return streamOnce(config, messages, callback, cancellationToken, options, forcedTemperature, effectiveReasoningEnabled, stripOptionalParams);
             } catch (ModelCompletionException e) {
                 lastError = e;
                 String msg = e.getMessage();
@@ -168,6 +180,11 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     ReasoningEffortCache.markRejected(modelId, currentEffort);
                     continue;
                 }
+                // 裸请求降级:HTTP 400/422 参数错误且尚未 strip 时,移除可选参数重试
+                if (!stripOptionalParams && isClientParamError(msg)) {
+                    stripOptionalParams = true;
+                    continue;
+                }
                 break;
             }
         }
@@ -181,7 +198,8 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             ModelCancellationToken cancellationToken,
             ModelRequestOptions options,
             Double forcedTemperature,
-            boolean reasoningEnabled
+            boolean reasoningEnabled,
+            boolean stripOptionalParams
     ) throws ModelCompletionException {
         try {
             ModelRequestOptions requestOptions = options == null ? ModelRequestOptions.defaults() : options;
@@ -190,11 +208,14 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             body.put("messages", messageSerializer.messagesJson(messages, requestOptions.isPreserveReasoning()));
             applyTemperature(body, config, forcedTemperature, reasoningEnabled);
             body.put("stream", true);
-            if (!requestOptions.getTools().isEmpty()) {
+            // 裸请求模式:跳过 tools 和 reasoning 参数,兼容不支持这些可选参数的模型
+            if (!stripOptionalParams && !requestOptions.getTools().isEmpty()) {
                 body.put("tools", ToolInfo.toJsonArray(requestOptions.getTools()));
                 body.put("tool_choice", "auto");
             }
-            applyReasoningRequest(config, body, requestOptions);
+            if (!stripOptionalParams) {
+                applyReasoningRequest(config, body, requestOptions);
+            }
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
@@ -414,6 +435,31 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     || lower.contains("unknown parameter") || lower.contains("not supported")
                     || lower.contains("not allowed") || lower.contains("invalid")
                     || lower.contains("bad request") || lower.contains("not a valid");
+        }
+        return false;
+    }
+
+    /**
+     * 判断是否为 HTTP 客户端参数错误(400/422),应触发"裸请求"降级。
+     * 覆盖:HTTP 400/422 状态码,以及错误体含参数相关关键词的情况。
+     * 不匹配 401/403/429(认证/限流)等非参数错误,避免无意义降级。
+     */
+    private static boolean isClientParamError(String message) {
+        if (message == null || message.isEmpty()) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        // HTTP 400/422 状态码(参数错误)
+        if (lower.contains("http 400") || lower.contains("http 422")) {
+            return true;
+        }
+        // 通用参数错误关键词(不依赖状态码,部分网关不返回标准 code)
+        if (lower.contains("bad request") || lower.contains("invalid parameter")
+                || lower.contains("unsupported parameter") || lower.contains("unrecognized parameter")
+                || lower.contains("unknown parameter") || lower.contains("extra parameter")
+                || lower.contains("unexpected parameter") || lower.contains("not allowed")
+                || lower.contains("does not support") || lower.contains("not supported")) {
+            return true;
         }
         return false;
     }
