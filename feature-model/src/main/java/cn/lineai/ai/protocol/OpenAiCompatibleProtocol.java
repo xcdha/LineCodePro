@@ -435,15 +435,23 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         }
         String base = config.getBaseUrl().toLowerCase(java.util.Locale.ROOT);
         String model = ModelContextParser.apiModelId(config).toLowerCase(java.util.Locale.ROOT);
-        // 运行时自适应:缓存标记不支持 reasoning_effort 的未知模型,直接跳过不发参数
-        if (ReasoningEffortCache.isDisabled(model)) {
-            return;
-        }
         String effort = options.getReasoningEffort();
         boolean enabled = AiBehaviorSettings.isReasoningEnabled(effort);
         String concrete = AiBehaviorSettings.concreteReasoningEffort(effort);
-        // 缓存标记 HIGH_ONLY 的模型,effort 降级到 high(high 是所有支持 reasoning_effort 的模型都接受的通用值)
-        if (enabled && ReasoningEffortCache.isHighOnly(model)) {
+        // 运行时自适应:缓存标记不支持 reasoning_effort 的未知模型
+        // - DISABLED:模型完全不支持 reasoning_effort,不发该参数。
+        //   但用户显式选 high(最通用的值)时重置缓存重新探测,给模型更新留余地。
+        // - HIGH_ONLY:effort 降级到 high(high 是所有支持 reasoning_effort 的模型都接受的通用值)。
+        //   用户已选 high 时不重复降级。
+        if (ReasoningEffortCache.isDisabled(model)) {
+            if (enabled && AiBehaviorSettings.REASONING_HIGH.equals(concrete)) {
+                ReasoningEffortCache.reset(model);
+            } else {
+                return;
+            }
+        }
+        if (enabled && ReasoningEffortCache.isHighOnly(model)
+                && !AiBehaviorSettings.REASONING_HIGH.equals(concrete)) {
             concrete = AiBehaviorSettings.REASONING_HIGH;
         }
         ReasoningRequestContext context = new ReasoningRequestContext(
@@ -587,6 +595,17 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 return true;
             }
             return false;
+        }
+
+        /**
+         * 清除指定模型的缓存限制,允许重新探测。用户显式选 high(最通用值)时调用,
+         * 给模型更新后恢复 reasoning_effort 支持留余地。
+         */
+        static void reset(String modelId) {
+            if (modelId == null || modelId.isEmpty()) {
+                return;
+            }
+            CACHE.remove(modelId.toLowerCase(Locale.ROOT));
         }
 
         static void clearForTest() {

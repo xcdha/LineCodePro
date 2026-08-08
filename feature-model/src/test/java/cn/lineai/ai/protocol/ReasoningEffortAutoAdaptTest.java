@@ -126,4 +126,104 @@ public final class ReasoningEffortAutoAdaptTest {
             OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
         }
     }
+
+    @Test
+    public void disabledCacheNotLockUserWhenOff() throws Exception {
+        // DISABLED 模型用户选 off,正常跳过不发参数(off 本就不发,缓存不锁死用户开关)
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.upgradeRestriction("future-unknown-model");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.upgradeRestriction("future-unknown-model");
+            ModelConfig config = unknownModel();
+            JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                    config, new cn.lineai.ai.ModelRequestOptions(AiBehaviorSettings.REASONING_OFF, false));
+
+            assertFalse(body.has("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @Test
+    public void disabledCacheResetWhenUserSelectsHigh() throws Exception {
+        // DISABLED 模型用户显式选 high,重置该模型缓存重新探测(给模型更新留余地)
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.upgradeRestriction("future-unknown-model");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.upgradeRestriction("future-unknown-model");
+            assertTrue(OpenAiCompatibleProtocol.ReasoningEffortCache.isDisabled("future-unknown-model"));
+
+            ModelConfig config = unknownModel();
+            JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                    config, new cn.lineai.ai.ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, false));
+
+            // 缓存被重置,high 正常发送
+            assertEquals("high", body.getString("reasoning_effort"));
+            assertFalse(OpenAiCompatibleProtocol.ReasoningEffortCache.isDisabled("future-unknown-model"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @Test
+    public void highOnlyCacheDoesNotDowngradeUserSelectedHigh() throws Exception {
+        // HIGH_ONLY 模型用户已选 high,不重复降级(直接用用户的 high)
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.upgradeRestriction("future-unknown-model");
+            ModelConfig config = unknownModel();
+            JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                    config, new cn.lineai.ai.ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, false));
+
+            assertEquals("high", body.getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @Test
+    public void highOnlyCacheDowngradesMaxToHigh() throws Exception {
+        // HIGH_ONLY 模型用户选 max,降级到 high(max 可能不被支持)
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.upgradeRestriction("future-unknown-model");
+            ModelConfig config = unknownModel();
+            JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                    config, new cn.lineai.ai.ModelRequestOptions(AiBehaviorSettings.REASONING_MAX, false));
+
+            assertEquals("high", body.getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @Test
+    public void cacheIsolatedPerModel() throws Exception {
+        // 缓存按 modelId 隔离:A 模型 DISABLED 不影响 B 模型
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.upgradeRestriction("future-unknown-model");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.upgradeRestriction("future-unknown-model");
+            assertTrue(OpenAiCompatibleProtocol.ReasoningEffortCache.isDisabled("future-unknown-model"));
+
+            ModelConfig otherModel = ModelConfig.builder("m2", "M2", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                    "https://api.unknown.ai/v1", "k", "another-future-model").build();
+            JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                    otherModel, new cn.lineai.ai.ModelRequestOptions(AiBehaviorSettings.REASONING_HIGH, false));
+
+            assertEquals("high", body.getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
 }
