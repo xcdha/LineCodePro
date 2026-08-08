@@ -18,6 +18,10 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
     public void apply(JSONObject body, ReasoningRequestContext context) throws Exception {
         String base = context.getBaseUrl();
         String model = context.getModelId();
+        // flash/lite 变体是非思考模型,不支持 thinking 和 reasoning_effort,跳过所有思考参数。
+        if (isFlashVariant(model)) {
+            return;
+        }
         // kimi-k3 不支持 thinking 字段(传了报错),改用顶层 reasoning_effort 配置推理强度;
         // 且 reasoning_effort 仅接受 low/high/max,medium/auto 必须归一化到 max(k3 默认值),否则请求被拒。
         // 来源:platform.kimi.com/docs/api/models-overview、lobehub PR #17272
@@ -52,6 +56,17 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
         }
         String m = OpenAiCompatibleCapabilities.stripProviderPrefix(model);
         return OpenAiCompatibleCapabilities.kimiMajorVersion(m) == 3;
+    }
+
+    /**
+     * 判断是否为 flash/lite 变体(非思考模型)。容忍第三方改名。
+     */
+    private static boolean isFlashVariant(String modelId) {
+        if (modelId == null || modelId.isEmpty()) {
+            return false;
+        }
+        String lower = modelId.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("flash") || lower.contains("lite") || lower.contains("fast");
     }
 
     private static boolean isMoonshotKimi(String base, String model) {

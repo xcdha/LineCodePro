@@ -507,6 +507,7 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onModelQuickSwitch(String modelId) {
         modelInteractionController.quickSwitch(modelId);
+        chatInteractionController.onModelQuickSwitched(modelId);
     }
 
     @Override
@@ -847,6 +848,10 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onModelSelected(String id) {
         modelManagementController.selectModel(id);
+        ModelConfig selected = modelRepository.getSelectedModel();
+        if (selected != null) {
+            chatInteractionController.onModelQuickSwitched(selected.getModelId());
+        }
     }
 
     @Override

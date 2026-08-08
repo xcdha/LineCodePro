@@ -389,25 +389,31 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             Pattern.compile("only\\s+([0-9]+(?:\\.[0-9]+)?)\\s+is\\s+allowed");
 
     /**
-     * 判断上游错误是否与 reasoning_effort 参数相关(无效值、不支持参数等)。
+     * 判断上游错误是否与 reasoning_effort/thinking 参数相关(无效值、不支持参数等)。
      * 覆盖常见上游错误格式:OpenAI "invalid reasoning_effort"、通用 "unsupported parameter"、
-     * "unrecognized parameter"、"unknown parameter" 等。
+     * "unrecognized parameter"、"unknown parameter"、"thinking is not supported" 等。
+     * 拓宽匹配:HTTP 错误体里含 thinking/reasoning_effort 字样即视为参数错误,触发自动降级,
+     * 避免不匹配时直接 break 进入应用级 3 次重试(用户看到的"正在第 2/3 次重试,错误:HTTP")。
      */
     private static boolean isReasoningEffortError(String message) {
         if (message == null || message.isEmpty()) {
             return false;
         }
         String lower = message.toLowerCase(Locale.ROOT);
+        // reasoning_effort 相关错误
         if (lower.contains("reasoning_effort") || lower.contains("reasoning effort")) {
             return lower.contains("invalid") || lower.contains("unsupported")
                     || lower.contains("unrecognized") || lower.contains("unknown")
                     || lower.contains("not supported") || lower.contains("not a valid")
-                    || lower.contains("must be one of") || lower.contains("allowed values");
+                    || lower.contains("must be one of") || lower.contains("allowed values")
+                    || lower.contains("not allowed") || lower.contains("bad request");
         }
-        // 部分网关返回的通用参数错误,含 thinking 字样也视为 reasoning 相关
-        if (lower.contains("thinking") && (lower.contains("unsupported")
-                || lower.contains("unrecognized") || lower.contains("unknown parameter"))) {
-            return true;
+        // thinking 字段相关错误:网关返回 "thinking" + 任意错误指示词
+        if (lower.contains("thinking")) {
+            return lower.contains("unsupported") || lower.contains("unrecognized")
+                    || lower.contains("unknown parameter") || lower.contains("not supported")
+                    || lower.contains("not allowed") || lower.contains("invalid")
+                    || lower.contains("bad request") || lower.contains("not a valid");
         }
         return false;
     }

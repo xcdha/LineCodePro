@@ -314,6 +314,25 @@ final class ChatInteractionController {
         lastMessageModelId = "";
     }
 
+    /**
+     * 快速切换模型时调用:如果当前已有消息且新模型与上次发消息的模型不同,
+     * 立即插入切换通知(此时 from 是真正生成上一条消息的模型,准确无误),
+     * 并更新 lastMessageModelId。这样后续发消息时不会再重复插入通知。
+     */
+    void onModelQuickSwitched(String newModelId) {
+        if (newModelId == null || newModelId.length() == 0) {
+            return;
+        }
+        if (chatSessionStore.isStreaming()) {
+            return;
+        }
+        if (lastMessageModelId.length() > 0 && !lastMessageModelId.equals(newModelId)) {
+            messages.add(ChatMessage.modelSwitchNotice(host.nextId(), lastMessageModelId, newModelId));
+            host.persistCurrentConversation();
+        }
+        lastMessageModelId = newModelId;
+    }
+
     private ArrayList<InputAttachment> sanitizeAttachments(List<InputAttachment> rawAttachments) {
         ArrayList<InputAttachment> result = new ArrayList<>();
         if (rawAttachments == null) {
