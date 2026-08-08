@@ -67,6 +67,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         } catch (ModelCompletionException first) {
             Double hard = parseHardTemperature(first.getMessage());
             if (hard != null && config != null && config.getTemperature() != hard) {
+                HardTemperatureCache.put(ModelContextParser.apiModelId(config), hard);
                 return completeOnce(config, messages, hard);
             }
             throw first;
@@ -119,6 +120,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         } catch (ModelCompletionException first) {
             Double hard = parseHardTemperature(first.getMessage());
             if (hard != null && config != null && config.getTemperature() != hard) {
+                HardTemperatureCache.put(ModelContextParser.apiModelId(config), hard);
                 return streamOnce(config, messages, callback, cancellationToken, options, hard);
             }
             throw first;
@@ -346,8 +348,11 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             Pattern.compile("only\\s+([0-9]+(?:\\.[0-9]+)?)\\s+is\\s+allowed");
 
     /**
-     * 返回应当发送的 temperature 值；返回 {@code null} 表示不发送该字段，让上游使用模型默认值。
-     * <p>用户在该模型的配置中设置了温度就用它；未设置则不发送，交由上游使用模型默认值。</p>
+     * 返回应当发送的 temperature 值;返回 {@code null} 表示不发送该字段,让上游使用模型默认值。
+     * <p>优先级:用户自定义温度 > 运行时缓存(从上游错误中学到的硬性温度)> 内置硬性温度表 > 不传字段。
+     * <p>用户未设置温度时,先查进程内缓存(已遇过 "only X is allowed" 的模型直接复用,零试错);
+     * 缓存未命中再查内置表(kimi-k3 / o-series / gpt-5 等已知硬性模型,首次即零试错);
+     * 都没有则不传字段,交由上游用默认值 —— 若上游报硬性温度错误,complete/stream 会自动重试并写入缓存。
      */
     private static Double resolveTemperature(ModelConfig config) {
         if (config == null) {
@@ -356,7 +361,12 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         if (config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
             return config.getTemperature();
         }
-        return null;
+        String modelId = ModelContextParser.apiModelId(config);
+        Double cached = HardTemperatureCache.get(modelId);
+        if (cached != null) {
+            return cached;
+        }
+        return OpenAiCompatibleCapabilities.knownHardTemperature(modelId);
     }
 
     private void applyReasoningRequest(ModelConfig config, JSONObject body, ModelRequestOptions options) throws Exception {
@@ -414,5 +424,34 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             return StringUtils.decodeUnicodeEscapes(obj.optString("code"));
         }
         return StringUtils.decodeUnicodeEscapes(error.toString());
+    }
+
+    /**
+     * 进程内硬性温度缓存:从上游 "only X is allowed" 错误中学到的模型硬性温度要求。
+     * <p>同一模型第二次起直接命中缓存,零试错。进程级生命周期(App 运行期间有效,重启后重建)。
+     * 重启后由内置表({@link OpenAiCompatibleCapabilities#knownHardTemperature})兜底常用模型,
+     * 未知模型则会再试错一次后重新进缓存 —— 每模型每进程最多付一次试错成本。
+     */
+    static final class HardTemperatureCache {
+        private static final java.util.concurrent.ConcurrentMap<String, Double> CACHE =
+                new java.util.concurrent.ConcurrentHashMap<>();
+
+        static Double get(String modelId) {
+            if (modelId == null || modelId.isEmpty()) {
+                return null;
+            }
+            return CACHE.get(modelId.toLowerCase(Locale.ROOT));
+        }
+
+        static void put(String modelId, double temperature) {
+            if (modelId == null || modelId.isEmpty()) {
+                return;
+            }
+            CACHE.put(modelId.toLowerCase(Locale.ROOT), temperature);
+        }
+
+        static void clearForTest() {
+            CACHE.clear();
+        }
     }
 }
