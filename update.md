@@ -1,5 +1,57 @@
 # 更新日志
 
+## v1.2.6
+
+### 模型温度自适应（缓存 + 内置表 A+B 方案）
+
+- **kimi-k3 连接失败根因修复** - kimi-k3 等模型硬性要求 `temperature=1`，此前传默认值导致上游 503；现通过内置硬性温度表 + 运行时缓存实现零试错
+- **内置硬性温度表** - 预定义已知硬性温度模型，避免首次试错：
+  - kimi-k3 / kimi-k2.7-code：始终推理，temperature 固定 1.0
+  - kimi-k2.5 / kimi-k2.6：思考模式 1.0，非思考模式 0.6（按模式区分）
+  - OpenAI o 系列（o1/o3/o4）：始终推理，temperature 固定 1.0
+  - gpt-5 初代 / pro / codex / mini / nano：始终推理，temperature 固定 1.0
+  - gpt-5.2 / 5.1：思考模式 1.0，非思考模式（reasoning_effort=none）允许用户温度
+  - search 变体（gpt-5-search-api / gpt-4o-search-preview 等）：必须省略 temperature 字段
+- **运行时缓存（HardTemperatureCache）** - 从上游 "only X is allowed" 错误中学习未知模型的硬性温度要求，按「模型 + 思考模式」隔离缓存，同一模型后续请求零试错；24h TTL 避免陈旧缓存
+- **温度优先级链** - 硬性温度模型（缓存/内置表命中）> 用户自定义温度 > 不传字段（上游默认）；硬性模型覆盖用户填的温度避免每次试错，普通模型用户温度完全生效
+- **温度与思考模式联动** - 温度的思考模式跟随用户 AI 行为设置（reasoningEffort），不跟随 effort 降级；kimi-k2.5/2.6 思考/非思考温度自动切换
+
+### 思考深度六档自适应
+
+- **六档 effort 支持** - off / auto / low / medium / high / max 全档位，auto 归一化为 medium
+- **逐档降级链** - 未知模型从用户选档位开始，被拒则沿 max→high→medium→low→禁用 降级；用户调整优先，不被缓存锁死
+- **max→xhigh 精确映射** - gpt-5.2 系列 / gpt-5.1-codex-max 支持 xhigh，选 max 时发 xhigh（不再统一降级到 high）；其他模型降级到 high 保证兼容
+- **supportsXhigh / supportsNoneEffort 判定** - 按模型精确判断支持的 effort 档位，来源 OpenAI 官方兼容性矩阵
+- **complete 路径温度模式精确化** - 用 `defaultReasoningEnabledWhenOmitted` 替代硬编码 true：gpt-5.2/5.1 不发参数时默认非思考（允许用户温度），kimi-k2.6/gpt-5初代/o系列 默认思考（温度固定 1.0）
+- **ReasoningEffortCache 24h TTL** - 过期后允许重新探测，模型提供商更新支持新档位后不被陈旧拒绝记录锁死
+- **缓存按模型隔离** - A 模型 max 被拒不影响 B 模型；reset 后可重新探测
+
+### 边界问题修复
+
+- **effort 降级与温度联动** - effort 全部被拒降级到禁用时，温度保持思考模式（kimi-k2.6 仍取 1.0），不误切非思考模式（0.6）导致上游报错；原因：effort 降级只影响 reasoning_effort 参数，不影响 thinking 字段
+- **stream 循环次数** - 4→6 次，覆盖温度修复(1) + effort 全档降级(4) + 禁用后重试(1)
+- **search 变体必须省略 temperature** - 新增 TEMPERATURE_MUST_OMIT 哨兵值，与 null（无硬性要求）区分；即使用户填了温度也不发送
+- **gpt-5.2/5.1 非思考模式温度** - 修复此前对所有 gpt-5 系列统一返回 1.0 的问题，gpt-5.2/5.1 在 reasoning_effort=none 时允许用户温度
+
+### 提供商差异化推理策略
+
+- **MoonshotReasoningStrategy** - kimi-k3 写 reasoning_effort（kimiK3Effort 映射），kimi-k2.x 写 thinking 字段（含可选 keep），GLM-5.2+ 写 reasoning_effort（glmEffort 映射）
+- **DeepseekReasoningStrategy** - thinking.type=enabled/disabled + reasoning_effort
+- **MinimaxReasoningStrategy** - thinking.type=adaptive/disabled
+- **DashscopeReasoningStrategy** - enable_thinking + thinking_budget + preserve_thinking
+
+### 测试
+
+- 新增 `ReasoningEffortAutoAdaptTest`：六档逐档降级、用户调整优先、缓存按模型隔离、effort 降级与温度联动、xhigh 精确映射
+- 扩展 `OpenAiCompatibleCapabilitiesTest`：gpt-5.2/5.1 非思考模式温度、supportsNoneEffort、supportsXhigh、defaultReasoningEnabledWhenOmitted、search 变体省略温度
+- 扩展 `OpenAiCompatibleProtocolTest`：gpt-5.2 非思考模式用户温度生效、max→xhigh 映射、search 变体省略温度
+
+### 版本
+
+- 版本号升级到 `1.2.6`，versionCode 29
+
+---
+
 ## v1.2.5
 
 ### 工具调用 UI 模块化重构
