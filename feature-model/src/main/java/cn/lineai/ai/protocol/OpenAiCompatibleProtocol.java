@@ -62,7 +62,12 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
     @Override
     public ModelCompletionResponse complete(ModelConfig config, List<ModelMessage> messages) throws ModelCompletionException {
-        // complete 路径不携带 reasoning 参数,kimi-k2.6 等模型默认走思考模式,故按思考模式处理温度
+        // complete 路径不发 reasoning_effort/thinking 参数,模型按其默认行为运行。
+        // kimi-k2.5/k2.6 不发 thinking 时默认走思考模式,温度按思考模式取(1.0);
+        // 其他无硬性温度要求的模型 knownHardTemperature 返回 null,不传温度,不受影响。
+        // 注意:isFullyDisabled 表示"模型不支持 reasoning_effort 参数",不等于"不处于思考模式",
+        // 故不能用其判断温度模式 —— 否则 kimi-k2.6 会被误判为非思考模式,温度取 0.6 导致上游报错。
+        String modelId = ModelContextParser.apiModelId(config);
         boolean reasoningEnabled = true;
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
@@ -73,10 +78,10 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             } catch (ModelCompletionException e) {
                 lastError = e;
                 String msg = e.getMessage();
-                // 温度错误:解析硬性温度,写缓存,重试时用 forcedTemperature
+                // 温度错误:解析硬性温度,按本次思考模式写缓存,重试时用 forcedTemperature
                 Double hard = parseHardTemperature(msg);
                 if (hard != null && config != null && config.getTemperature() != hard) {
-                    HardTemperatureCache.put(ModelContextParser.apiModelId(config), reasoningEnabled, hard);
+                    HardTemperatureCache.put(modelId, reasoningEnabled, hard);
                     forcedTemperature = hard;
                     continue;
                 }
@@ -130,25 +135,32 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
     ) throws ModelCompletionException {
         // 思考模式由 AI 行为设置的 reasoningEffort 决定:kimi-k2.5/k2.6 等模型温度随模式切换
         ModelRequestOptions requestOptions = options == null ? ModelRequestOptions.defaults() : options;
-        boolean reasoningEnabled = AiBehaviorSettings.isReasoningEnabled(requestOptions.getReasoningEffort());
+        boolean userReasoningEnabled = AiBehaviorSettings.isReasoningEnabled(requestOptions.getReasoningEffort());
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
         String modelId = ModelContextParser.apiModelId(config);
-        // 最多 4 次尝试:原始 → 温度修复 → effort 逐档降级(max→high→medium→low→禁用)
-        for (int attempt = 0; attempt < 4; attempt++) {
-            // 每次尝试前算出本次实际发送的 effort(resolveEffort 会沿降级链降级)
-            String currentEffort = reasoningEnabled
+        // 最多 6 次尝试:温度修复(1) + effort 全档降级(max/high/medium/low 共 4) + 禁用后重试(1)。
+        // effort 降级只影响 reasoning_effort 参数,不影响 thinking 字段:kimi-k2.5/k2.6 通过
+        // thinking.type=enabled/disabled 控制思考开关,与 reasoning_effort 独立。故 effort 全部
+        // 被拒不发 reasoning_effort 时,模型仍发 thinking.type=enabled(思考模式),温度必须按思考模式取。
+        for (int attempt = 0; attempt < 6; attempt++) {
+            // 每次尝试前算出本次实际发送的 effort(resolveEffort 会沿降级链降级)。
+            // 温度的思考模式跟随用户设置(userReasoningEnabled),不跟随 effort 降级:
+            // effort 降级到 null 仅表示不发 reasoning_effort,但 thinking 字段仍由用户设置决定,
+            // 因此温度的 reasoningEnabled 始终等于 userReasoningEnabled,与 applyReasoningRequest 一致。
+            String currentEffort = userReasoningEnabled
                     ? ReasoningEffortCache.resolveEffort(modelId, AiBehaviorSettings.concreteReasoningEffort(requestOptions.getReasoningEffort()))
                     : null;
+            boolean effectiveReasoningEnabled = userReasoningEnabled;
             try {
-                return streamOnce(config, messages, callback, cancellationToken, options, forcedTemperature, reasoningEnabled);
+                return streamOnce(config, messages, callback, cancellationToken, options, forcedTemperature, effectiveReasoningEnabled);
             } catch (ModelCompletionException e) {
                 lastError = e;
                 String msg = e.getMessage();
-                // 温度错误:解析硬性温度,写缓存,重试时用 forcedTemperature
+                // 温度错误:解析硬性温度,按本次实际思考模式写缓存,重试时用 forcedTemperature
                 Double hard = parseHardTemperature(msg);
                 if (hard != null && config != null && config.getTemperature() != hard) {
-                    HardTemperatureCache.put(modelId, reasoningEnabled, hard);
+                    HardTemperatureCache.put(modelId, effectiveReasoningEnabled, hard);
                     forcedTemperature = hard;
                     continue;
                 }

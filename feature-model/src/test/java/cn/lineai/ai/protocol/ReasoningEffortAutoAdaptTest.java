@@ -264,4 +264,86 @@ public final class ReasoningEffortAutoAdaptTest {
             OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
         }
     }
+
+    // ========== effort 降级与温度联动 ==========
+
+    @Test
+    public void effortDowngradeToDisabledKeepsReasoningTemperature() throws Exception {
+        // kimi-k2.6:effort 全部被拒降级到禁用时,温度必须保持思考模式(1.0),而非切非思考模式(0.6)。
+        // 原因:effort 降级只影响 reasoning_effort 参数,不影响 thinking 字段。
+        // kimi-k2.6 通过 thinking.type=enabled/disabled 控制思考开关,与 reasoning_effort 独立。
+        // effort 全部被拒不发 reasoning_effort 时,模型仍发 thinking.type=enabled(思考模式),
+        // 温度必须按思考模式取(1.0),否则上游报错。
+        // 验证 stream 路径 effectiveReasoningEnabled 跟随用户设置(userReasoningEnabled),不跟随 effort 降级。
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            // 模拟 stream 路径已学到全部档位被拒
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "max");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "high");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "medium");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "low");
+            assertTrue(OpenAiCompatibleProtocol.ReasoningEffortCache.isFullyDisabled("kimi-k2.6"));
+
+            // resolveEffort 返回 null(不发 reasoning_effort),但用户仍处于思考模式(userReasoningEnabled=true)
+            // → effectiveReasoningEnabled=true → 温度按思考模式取
+            String resolved = OpenAiCompatibleProtocol.ReasoningEffortCache.resolveEffort("kimi-k2.6", "max");
+            assertNull(resolved);
+
+            // 验证温度表:思考模式应返回 1.0(effort 禁用后温度保持思考模式,不切非思考)
+            Double reasoningTemp = OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.6", true);
+            assertEquals(Double.valueOf(1.0), reasoningTemp);
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @Test
+    public void completePathAlwaysUsesReasoningTemperature() throws Exception {
+        // complete 路径不发 reasoning_effort/thinking 参数,模型按默认行为运行。
+        // kimi-k2.6 不发 thinking 时默认走思考模式,温度按思考模式取(1.0)。
+        // isFullyDisabled(模型不支持 reasoning_effort)不影响 complete 路径温度模式判断,
+        // 否则 kimi-k2.6 会被误判为非思考模式,温度取 0.6 导致上游报错。
+        // 验证:complete 路径始终按思考模式取温度,不受 isFullyDisabled 影响。
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            // 未 DISABLED:complete 按思考模式(温度 1.0)
+            assertFalse(OpenAiCompatibleProtocol.ReasoningEffortCache.isFullyDisabled("kimi-k2.6"));
+            Double reasoningTemp = OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.6", true);
+            assertEquals(Double.valueOf(1.0), reasoningTemp);
+
+            // DISABLED 后:complete 仍按思考模式(温度 1.0),不因 isFullyDisabled 切非思考模式
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "max");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "high");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "medium");
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "low");
+            assertTrue(OpenAiCompatibleProtocol.ReasoningEffortCache.isFullyDisabled("kimi-k2.6"));
+            Double stillReasoningTemp = OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.6", true);
+            assertEquals(Double.valueOf(1.0), stillReasoningTemp);
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @Test
+    public void effortPartiallyDowngradedKeepsReasoningTemperature() throws Exception {
+        // effort 部分降级(max→high)时,仍处于思考模式,温度应保持思考模式(1.0),不切非思考
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            // 仅 max 被拒,降到 high(仍思考模式)
+            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "max");
+            String resolved = OpenAiCompatibleProtocol.ReasoningEffortCache.resolveEffort("kimi-k2.6", "max");
+            assertEquals("high", resolved);
+            // resolved 非 null → effectiveReasoningEnabled=true → 温度按思考模式取
+            Double reasoningTemp = OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.6", true);
+            assertEquals(Double.valueOf(1.0), reasoningTemp);
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
 }
