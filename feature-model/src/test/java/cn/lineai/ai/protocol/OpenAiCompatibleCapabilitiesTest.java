@@ -61,38 +61,52 @@ public final class OpenAiCompatibleCapabilitiesTest {
     }
 
     @Test
-    public void knownHardTemperatureReturnsOneForOpenAiAlwaysReasoningModels() {
-        // o 系列与 gpt-5 初代/pro/codex/mini/nano 始终推理,temperature 固定 1,与思考模式无关
+    public void knownHardTemperatureForOpenAiOSeriesFixedOneAndGpt5NonReasoningMustOmit() {
+        // o 系列:官方唯一接受 temperature=1(与思考模式无关)
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o1", true));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o1-mini", false));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o3", true));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o3-mini", false));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o4-mini", true));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", true));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", false));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-mini", false));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-pro", true));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-codex", true));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex", true));
+
+        // gpt-5 初代/mini/nano/pro/codex:不支持 none,永远不接受 temperature → 必须省略
+        // 来源:community.openai.com/t/1371738 兼容性矩阵、braintrust KB
+        Double omit = OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT;
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", true));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", false));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-mini", false));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-nano", true));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-pro", true));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-codex", true));
+        // gpt-5.1-codex-max / gpt-5.2-pro:不支持 none,非思考模式也必须省略
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex-max", false));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-pro", false));
     }
 
     @Test
-    public void knownHardTemperatureForGpt5xDiffersByThinkingMode() {
-        // gpt-5.x(x>=1) 支持 reasoning_effort=none(关闭思考),关闭时允许 temperature(top_p);
-        // 思考模式(effort != none)下只接受 temperature=1。
-        // 覆盖:gpt-5.1 / 5.2 / 5.5 / 5.6
-        // 来源:developers.openai.com gpt-5.5/gpt-5.6 文档、community.openai.com/t/1371738
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1", true));
+    public void knownHardTemperatureForGpt5xMatrixFromOpenAI() {
+        // GPT-5.x 精确矩阵(来源:community.openai.com/t/1371738 兼容性矩阵、braintrust KB):
+        //   思考模式(effort != none):全系列不接受 temperature → MUST_OMIT
+        //   非思考模式(effort=none):gpt-5.x(x>=1) 接受用户温度 → null
+        Double omit = OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT;
+        // gpt-5.1 家族(支持 none)
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1", false));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", true));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex", false));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex-mini", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex-mini", false));
+        // gpt-5.2 家族(支持 none)
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", false));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-codex", true));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-codex", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-codex", false));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.5", true));
+        // gpt-5.5 / 5.6(支持 none)
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.5", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.5", false));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6", true));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6", false));
-        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6-sol", true));
+        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6-sol", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6-sol", false));
     }
 
@@ -175,6 +189,9 @@ public final class OpenAiCompatibleCapabilitiesTest {
         assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5"));
         assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5-pro"));
         assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5-codex"));
+        // gpt-5.1-codex-max / gpt-5.2-pro 虽小版本>=1,但官方矩阵标注不支持 none
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5.1-codex-max"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5.2-pro"));
         assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("o3"));
         // Claude 5 不支持 none(用 thinking.type=disabled 关闭思考,而非 reasoning_effort=none)
         assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("claude-sonnet-5"));

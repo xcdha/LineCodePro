@@ -84,17 +84,17 @@ public final class OpenAiCompatibleCapabilities {
         }
 
         // gpt-5 系列(排除 chat-latest 非推理变体与 search 变体)
-        // 正则 gpt 后跟 5(主版本),容忍中间任意字符;覆盖初代(gpt-5/mini/pro)与小版本(gpt-5.x)。
+        // temperature 精确矩阵(来源:community.openai.com 兼容性矩阵、braintrust KB、MS agent-framework):
+        //   思考模式(effort != none):GPT-5 全系列都不接受 temperature,传任何值官方端点返回 400 → 必须省略。
+        //   非思考模式(effort=none):仅 gpt-5.x(x>=1) 接受 temperature/top_p(用户温度生效);
+        //     gpt-5 初代/mini/nano/pro/codex-max 不支持 none,永远不接受 temperature → 必须省略。
+        // o 系列例外:官方唯一接受 temperature=1(见下方 isOpenAiOSeries 分支,不进此分支)。
         if (isGpt5Series(m)) {
-            // gpt-5.x(x>=1) 支持 reasoning_effort=none(关闭思考),关闭时允许 temperature/top_p;
-            // 思考模式(effort != none)下只接受 temperature=1。
-            // 覆盖:gpt-5.1 / 5.2 / 5.3 / 5.4 / 5.5 / 5.6 及后续小版本。
-            // 来源:developers.openai.com gpt-5.5/gpt-5.6 文档、community.openai.com 兼容性矩阵
-            if (supportsNoneEffort(m) && !reasoningEnabled) {
-                return null;
+            if (reasoningEnabled) {
+                return TEMPERATURE_MUST_OMIT;
             }
-            // 其他 gpt-5 变体(gpt-5初代/pro/codex/mini/nano)始终推理,temperature 固定 1
-            return 1.0;
+            // 非思考模式:仅支持 none 的 gpt-5.x(x>=1) 接受用户温度
+            return supportsNoneEffort(m) ? null : TEMPERATURE_MUST_OMIT;
         }
 
         // Claude 5 家族 + Opus 4.7/4.8:temperature/top_p/top_k 已移除,传非默认值返回 400。
@@ -133,7 +133,10 @@ public final class OpenAiCompatibleCapabilities {
         }
         String m = stripProviderPrefix(modelId);
         if (m.contains("-chat-latest")) return false;
-        // gpt-5.x(x>=1)支持 none;gpt-5 初代(无小版本)/gpt-5-pro/mini 不支持
+        // gpt-5.x(x>=1)支持 none;gpt-5 初代(无小版本)/gpt-5-pro/mini/codex-max 不支持。
+        // 例外:gpt-5.1-codex-max、gpt-5.2-pro 虽小版本>=1,但官方矩阵标注不支持 none。
+        // 来源:community.openai.com/t/1371738 兼容性矩阵
+        if (m.contains("codex-max") || m.contains("-pro")) return false;
         return gpt5MinorVersion(m) >= 1;
     }
 
