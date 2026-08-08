@@ -46,12 +46,12 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
     }
 
     private static boolean isKimiK3(String model) {
-        // 容忍第三方改名:同时匹配 kimi-k3 与 kimik3(横线丢失),命中 xkimi-k3 / xkimik3 / kimi-k3-pro 等
+        // 正则容忍第三方改名(前缀/中缀/后缀任意字符),复用 OpenAiCompatibleCapabilities.kimiMajorVersion
         if (model == null) {
             return false;
         }
-        String m = model.toLowerCase(java.util.Locale.ROOT);
-        return m.contains("kimi-k3") || m.contains("kimik3");
+        String m = OpenAiCompatibleCapabilities.stripProviderPrefix(model);
+        return OpenAiCompatibleCapabilities.kimiMajorVersion(m) == 3;
     }
 
     private static boolean isMoonshotKimi(String base, String model) {
@@ -65,37 +65,15 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
     /**
      * GLM-5.2+ 判定:主版本 > 5,或主版本 = 5 且次版本 >= 2。
      * 仅 GLM-5.2 及以上支持 reasoning_effort 参数。
-     * 先剥离 provider 前缀(如 zhipuai/glm-5.2 → glm-5.2),适配第三方网关命名;
-     * 再用 indexOf 容忍第三方改名(xglm-5.2 / glm5.2 等),从 glm- 后解析版本号。
+     * 复用 OpenAiCompatibleCapabilities.glmVersion 正则,容忍第三方在 glm 与版本号之间插入任意字符。
      */
     private static boolean isGlm52Plus(String model) {
         if (model == null) {
             return false;
         }
         String m = OpenAiCompatibleCapabilities.stripProviderPrefix(model);
-        int idx = m.indexOf("glm-");
-        if (idx < 0) {
-            // 容忍横线丢失:glm5.2 → glm-5.2 形式不存在时,尝试 glm 后直接跟版本
-            idx = m.indexOf("glm");
-            if (idx < 0) {
-                return false;
-            }
-            String rest = m.substring(idx + "glm".length());
-            return parseGlmVersion(rest);
-        }
-        String version = m.substring(idx + "glm-".length());
-        return parseGlmVersion(version);
-    }
-
-    private static boolean parseGlmVersion(String version) {
-        String[] parts = version.split("\\.");
-        try {
-            int major = Integer.parseInt(parts[0]);
-            int minor = parts.length > 1 ? Integer.parseInt(parts[1].replaceAll("[^0-9].*$", "")) : 0;
-            return major > 5 || (major == 5 && minor >= 2);
-        } catch (NumberFormatException e) {
-            return false;
-        }
+        int[] v = OpenAiCompatibleCapabilities.glmVersion(m);
+        return v[0] > 5 || (v[0] == 5 && v[1] >= 2);
     }
 
     /**

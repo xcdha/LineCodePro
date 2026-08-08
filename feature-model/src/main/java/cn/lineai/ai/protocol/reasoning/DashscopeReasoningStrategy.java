@@ -1,5 +1,6 @@
 package cn.lineai.ai.protocol.reasoning;
 
+import cn.lineai.ai.protocol.OpenAiCompatibleCapabilities;
 import cn.lineai.ai.protocol.ReasoningRequestContext;
 import cn.lineai.ai.protocol.ReasoningRequestStrategy;
 import cn.lineai.model.AiBehaviorSettings;
@@ -42,26 +43,21 @@ public final class DashscopeReasoningStrategy implements ReasoningRequestStrateg
     /**
      * Qwen3.8-Max 及以上判定:主版本 > 3,或主版本 = 3 且次版本 >= 8。
      * 仅 Qwen3.8-Max 及以上支持 reasoning_effort 参数(xhigh/medium/low)。
+     * 复用 OpenAiCompatibleCapabilities.qwenVersion 正则,容忍第三方在 qwen 与版本号之间插入任意字符;
+     * 仅匹配 max 变体(推理模型),coder/instruct 等非 max 变体仍走 thinking_budget 路径。
      * 来源:platform.qianwenai.com(qwen3.8-max 支持 reasoning_effort,thinking_budget 适用 Qwen3.7/3.8)
      */
     private static boolean isQwen38Plus(String model) {
         if (model == null) {
             return false;
         }
-        String m = model.toLowerCase(java.util.Locale.ROOT);
-        // 仅匹配 qwen3.x-max 系列(推理模型);coder/instruct 等非 max 变体仍走 thinking_budget 路径
+        String m = OpenAiCompatibleCapabilities.stripProviderPrefix(model);
+        // 必须含 qwen 和 max(仅 max 变体支持 reasoning_effort)
         if (!m.contains("qwen") || !m.contains("max")) {
             return false;
         }
-        String version = m.substring(m.indexOf("qwen") + "qwen".length());
-        String[] parts = version.split("\\.");
-        try {
-            int major = Integer.parseInt(parts[0]);
-            int minor = parts.length > 1 ? Integer.parseInt(parts[1].replaceAll("[^0-9].*$", "")) : 0;
-            return major > 3 || (major == 3 && minor >= 8);
-        } catch (NumberFormatException e) {
-            return false;
-        }
+        int[] v = OpenAiCompatibleCapabilities.qwenVersion(m);
+        return v[0] > 3 || (v[0] == 3 && v[1] >= 8);
     }
 
     /**

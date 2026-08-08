@@ -1,10 +1,29 @@
 package cn.lineai.ai.protocol;
 
 import cn.lineai.model.ModelConfig;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class OpenAiCompatibleCapabilities {
     private OpenAiCompatibleCapabilities() {
     }
+
+    // ========== 预编译正则:容忍第三方网关在品牌词与版本号之间插入任意字符 ==========
+    // 设计:品牌词(kimi/gpt/claude/glm/qwen)作锚点(contains 前提),再用惰性 .*? 提取版本号,
+    // 容忍前缀/中缀/后缀干扰字符(含字母数字),覆盖 abc-kimi-xx-k3 / kimi-def-k2.6-v2 等改名。
+    // 误判防护:版本号后用边界 (?=\D|$) 避免 k30 被当作 k3;opus 后取第一个数字区分 4.x 与 5。
+    private static final Pattern KIMI_VERSION =
+            Pattern.compile("kimi.*?k(\\d+)(?:[.\\-]?(\\d+))?", Pattern.DOTALL);
+    private static final Pattern GPT5_MINOR =
+            Pattern.compile("gpt.*?5\\.(\\d+)", Pattern.DOTALL);
+    private static final Pattern CLAUDE_VARIANT_MAJOR =
+            Pattern.compile("claude.*?(sonnet|opus|haiku|fable|mythos).*?(\\d)", Pattern.DOTALL);
+    private static final Pattern CLAUDE_OPUS4_MINOR =
+            Pattern.compile("claude.*?opus.*?4\\D*(\\d+)", Pattern.DOTALL);
+    private static final Pattern GLM_VERSION =
+            Pattern.compile("glm\\D*(\\d+)(?:[.\\-](\\d+))?", Pattern.DOTALL);
+    private static final Pattern QWEN_VERSION =
+            Pattern.compile("qwen\\D*(\\d+)(?:[.\\-](\\d+))?", Pattern.DOTALL);
 
     public static boolean supportsNativeTools(ModelConfig config) {
         return config != null && !isNvidiaCompatibleGateway(config);
@@ -47,15 +66,15 @@ public final class OpenAiCompatibleCapabilities {
 
         // Moonshot / Kimi 推理模型
         // 来源:platform.kimi.com/docs/api/models-overview
-        // 用 contains 容忍第三方网关改名(前缀 x/后缀 -pro/横线丢失):
-        //   xkimi-k3 / xkimik3 / kimi-k3-pro / kimik3.1 均命中。
+        // 正则容忍第三方网关在品牌词与版本号之间插入任意字符(含字母数字):
+        //   abc-kimi-xx-k3 / kimi-def-k2.6-v2 / xkimik3 等改名均能命中。
         // kimi-k3:始终推理,temperature 固定 1.0
-        if (containsKimiToken(m, "kimi-k3")) return 1.0;
+        if (kimiMajorVersion(m) == 3) return 1.0;
         // kimi-k2.7-code(含 highspeed 变体):思考始终开启,temperature 固定 1.0
-        if (containsKimiToken(m, "kimi-k2.7-code")) return 1.0;
+        if (kimiMajorVersion(m) == 2 && kimiMinorVersion(m) == 7) return 1.0;
         // kimi-k2.6 / kimi-k2.5:思考模式固定 1.0,非思考模式固定 0.6,传其他值报错
-        if (containsKimiToken(m, "kimi-k2.6")) return reasoningEnabled ? 1.0 : 0.6;
-        if (containsKimiToken(m, "kimi-k2.5")) return reasoningEnabled ? 1.0 : 0.6;
+        if (kimiMajorVersion(m) == 2 && kimiMinorVersion(m) == 6) return reasoningEnabled ? 1.0 : 0.6;
+        if (kimiMajorVersion(m) == 2 && kimiMinorVersion(m) == 5) return reasoningEnabled ? 1.0 : 0.6;
 
         // OpenAI o 系列:始终推理,temperature 固定 1
         // 收紧匹配:o1 / o3 / o4 后必须跟边界(-/preview/mini 等),避免 o1bak / qwen-o1 误判。
@@ -65,8 +84,8 @@ public final class OpenAiCompatibleCapabilities {
         }
 
         // gpt-5 系列(排除 chat-latest 非推理变体与 search 变体)
-        // 用 contains 容忍第三方改名(xgpt-5 / gpt-5.x-pro 等)
-        if (m.contains("gpt-5") && !m.contains("-chat-latest") && !m.contains("search")) {
+        // 正则 gpt 后跟 5(主版本),容忍中间任意字符;覆盖初代(gpt-5/mini/pro)与小版本(gpt-5.x)。
+        if (isGpt5Series(m)) {
             // gpt-5.x(x>=1) 支持 reasoning_effort=none(关闭思考),关闭时允许 temperature/top_p;
             // 思考模式(effort != none)下只接受 temperature=1。
             // 覆盖:gpt-5.1 / 5.2 / 5.3 / 5.4 / 5.5 / 5.6 及后续小版本。
@@ -201,23 +220,27 @@ public final class OpenAiCompatibleCapabilities {
     }
 
     /**
+     * gpt-5 系列判定:gpt 后跟主版本 5(5 后非数字,避免 gpt-50 误判),容忍中间任意字符。
+     * 排除 chat-latest 非推理变体与 search 变体。覆盖初代(gpt-5/mini/pro)与小版本(gpt-5.x)。
+     */
+    private static boolean isGpt5Series(String m) {
+        if (!m.contains("gpt") || m.contains("-chat-latest") || isSearchVariant(m)) {
+            return false;
+        }
+        // gpt 后(惰性)跟 5,5 后非数字或结尾(避免 gpt-50);容忍 gpt 与 5 之间任意字符
+        return Pattern.compile("gpt.*?5(?=\\D|$)", Pattern.DOTALL).matcher(m).find();
+    }
+
+    /**
      * 解析 gpt-5 系列的小版本号。
      * @return "gpt-5.X" 中的 X(>=0);gpt-5 初代(gpt-5 / gpt-5-mini / gpt-5-pro 等无小版本)返回 -1;非 gpt-5 返回 -1。
-     * 用 indexOf 容忍第三方前缀(xgpt-5.5 等);版本号必须紧跟 gpt-5 之后(允许 . 或直接数字)。
+     * 正则容忍第三方在 gpt 与 5.X 之间插入任意字符(含字母数字),覆盖 xgpt-xx-5.6 / gpt-abc-5.5-pro 等。
      */
     private static int gpt5MinorVersion(String m) {
-        int idx = m.indexOf("gpt-5");
-        if (idx < 0) return -1;
-        String rest = m.substring(idx + "gpt-5".length());
-        if (rest.isEmpty()) return -1; // 裸 "gpt-5"
-        // gpt-5.X 形式:X 为小版本号;"gpt-5-mini"/"gpt-5-pro"/"gpt-5-codex" 等初代变体无小版本
-        if (!rest.startsWith(".")) return -1;
-        String numStr = rest.substring(1);
-        int end = 0;
-        while (end < numStr.length() && Character.isDigit(numStr.charAt(end))) end++;
-        if (end == 0) return -1;
+        Matcher mat = GPT5_MINOR.matcher(m);
+        if (!mat.find()) return -1;
         try {
-            return Integer.parseInt(numStr.substring(0, end));
+            return Integer.parseInt(mat.group(1));
         } catch (NumberFormatException e) {
             return -1;
         }
@@ -226,18 +249,28 @@ public final class OpenAiCompatibleCapabilities {
     /**
      * Claude 5 家族及更新版本判定(Fable/Mythos/Sonnet-5/Opus-5/Haiku-5)。
      * 这些模型移除了采样参数,且支持 effort 全档(含 xhigh/max)。
+     * 正则容忍第三方在 claude 与变体/版本之间插入任意字符,覆盖 xclaude-xx-sonnet-5 等。
+     * 误判防护:取变体(sonnet/opus/haiku)后第一个数字作主版本,==5 才算 Claude 5;
+     * 故 claude-opus-4-5(opus 4.5)不会被误判为 Claude 5 家族。
+     * Fable/Mythos 无版本号,直接命中即 Claude 5 家族。
      * 来源:platform.claude.com docs/about-claude/models/whats-new-sonnet-5
      */
     private static boolean isClaude5FamilyOrLater(String m) {
         if (!m.contains("claude")) return false;
-        // Fable/Mythos 即 Claude 5 家族
-        if (m.contains("fable") || m.contains("mythos")) return true;
-        // claude-opus-5+ / claude-sonnet-5+ / claude-haiku-5+
-        if (m.contains("opus-5")) return true;
-        if (m.contains("sonnet-5")) return true;
-        if (m.contains("haiku-5")) return true;
-        // 裸 claude-5 别名
-        if (m.contains("claude-5")) return true;
+        // Fable/Mythos 即 Claude 5 家族(无版本号)
+        Matcher fm = Pattern.compile("claude.*?(fable|mythos)", Pattern.DOTALL).matcher(m);
+        if (fm.find()) return true;
+        // sonnet/opus/haiku 后第一个数字 == 5 才是 Claude 5 家族
+        Matcher mat = CLAUDE_VARIANT_MAJOR.matcher(m);
+        if (mat.find()) {
+            try {
+                return Integer.parseInt(mat.group(2)) >= 5;
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
+        // 裸 claude-5 别名(无变体词)
+        if (Pattern.compile("claude\\D*5(?=\\D|$)", Pattern.DOTALL).matcher(m).find()) return true;
         return false;
     }
 
@@ -245,16 +278,13 @@ public final class OpenAiCompatibleCapabilities {
      * 解析 Claude Opus 4.x 的小版本号。
      * @return "claude-opus-4-X" 中的 X(如 claude-opus-4-5 → 5,claude-opus-4-8-20260101 → 8);
      *         非 opus-4 或无小版本返回 -1(claude-opus-5 走 isClaude5FamilyOrLater)。
+     * 正则容忍第三方在 claude/opus/4/X 之间插入任意非数字字符,覆盖 xclaude-xx-opus-xx-4-7 等。
      */
     private static int claudeOpus4Minor(String m) {
-        int idx = m.indexOf("opus-4-");
-        if (idx < 0) return -1;
-        String after = m.substring(idx + "opus-4-".length());
-        int end = 0;
-        while (end < after.length() && Character.isDigit(after.charAt(end))) end++;
-        if (end == 0) return -1;
+        Matcher mat = CLAUDE_OPUS4_MINOR.matcher(m);
+        if (!mat.find()) return -1;
         try {
-            return Integer.parseInt(after.substring(0, end));
+            return Integer.parseInt(mat.group(1));
         } catch (NumberFormatException e) {
             return -1;
         }
@@ -263,15 +293,15 @@ public final class OpenAiCompatibleCapabilities {
     /**
      * Claude 移除 temperature 的模型判定:Claude 5 家族 + Opus 4.7/4.8。
      * Opus 4.7 起移除采样参数,Sonnet 5 / Fable / Mythos / Opus 5 同样移除。
+     * 正则容忍第三方改名,opus-4 后小版本 >=7 即移除温度。
      * 来源:platform.claude.com migration-guide、datallmlab 采样参数支持表
      */
     private static boolean isClaudeTemperatureRemoved(String m) {
         if (!m.contains("claude")) return false;
         if (isClaude5FamilyOrLater(m)) return true;
         // Claude Opus 4.7 / 4.8 同样移除了 temperature/top_p/top_k
-        if (m.contains("opus-4-7") || m.contains("opus-4.7")) return true;
-        if (m.contains("opus-4-8") || m.contains("opus-4.8")) return true;
-        return false;
+        int minor = claudeOpus4Minor(m);
+        return minor == 7 || minor == 8;
     }
 
     private static String lower(String value) {
@@ -296,17 +326,68 @@ public final class OpenAiCompatibleCapabilities {
     }
 
     /**
-     * Kimi 系列 token 容忍匹配:同时检查带横线与不带横线两种形式。
-     * <p>第三方网关可能丢失横线({@code kimi-k3} → {@code kimik3}),或加前后缀({@code xkimi-k3}、{@code kimi-k3-pro})。
-     * 本方法对 {@code token} 与 {@code token 去横线} 两种形式做 contains,命中任一即返回 true。
-     * 例:token="kimi-k3" 同时匹配 {@code xkimi-k3}、{@code kimi-k3-pro}、{@code xkimik3}、{@code kimik3.1}。
+     * Kimi 系列主版本号:k 后第一个数字(k3→3,k2.6→2)。
+     * 正则 {@code kimi.*?k(\d+)} 容忍品牌词与版本号之间任意字符(含字母数字)。
+     * 未命中返回 -1。
      */
-    private static boolean containsKimiToken(String m, String token) {
-        if (m.contains(token)) {
-            return true;
+    public static int kimiMajorVersion(String m) {
+        Matcher mat = KIMI_VERSION.matcher(m);
+        if (!mat.find()) return -1;
+        try {
+            return Integer.parseInt(mat.group(1));
+        } catch (NumberFormatException e) {
+            return -1;
         }
-        String noDash = token.replace("-", "");
-        return !noDash.equals(token) && m.contains(noDash);
+    }
+
+    /**
+     * Kimi 系列次版本号:k 后主版本.次版本 中的次版本(k2.6→6,k3→-1 无次版本)。
+     * 未命中或无次版本返回 -1。
+     */
+    public static int kimiMinorVersion(String m) {
+        Matcher mat = KIMI_VERSION.matcher(m);
+        if (!mat.find()) return -1;
+        String minor = mat.group(2);
+        if (minor == null) return -1;
+        try {
+            return Integer.parseInt(minor);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * GLM 系列版本号:glm 后主.次(glm-5.2→[5,2])。
+     * 正则容忍品牌词与版本号之间任意非数字字符,覆盖 xglm-xx-5.2 等。
+     * 未命中返回 [-1,-1]。
+     */
+    public static int[] glmVersion(String m) {
+        Matcher mat = GLM_VERSION.matcher(m);
+        if (!mat.find()) return new int[]{-1, -1};
+        try {
+            int major = Integer.parseInt(mat.group(1));
+            int minor = mat.group(2) != null ? Integer.parseInt(mat.group(2)) : 0;
+            return new int[]{major, minor};
+        } catch (NumberFormatException e) {
+            return new int[]{-1, -1};
+        }
+    }
+
+    /**
+     * Qwen 系列版本号:qwen 后主.次(qwen3.8-max→[3,8])。
+     * 正则容忍品牌词与版本号之间任意非数字字符,覆盖 xqwen-xx-3.8 等。
+     * 未命中返回 [-1,-1]。
+     */
+    public static int[] qwenVersion(String m) {
+        Matcher mat = QWEN_VERSION.matcher(m);
+        if (!mat.find()) return new int[]{-1, -1};
+        try {
+            int major = Integer.parseInt(mat.group(1));
+            int minor = mat.group(2) != null ? Integer.parseInt(mat.group(2)) : 0;
+            return new int[]{major, minor};
+        } catch (NumberFormatException e) {
+            return new int[]{-1, -1};
+        }
     }
 
     /**
