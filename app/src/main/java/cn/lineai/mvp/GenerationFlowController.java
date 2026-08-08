@@ -67,8 +67,8 @@ final class GenerationFlowController {
         String formatModelFailed(String error);
     }
 
-    private static final int MAX_RETRIES = 3;
-    private static final long RETRY_DELAY_MS = 5000L;
+    private static final int MAX_RETRIES = 5;
+    private static final long RETRY_BASE_DELAY_MS = 3000L;
 
     private final ArrayList<ChatMessage> messages;
     private final ChatSessionStore chatSessionStore;
@@ -446,8 +446,16 @@ final class GenerationFlowController {
                 }
                 retryableModelStream(generationId, selectedModel, cancellationToken,
                         requestMessages, usedToolCallCount, nextAttempt, userInput);
-            }, RETRY_DELAY_MS);
+            }, retryDelayFor(nextAttempt));
         });
+    }
+
+    /**
+     * 指数退避重试延迟:第 1 次 3s,第 2 次 6s,第 3 次 12s,第 4 次 24s。
+     * 对 500/503 等服务端临时错误,指数退避比固定延迟更合理,给上游恢复时间。
+     */
+    private static long retryDelayFor(int attempt) {
+        return RETRY_BASE_DELAY_MS * (1L << (attempt - 1));
     }
 
     void handleToolReview(String state) {

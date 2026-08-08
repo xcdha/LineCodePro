@@ -147,14 +147,17 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
         String modelId = ModelContextParser.apiModelId(config);
-        // 最多 8 次尝试:温度修复(1) + effort 全档降级(max/high/medium/low 共 4) + 禁用后重试(1) + 裸请求降级(1)。
+        // 最多 10 次尝试:温度修复(1) + effort 全档降级(max/high/medium/low 共 4) + 禁用后重试(1)
+        // + 裸请求降级(1) + 5xx 服务端错误重试(最多 3 次,带指数退避)。
         // effort 降级只影响 reasoning_effort 参数,不影响 thinking 字段:kimi-k2.5/k2.6 通过
         // thinking.type=enabled/disabled 控制思考开关,与 reasoning_effort 独立。故 effort 全部
         // 被拒不发 reasoning_effort 时,模型仍发 thinking.type=enabled(思考模式),温度必须按思考模式取。
         // 裸请求降级:当遇到 HTTP 400/422 参数错误且不匹配温度/effort 模式时,移除所有可选参数
         // (thinking/reasoning_effort/tools)重试,兼容不支持这些参数的模型(如各种 flash/lite 变体)。
+        // 5xx 重试:服务端临时错误(500/501/502/503/504)在协议层带退避重试,减少冒泡到应用级。
         boolean stripOptionalParams = false;
-        for (int attempt = 0; attempt < 8; attempt++) {
+        int serverErrorRetries = 0;
+        for (int attempt = 0; attempt < 10; attempt++) {
             // 每次尝试前算出本次实际发送的 effort(resolveEffort 会沿降级链降级)。
             // 温度的思考模式跟随用户设置(userReasoningEnabled),不跟随 effort 降级:
             // effort 降级到 null 仅表示不发 reasoning_effort,但 thinking 字段仍由用户设置决定,
@@ -183,6 +186,17 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 // 裸请求降级:HTTP 400/422 参数错误且尚未 strip 时,移除可选参数重试
                 if (!stripOptionalParams && isClientParamError(msg)) {
                     stripOptionalParams = true;
+                    continue;
+                }
+                // 5xx 服务端错误:带指数退避重试(1s/2s/4s),最多 3 次,减少冒泡到应用级无脑重试
+                if (serverErrorRetries < 3 && isServerError(msg)) {
+                    serverErrorRetries++;
+                    try {
+                        Thread.sleep(1000L * serverErrorRetries * serverErrorRetries);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                     continue;
                 }
                 break;
@@ -462,6 +476,23 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             return true;
         }
         return false;
+    }
+
+    /**
+     * 判断是否为 HTTP 服务端错误(500/501/502/503/504),应带退避重试。
+     * 这些是上游临时不可用,重试有概率成功;区分于 4xx 客户端错误(重试无意义)。
+     */
+    private static boolean isServerError(String message) {
+        if (message == null || message.isEmpty()) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("http 500") || lower.contains("http 501")
+                || lower.contains("http 502") || lower.contains("http 503")
+                || lower.contains("http 504") || lower.contains("http 507")
+                || lower.contains("internal server error") || lower.contains("service unavailable")
+                || lower.contains("bad gateway") || lower.contains("gateway timeout")
+                || lower.contains("server error") || lower.contains("overloaded");
     }
 
     /**

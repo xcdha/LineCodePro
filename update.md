@@ -108,6 +108,13 @@
 - **修复** - `OpenAiCompatibleProtocol` 新增 `isClientParamError` 判断 HTTP 400/422 及通用参数错误关键词，stream 路径增加"裸请求"降级：当遇到参数错误且不匹配温度/effort 模式时，移除所有可选参数（thinking/reasoning_effort/tools）重试一次；complete 路径增加移除温度字段降级
 - **效果** - 无论什么模型、什么参数不兼容，协议层都能自动降级到最裸请求（只有 model + messages + stream），避免冒泡到应用级无脑重试
 
+### 5xx 服务端错误重试优化（500/501/503 重试体验）
+
+- **问题** - 用户反馈 500/501/503 这些服务端错误老是重试。根因：协议层不识别 5xx，直接抛出冒泡到应用级；应用级固定 5 秒间隔重试 3 次，对 503（服务过载）来说间隔太短、次数太少
+- **协议层 5xx 重试** - `OpenAiCompatibleProtocol` 新增 `isServerError` 判断 500/501/502/503/504/507 及常见错误文案（service unavailable/overloaded/bad gateway 等），stream 路径在协议层带指数退避（1s/4s/9s）重试最多 3 次，减少冒泡到应用级
+- **应用层指数退避** - `GenerationFlowController` MAX_RETRIES 从 3 提升到 5，重试延迟从固定 5s 改为指数退避（3s/6s/12s/24s），给上游更多恢复时间
+- **效果** - 协议层先内部重试 3 次（共约 14s），若仍失败冒泡到应用层再重试 5 次（共约 45s），总计约 60s 的重试窗口，大幅提升 503 临时错误的恢复概率
+
 ### 版本
 
 - 版本号升级到 `1.2.6`，versionCode 29
