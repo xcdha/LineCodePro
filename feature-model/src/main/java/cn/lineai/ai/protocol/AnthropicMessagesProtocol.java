@@ -101,19 +101,31 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
         String effort = requestOptions.getReasoningEffort();
         boolean thinkingEnabled = AiBehaviorSettings.isReasoningEnabled(effort);
         effort = AiBehaviorSettings.concreteReasoningEffort(effort);
-        int thinkingBudget = thinkingEnabled ? thinkingBudget(effort) : 0;
+        String modelId = ModelContextParser.apiModelId(config);
+        boolean adaptiveSupported = supportsAdaptiveThinking(modelId);
+        int thinkingBudget = (thinkingEnabled && !adaptiveSupported) ? thinkingBudget(effort) : 0;
         JSONObject body = new JSONObject();
-        body.put("model", ModelContextParser.apiModelId(config));
-        body.put("max_tokens", thinkingEnabled ? Math.max(4096, thinkingBudget + 1024) : 4096);
+        body.put("model", modelId);
+        body.put("max_tokens", (thinkingEnabled && !adaptiveSupported)
+                ? Math.max(4096, thinkingBudget + 1024) : 4096);
         body.put("messages", messagesJson(messages));
         body.put("stream", true);
         if (!requestOptions.getTools().isEmpty()) {
             body.put("tools", toolsJson(requestOptions.getTools()));
         }
         if (thinkingEnabled) {
-            body.put("thinking", new JSONObject()
-                    .put("type", "enabled")
-                    .put("budget_tokens", thinkingBudget));
+            if (adaptiveSupported) {
+                // Claude 4.6+ 推荐 adaptive thinking(4.7+ 拒绝 enabled+budget,返回 400);
+                // 配合 output_config.effort 控制深度。max 仅 Opus 4.6 支持,其他模型降级 high。
+                // 来源:console.anthropic.com/docs/en/build-with-claude/adaptive-thinking
+                body.put("thinking", new JSONObject().put("type", "adaptive"));
+                body.put("output_config", new JSONObject().put("effort", adaptiveEffort(modelId, effort)));
+            } else {
+                // Claude 4.5 及以下仅支持 extended thinking(enabled + budget_tokens)
+                body.put("thinking", new JSONObject()
+                        .put("type", "enabled")
+                        .put("budget_tokens", thinkingBudget));
+            }
         }
 
         String system = systemPrompt(messages);
@@ -121,6 +133,42 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
             body.put("system", system);
         }
         return body;
+    }
+
+    /**
+     * Claude 4.6+ 判定:主版本 > 4,或主版本 = 4 且次版本 >= 6。
+     * 4.6+ 推荐 adaptive thinking;4.7+ 拒绝 thinking.type=enabled。
+     * 形如 claude-opus-4-6、claude-sonnet-4-5。
+     */
+    private static boolean supportsAdaptiveThinking(String modelId) {
+        if (modelId == null || !modelId.contains("claude-")) {
+            return false;
+        }
+        String[] parts = modelId.split("-");
+        if (parts.length < 2) {
+            return false;
+        }
+        try {
+            int major = Integer.parseInt(parts[parts.length - 2]);
+            int minor = Integer.parseInt(parts[parts.length - 1].replaceAll("[^0-9].*$", ""));
+            return major > 4 || (major == 4 && minor >= 6);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /**
+     * adaptive thinking 的 effort:max 仅 Opus 4.6 支持,其他模型(含 Sonnet 4.6)传 max 会返回错误,
+     * 统一降级到 high 保证全模型兼容。low/medium/high 原样保留。
+     */
+    private static String adaptiveEffort(String modelId, String effort) {
+        if (AiBehaviorSettings.REASONING_MAX.equals(effort)) {
+            if (modelId != null && modelId.contains("opus-4-6")) {
+                return AiBehaviorSettings.REASONING_MAX;
+            }
+            return AiBehaviorSettings.REASONING_HIGH;
+        }
+        return effort;
     }
 
     private void handleSseEvent(
@@ -224,6 +272,13 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
 
     JSONArray messagesJsonForTest(List<ModelMessage> messages) throws Exception {
         return messagesJson(messages);
+    }
+
+    /**
+     * 测试专用:返回思考深度处理后的请求体,用于验证 adaptive/enabled 模式与 effort/budget 字段。
+     */
+    JSONObject requestBodyForTest(ModelConfig config, ModelRequestOptions options) throws Exception {
+        return buildRequestBody(config, new ArrayList<>(), options == null ? ModelRequestOptions.defaults() : options);
     }
 
     private JSONArray imageContentBlocks(ModelMessage message) throws Exception {

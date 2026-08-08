@@ -91,4 +91,50 @@ public final class MoonshotReasoningStrategyTest {
 
         assertEquals("all", body.getJSONObject("thinking").optString("keep"));
     }
+
+    @Test
+    public void glm52PlusSendsReasoningEffort() throws Exception {
+        // GLM-5.2+ 支持 reasoning_effort 控制推理深度,启用思考时发送
+        MoonshotReasoningStrategy strategy = new MoonshotReasoningStrategy();
+        JSONObject body = new JSONObject();
+        strategy.apply(body, context(true, "high", false, "glm-5.2"));
+
+        assertTrue(body.has("thinking"));
+        assertTrue(body.has("reasoning_effort"));
+        assertEquals("high", body.getString("reasoning_effort"));
+    }
+
+    @Test
+    public void glm46DoesNotSendReasoningEffort() throws Exception {
+        // GLM-4.x 仅支持 thinking 开关,不支持 reasoning_effort
+        MoonshotReasoningStrategy strategy = new MoonshotReasoningStrategy();
+        JSONObject body = new JSONObject();
+        strategy.apply(body, context(true, "high", false, "glm-4.6"));
+
+        assertTrue(body.has("thinking"));
+        assertFalse(body.has("reasoning_effort"));
+    }
+
+    @Test
+    public void glm52PlusOmitsReasoningEffortWhenDisabled() throws Exception {
+        MoonshotReasoningStrategy strategy = new MoonshotReasoningStrategy();
+        JSONObject body = new JSONObject();
+        strategy.apply(body, context(false, "off", false, "glm-5.2"));
+
+        assertFalse(body.has("reasoning_effort"));
+    }
+
+    @Test
+    public void glm52PlusKeepsAllEffortValues() throws Exception {
+        // GLM-5.2 接受 max/xhigh/high/medium/low/minimal/none,项目值 low/medium/high/max 均在范围内
+        MoonshotReasoningStrategy strategy = new MoonshotReasoningStrategy();
+
+        JSONObject lowBody = new JSONObject();
+        strategy.apply(lowBody, context(true, "low", false, "glm-5.2"));
+        assertEquals("low", lowBody.getString("reasoning_effort"));
+
+        JSONObject maxBody = new JSONObject();
+        strategy.apply(maxBody, context(true, "max", false, "glm-5.2"));
+        assertEquals("max", maxBody.getString("reasoning_effort"));
+    }
 }

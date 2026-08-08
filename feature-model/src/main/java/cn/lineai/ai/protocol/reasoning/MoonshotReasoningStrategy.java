@@ -36,6 +36,12 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
         if (context.isPreserveReasoning() && isGlm(base, model)) {
             body.put("clear_thinking", false);
         }
+        // GLM-5.2+ 额外支持 reasoning_effort 控制推理深度(接受 max/xhigh/high/medium/low/minimal/none);
+        // GLM-4.x 仅支持 thinking 开关,不发 reasoning_effort。
+        // 来源:docs.bigmodel.cn/cn/guide/start/concept-param(reasoning_effort 仅 GLM-5.2 及以上支持)
+        if (context.isEnabled() && isGlm52Plus(model)) {
+            body.put("reasoning_effort", glmEffort(context.getEffort()));
+        }
     }
 
     private static boolean isKimiK3(String model) {
@@ -51,6 +57,25 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
     }
 
     /**
+     * GLM-5.2+ 判定:主版本 > 5,或主版本 = 5 且次版本 >= 2。
+     * 仅 GLM-5.2 及以上支持 reasoning_effort 参数。
+     */
+    private static boolean isGlm52Plus(String model) {
+        if (model == null || !model.startsWith("glm-")) {
+            return false;
+        }
+        String version = model.substring("glm-".length());
+        String[] parts = version.split("\\.");
+        try {
+            int major = Integer.parseInt(parts[0]);
+            int minor = parts.length > 1 ? Integer.parseInt(parts[1].replaceAll("[^0-9].*$", "")) : 0;
+            return major > 5 || (major == 5 && minor >= 2);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    /**
      * kimi-k3 的 reasoning_effort 仅接受 low/high/max;medium(含 auto 归一化结果)映射到 max(k3 默认值)。
      * low/high/max 原样保留。来源:kimi 官方文档 + lobehub #17272(medium 会被 k3 拒绝)。
      */
@@ -61,5 +86,14 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
             return effort;
         }
         return AiBehaviorSettings.REASONING_MAX;
+    }
+
+    /**
+     * GLM-5.2+ 的 reasoning_effort 接受 max/xhigh/high/medium/low/minimal/none。
+     * 项目 effort 值(low/medium/high/max)均在 GLM 支持范围内,原样映射;
+     * auto 已在 context 归一化为 medium。来源:docs.bigmodel.cn reasoning_effort 参数表。
+     */
+    private static String glmEffort(String effort) {
+        return effort;
     }
 }
