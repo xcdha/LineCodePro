@@ -66,8 +66,8 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         boolean reasoningEnabled = true;
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
-        // 最多 3 次尝试:原始 → 温度修复 → effort 降级(温度和 effort 错误可能先后出现)
-        for (int attempt = 0; attempt < 3; attempt++) {
+        // 最多 2 次尝试:原始 → 温度修复(complete 路径不发 reasoning_effort,无 effort 降级)
+        for (int attempt = 0; attempt < 2; attempt++) {
             try {
                 return completeOnce(config, messages, forcedTemperature, reasoningEnabled);
             } catch (ModelCompletionException e) {
@@ -78,10 +78,6 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 if (hard != null && config != null && config.getTemperature() != hard) {
                     HardTemperatureCache.put(ModelContextParser.apiModelId(config), reasoningEnabled, hard);
                     forcedTemperature = hard;
-                    continue;
-                }
-                // effort 错误:升级缓存限制(HIGH_ONLY→DISABLED),重试时 applyReasoningRequest 自动读缓存
-                if (handleReasoningEffortError(config, msg)) {
                     continue;
                 }
                 break;
@@ -137,20 +133,28 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         boolean reasoningEnabled = AiBehaviorSettings.isReasoningEnabled(requestOptions.getReasoningEffort());
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
-        // 最多 3 次尝试:原始 → 温度修复 → effort 降级(温度和 effort 错误可能先后出现)
-        for (int attempt = 0; attempt < 3; attempt++) {
+        String modelId = ModelContextParser.apiModelId(config);
+        // 最多 4 次尝试:原始 → 温度修复 → effort 逐档降级(max→high→medium→low→禁用)
+        for (int attempt = 0; attempt < 4; attempt++) {
+            // 每次尝试前算出本次实际发送的 effort(resolveEffort 会沿降级链降级)
+            String currentEffort = reasoningEnabled
+                    ? ReasoningEffortCache.resolveEffort(modelId, AiBehaviorSettings.concreteReasoningEffort(requestOptions.getReasoningEffort()))
+                    : null;
             try {
                 return streamOnce(config, messages, callback, cancellationToken, options, forcedTemperature, reasoningEnabled);
             } catch (ModelCompletionException e) {
                 lastError = e;
                 String msg = e.getMessage();
+                // 温度错误:解析硬性温度,写缓存,重试时用 forcedTemperature
                 Double hard = parseHardTemperature(msg);
                 if (hard != null && config != null && config.getTemperature() != hard) {
-                    HardTemperatureCache.put(ModelContextParser.apiModelId(config), reasoningEnabled, hard);
+                    HardTemperatureCache.put(modelId, reasoningEnabled, hard);
                     forcedTemperature = hard;
                     continue;
                 }
-                if (handleReasoningEffortError(config, msg)) {
+                // effort 错误:记录当前 effort 被拒,下次 resolveEffort 自动降级到下一档
+                if (currentEffort != null && isReasoningEffortError(msg)) {
+                    ReasoningEffortCache.markRejected(modelId, currentEffort);
                     continue;
                 }
                 break;
@@ -394,18 +398,6 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
     }
 
     /**
-     * 处理 reasoning_effort 相关错误:升级缓存限制级别,返回 true 表示已降级可以重试。
-     * 三级降级:正常→HIGH_ONLY(effort降级high)→DISABLED(不发参数)。
-     */
-    private static boolean handleReasoningEffortError(ModelConfig config, String message) {
-        if (config == null || !isReasoningEffortError(message)) {
-            return false;
-        }
-        String modelId = ModelContextParser.apiModelId(config);
-        return ReasoningEffortCache.upgradeRestriction(modelId);
-    }
-
-    /**
      * 返回应当发送的 temperature 值;返回 {@code null} 表示不发送该字段,让上游使用模型默认值。
      * <p>优先级:用户自定义温度 > 运行时缓存(从上游错误中学到的硬性温度)> 内置硬性温度表 > 不传字段。
      * <p>用户未设置温度时,先查进程内缓存(已遇过 "only X is allowed" 的模型直接复用,零试错);
@@ -438,21 +430,15 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         String effort = options.getReasoningEffort();
         boolean enabled = AiBehaviorSettings.isReasoningEnabled(effort);
         String concrete = AiBehaviorSettings.concreteReasoningEffort(effort);
-        // 运行时自适应:缓存标记不支持 reasoning_effort 的未知模型
-        // - DISABLED:模型完全不支持 reasoning_effort,不发该参数。
-        //   但用户显式选 high(最通用的值)时重置缓存重新探测,给模型更新留余地。
-        // - HIGH_ONLY:effort 降级到 high(high 是所有支持 reasoning_effort 的模型都接受的通用值)。
-        //   用户已选 high 时不重复降级。
-        if (ReasoningEffortCache.isDisabled(model)) {
-            if (enabled && AiBehaviorSettings.REASONING_HIGH.equals(concrete)) {
-                ReasoningEffortCache.reset(model);
-            } else {
+        // 运行时自适应:从用户选的档位开始,沿降级链(max→high→medium→low)找第一个未被拒的档位。
+        // 用户调整优先:用户选的档位未被拒就直接用,保证 AI 行为设置调整生效;
+        // 已被拒则降到下一档;全部被拒返回 null,不发 reasoning_effort 参数。
+        if (enabled) {
+            concrete = ReasoningEffortCache.resolveEffort(model, concrete);
+            if (concrete == null) {
+                // 模型所有档位都被拒,完全不支持 reasoning_effort,不发参数
                 return;
             }
-        }
-        if (enabled && ReasoningEffortCache.isHighOnly(model)
-                && !AiBehaviorSettings.REASONING_HIGH.equals(concrete)) {
-            concrete = AiBehaviorSettings.REASONING_HIGH;
         }
         ReasoningRequestContext context = new ReasoningRequestContext(
                 enabled, concrete, options.isPreserveReasoning(), base, model, thinkingBudget(concrete));
@@ -546,60 +532,101 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
     /**
      * 运行时推理强度自适应缓存:对未在内置表/strategy 中的未知模型,从上游错误中学习其对
-     * {@code reasoning_effort} 的支持情况,三级降级:
-     * <ol>
-     *   <li>正常(不缓存):按用户选的 effort 发送(DefaultReasoningStrategy 已把 max→high 保守降级)</li>
-     *   <li>{@link #LEVEL_HIGH_ONLY}:effort 被拒,降级到 high(high 是所有支持 reasoning_effort 的模型都接受的通用值)</li>
-     *   <li>{@link #LEVEL_DISABLED}:high 也被拒,说明模型完全不支持 reasoning_effort 参数,不发任何思考参数</li>
-     * </ol>
-     * 缓存命中后后续请求零试错。最多 2 次试错即可学到稳定限制。
+     * {@code reasoning_effort} 各档位的支持情况。
+     * <p>记录"已知被拒绝的 effort 集合",支持六档逐档降级:
+     * {@code max → high → medium → low → 禁用}。每次请求从用户选的档位开始,
+     * 若该档位在拒绝集合中则降到下一档,直到找到模型支持的档位或全部被拒(禁用参数)。
+     * <p>用户调整优先:用户选某档时,先用该档(若未被拒),被拒再降级——不预先降级,
+     * 保证用户在 AI 行为设置里的调整能生效。缓存命中后后续请求零试错。
      */
     static final class ReasoningEffortCache {
-        static final String LEVEL_HIGH_ONLY = "HIGH_ONLY";
-        static final String LEVEL_DISABLED = "DISABLED";
+        /** effort 降级链:从高到低。max→high→medium→low,low 再被拒则禁用参数 */
+        private static final String[] DOWNGRADE_CHAIN = {
+                AiBehaviorSettings.REASONING_MAX,
+                AiBehaviorSettings.REASONING_HIGH,
+                AiBehaviorSettings.REASONING_MEDIUM,
+                AiBehaviorSettings.REASONING_LOW
+        };
 
-        private static final java.util.concurrent.ConcurrentMap<String, String> CACHE =
+        private static final java.util.concurrent.ConcurrentMap<String, java.util.Set<String>> CACHE =
                 new java.util.concurrent.ConcurrentHashMap<>();
 
-        static String get(String modelId) {
-            if (modelId == null || modelId.isEmpty()) {
-                return null;
+        /**
+         * 记录某 effort 档位被上游拒绝。
+         */
+        static void markRejected(String modelId, String effort) {
+            if (modelId == null || modelId.isEmpty() || effort == null) {
+                return;
             }
-            return CACHE.get(modelId.toLowerCase(Locale.ROOT));
-        }
-
-        static boolean isDisabled(String modelId) {
-            return LEVEL_DISABLED.equals(get(modelId));
-        }
-
-        static boolean isHighOnly(String modelId) {
-            return LEVEL_HIGH_ONLY.equals(get(modelId));
+            CACHE.computeIfAbsent(modelId.toLowerCase(Locale.ROOT),
+                    k -> java.util.concurrent.ConcurrentHashMap.newKeySet()).add(effort);
         }
 
         /**
-         * 收到 effort 相关错误后升级限制级别:正常→HIGH_ONLY→DISABLED。
-         * @return true 表示升级成功可以重试;false 表示已到 DISABLED 无法再降级
+         * 该 effort 档位是否已被拒绝。
          */
-        static boolean upgradeRestriction(String modelId) {
+        static boolean isRejected(String modelId, String effort) {
+            if (modelId == null || modelId.isEmpty() || effort == null) {
+                return false;
+            }
+            java.util.Set<String> rejected = CACHE.get(modelId.toLowerCase(Locale.ROOT));
+            return rejected != null && rejected.contains(effort);
+        }
+
+        /**
+         * 所有已知档位是否都被拒绝(模型完全不支持 reasoning_effort)。
+         */
+        static boolean isFullyDisabled(String modelId) {
             if (modelId == null || modelId.isEmpty()) {
                 return false;
             }
-            String key = modelId.toLowerCase(Locale.ROOT);
-            String current = CACHE.get(key);
-            if (current == null) {
-                CACHE.put(key, LEVEL_HIGH_ONLY);
-                return true;
+            java.util.Set<String> rejected = CACHE.get(modelId.toLowerCase(Locale.ROOT));
+            if (rejected == null) {
+                return false;
             }
-            if (LEVEL_HIGH_ONLY.equals(current)) {
-                CACHE.put(key, LEVEL_DISABLED);
-                return true;
+            for (String e : DOWNGRADE_CHAIN) {
+                if (!rejected.contains(e)) {
+                    return false;
+                }
             }
-            return false;
+            return true;
         }
 
         /**
-         * 清除指定模型的缓存限制,允许重新探测。用户显式选 high(最通用值)时调用,
-         * 给模型更新后恢复 reasoning_effort 支持留余地。
+         * 从用户选的 effort 开始,沿降级链找到第一个未被拒绝的档位。
+         * @return 可用的 effort;若全部被拒返回 null(应禁用 reasoning_effort 参数)
+         */
+        static String resolveEffort(String modelId, String requestedEffort) {
+            if (modelId == null || modelId.isEmpty() || requestedEffort == null) {
+                return requestedEffort;
+            }
+            // 用户选的档位未被拒,直接用(用户调整优先)
+            if (!isRejected(modelId, requestedEffort)) {
+                return requestedEffort;
+            }
+            // 用户选的档位被拒,沿降级链找下一个可用档位
+            int start = indexOfEffort(requestedEffort);
+            if (start >= 0) {
+                for (int i = start + 1; i < DOWNGRADE_CHAIN.length; i++) {
+                    if (!isRejected(modelId, DOWNGRADE_CHAIN[i])) {
+                        return DOWNGRADE_CHAIN[i];
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static int indexOfEffort(String effort) {
+            for (int i = 0; i < DOWNGRADE_CHAIN.length; i++) {
+                if (DOWNGRADE_CHAIN[i].equals(effort)) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        /**
+         * 清除指定模型的缓存,允许重新探测。用户切换模型或显式想重新探测时调用。
          */
         static void reset(String modelId) {
             if (modelId == null || modelId.isEmpty()) {
