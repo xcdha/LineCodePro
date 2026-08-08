@@ -69,16 +69,19 @@ public final class OpenAiCompatibleCapabilitiesTest {
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o3-mini", false));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o4-mini", true));
 
-        // gpt-5 初代/mini/nano/pro/codex:不支持 none,永远不接受 temperature → 必须省略
+        // gpt-5 初代/mini/nano/pro/codex:不支持 none,永远处于思考模式 → 思考模式返回 1.0
         // 来源:community.openai.com/t/1371738 兼容性矩阵、braintrust KB
+        // (思考模式官方只接受 temperature=1,与 o 系列一致;
+        //  非思考模式仅支持 none 的模型接受用户温度;不支持 none 的模型非思考模式必须省略)
         Double omit = OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT;
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", true));
         assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", false));
         assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-mini", false));
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-nano", true));
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-pro", true));
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-codex", true));
-        // gpt-5.1-codex-max / gpt-5.2-pro:不支持 none,非思考模式也必须省略
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-nano", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-pro", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-codex", true));
+        // gpt-5.1-codex-max / gpt-5.2-pro:不支持 none,永远思考模式
+        // 思考模式返回 1.0;非思考模式(实际不会发生,模型强制思考)必须省略
         assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex-max", false));
         assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-pro", false));
     }
@@ -86,27 +89,27 @@ public final class OpenAiCompatibleCapabilitiesTest {
     @Test
     public void knownHardTemperatureForGpt5xMatrixFromOpenAI() {
         // GPT-5.x 精确矩阵(来源:community.openai.com/t/1371738 兼容性矩阵、braintrust KB):
-        //   思考模式(effort != none):全系列不接受 temperature → MUST_OMIT
+        //   思考模式(effort != none):全系列官方只接受 temperature=1 → 返回 1.0(与 o 系列一致)
         //   非思考模式(effort=none):gpt-5.x(x>=1) 接受用户温度 → null
         Double omit = OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT;
         // gpt-5.1 家族(支持 none)
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1", false));
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex", false));
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex-mini", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex-mini", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex-mini", false));
         // gpt-5.2 家族(支持 none)
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", false));
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-codex", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-codex", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-codex", false));
         // gpt-5.5 / 5.6(支持 none)
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.5", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.5", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.5", false));
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6", false));
-        assertEquals(omit, OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6-sol", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6-sol", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6-sol", false));
     }
 

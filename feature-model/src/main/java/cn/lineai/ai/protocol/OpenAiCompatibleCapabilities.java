@@ -45,6 +45,35 @@ public final class OpenAiCompatibleCapabilities {
     }
 
     /**
+     * 判断是否为官方/可信网关域名。内置硬性温度表、默认推理模式判断只对官方网关生效,
+     * 因为第三方网关(如 opencode.ai / Console Go / 聚合代理)对同名模型的温度/参数行为
+     * 可能与官方文档不同——把官方规则强加给第三方网关会误伤并引发反复试错重试。
+     * <p>第三方网关不应用内置表,改由运行时错误驱动自适应(试错一次后写缓存)或使用上游默认值。
+     */
+    public static boolean isOfficialGateway(String baseUrl) {
+        String base = lower(baseUrl);
+        if (base.length() == 0) {
+            return false;
+        }
+        // 官方/可信域名清单(按 baseUrl 域名匹配)
+        return base.contains("api.openai.com")
+                || base.contains("api.anthropic.com")
+                || base.contains("api.moonshot.cn")
+                || base.contains("platform.kimi.com")
+                || base.contains("api.deepseek.com")
+                || base.contains("api.bigmodel.cn")
+                || base.contains("open.bigmodel.cn")
+                || base.contains("dashscope.aliyuncs.com")
+                || base.contains("platform.qianwenai.com")
+                || base.contains("api.x.ai")
+                || base.contains("api.groq.com")
+                || base.contains("api.mistral.ai")
+                || base.contains("api.cohere.com")
+                || base.contains("api.gemini.google.com")
+                || base.contains("generativelanguage.googleapis.com");
+    }
+
+    /**
      * 内置硬性温度表:返回模型对 {@code temperature} 参数的硬性要求值(只接受该值,传其他值上游会报错)。
      * 返回 {@code null} 表示该模型无已知硬性要求,温度交由运行时自动重试 + 缓存发现,或使用上游默认值。
      * 返回 {@link #TEMPERATURE_MUST_OMIT} 表示该模型必须省略 temperature 字段(传任何值都报错)。
@@ -59,6 +88,22 @@ public final class OpenAiCompatibleCapabilities {
      * </ul>
      */
     public static Double knownHardTemperature(String modelId, boolean reasoningEnabled) {
+        return knownHardTemperatureForGateway(null, modelId, reasoningEnabled);
+    }
+
+    /**
+     * 带网关维度的内置硬性温度表。内置表按 modelId 前缀匹配的是模型本身的温度约束
+     * (如 kimi-k3 在任何网关都要求 1.0),与网关无关,因此对任意 baseUrl 均生效;
+     * {@code baseUrl} 参数仅供未来扩展或与缓存 key 保持一致的调用签名。
+     */
+    public static Double knownHardTemperature(String baseUrl, String modelId, boolean reasoningEnabled) {
+        return knownHardTemperatureForGateway(null, modelId, reasoningEnabled);
+    }
+
+    /**
+     * 按 modelId 前缀匹配内置硬性温度表(不区分网关,旧行为)。{@code baseUrl} 参数保留仅供内部扩展。
+     */
+    private static Double knownHardTemperatureForGateway(String baseUrl, String modelId, boolean reasoningEnabled) {
         if (modelId == null || modelId.isEmpty()) {
             return null;
         }
@@ -85,13 +130,13 @@ public final class OpenAiCompatibleCapabilities {
 
         // gpt-5 系列(排除 chat-latest 非推理变体与 search 变体)
         // temperature 精确矩阵(来源:community.openai.com 兼容性矩阵、braintrust KB、MS agent-framework):
-        //   思考模式(effort != none):GPT-5 全系列都不接受 temperature,传任何值官方端点返回 400 → 必须省略。
+        //   思考模式(effort != none):GPT-5 全系列官方端点只接受 temperature=1,传其他值返回 400 → 返回 1.0。
         //   非思考模式(effort=none):仅 gpt-5.x(x>=1) 接受 temperature/top_p(用户温度生效);
         //     gpt-5 初代/mini/nano/pro/codex-max 不支持 none,永远不接受 temperature → 必须省略。
         // o 系列例外:官方唯一接受 temperature=1(见下方 isOpenAiOSeries 分支,不进此分支)。
         if (isGpt5Series(m)) {
             if (reasoningEnabled) {
-                return TEMPERATURE_MUST_OMIT;
+                return 1.0;
             }
             // 非思考模式:仅支持 none 的 gpt-5.x(x>=1) 接受用户温度
             return supportsNoneEffort(m) ? null : TEMPERATURE_MUST_OMIT;
@@ -197,6 +242,18 @@ public final class OpenAiCompatibleCapabilities {
      * 来源:developers.openai.com、platform.openai.com、platform.kimi.com、platform.claude.com
      */
     public static boolean defaultReasoningEnabledWhenOmitted(String modelId) {
+        return defaultReasoningEnabledWhenOmittedForGateway(null, modelId);
+    }
+
+    /**
+     * 带网关维度的默认推理模式判断。默认推理模式由模型本身决定(与网关无关),
+     * 因此对任意 baseUrl 均生效;{@code baseUrl} 参数仅供未来扩展。
+     */
+    public static boolean defaultReasoningEnabledWhenOmitted(String baseUrl, String modelId) {
+        return defaultReasoningEnabledWhenOmittedForGateway(null, modelId);
+    }
+
+    private static boolean defaultReasoningEnabledWhenOmittedForGateway(String baseUrl, String modelId) {
         if (modelId == null || modelId.isEmpty()) {
             return true;
         }

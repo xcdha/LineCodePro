@@ -170,7 +170,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             // effort 降级到 null 仅表示不发 reasoning_effort,但 thinking 字段仍由用户设置决定,
             // 因此温度的 reasoningEnabled 始终等于 userReasoningEnabled,与 applyReasoningRequest 一致。
             String currentEffort = userReasoningEnabled
-                    ? ReasoningEffortCache.resolveEffort(modelId, AiBehaviorSettings.concreteReasoningEffort(requestOptions.getReasoningEffort()))
+                    ? ReasoningEffortCache.resolveEffort(config.getBaseUrl(), modelId, AiBehaviorSettings.concreteReasoningEffort(requestOptions.getReasoningEffort()))
                     : null;
             boolean effectiveReasoningEnabled = userReasoningEnabled;
             try {
@@ -566,11 +566,12 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         String modelId = ModelContextParser.apiModelId(config);
         // 硬性温度模型优先:缓存/内置表命中时直接覆盖用户填的温度,零试错。
         // 这些模型只接受固定温度,用户填其他值必然失败,覆盖是正确行为。
-        Double cached = HardTemperatureCache.get(modelId, reasoningEnabled);
+        // 缓存/内置表均按 "网关 + 模型" 维度区分,避免切换模型(同 modelId 不同网关)串缓存误伤。
+        Double cached = HardTemperatureCache.get(config.getBaseUrl(), modelId, reasoningEnabled);
         if (cached != null) {
             return cached;
         }
-        Double known = OpenAiCompatibleCapabilities.knownHardTemperature(modelId, reasoningEnabled);
+        Double known = OpenAiCompatibleCapabilities.knownHardTemperature(config.getBaseUrl(), modelId, reasoningEnabled);
         if (known != null) {
             // 内置表可能返回 TEMPERATURE_MUST_OMIT(search 变体必须省略温度)
             return known;
@@ -595,7 +596,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         // 用户调整优先:用户选的档位未被拒就直接用,保证 AI 行为设置调整生效;
         // 已被拒则降到下一档;全部被拒返回 null,不发 reasoning_effort 参数。
         if (enabled) {
-            concrete = ReasoningEffortCache.resolveEffort(model, concrete);
+            concrete = ReasoningEffortCache.resolveEffort(config.getBaseUrl(), model, concrete);
             if (concrete == null) {
                 // 模型所有档位都被拒,完全不支持 reasoning_effort,不发参数
                 return;
@@ -682,31 +683,49 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 new java.util.concurrent.ConcurrentHashMap<>();
 
         static Double get(String modelId, boolean reasoningEnabled) {
+            return get(null, modelId, reasoningEnabled);
+        }
+
+        static Double get(String baseUrl, String modelId, boolean reasoningEnabled) {
             if (modelId == null || modelId.isEmpty()) {
                 return null;
             }
-            CachedTemperature c = CACHE.get(cacheKey(modelId, reasoningEnabled));
+            Double value = getIfPresent(cacheKey(baseUrl, modelId, reasoningEnabled));
+            if (value != null) {
+                return value;
+            }
+            // 回退:无网关维度的全局缓存(兼容旧版本预置的缓存与测试预置数据)
+            return getIfPresent(cacheKey(null, modelId, reasoningEnabled));
+        }
+
+        private static Double getIfPresent(String key) {
+            CachedTemperature c = CACHE.get(key);
             if (c == null) {
                 return null;
             }
             // TTL 过期:移除并返回 null,触发重新探测(模型可能已更新支持新温度值)
             if (System.currentTimeMillis() - c.timestamp > TTL_MS) {
-                CACHE.remove(cacheKey(modelId, reasoningEnabled), c);
+                CACHE.remove(key, c);
                 return null;
             }
             return c.temperature;
         }
 
         static void put(String modelId, boolean reasoningEnabled, double temperature) {
+            put(null, modelId, reasoningEnabled, temperature);
+        }
+
+        static void put(String baseUrl, String modelId, boolean reasoningEnabled, double temperature) {
             if (modelId == null || modelId.isEmpty()) {
                 return;
             }
-            CACHE.put(cacheKey(modelId, reasoningEnabled),
+            CACHE.put(cacheKey(baseUrl, modelId, reasoningEnabled),
                     new CachedTemperature(temperature, System.currentTimeMillis()));
         }
 
-        private static String cacheKey(String modelId, boolean reasoningEnabled) {
-            return modelId.toLowerCase(Locale.ROOT) + ":" + (reasoningEnabled ? "think" : "nothink");
+        private static String cacheKey(String baseUrl, String modelId, boolean reasoningEnabled) {
+            String base = baseUrl == null ? "" : baseUrl.toLowerCase(Locale.ROOT);
+            return base + "|" + modelId.toLowerCase(Locale.ROOT) + ":" + (reasoningEnabled ? "think" : "nothink");
         }
 
         static void clearForTest() {
@@ -740,34 +759,51 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         private static final java.util.concurrent.ConcurrentMap<String, Long> REJECTED =
                 new java.util.concurrent.ConcurrentHashMap<>();
 
-        private static String rejectionKey(String modelId, String effort) {
-            return modelId.toLowerCase(Locale.ROOT) + ":" + effort;
+        private static String rejectionKey(String baseUrl, String modelId, String effort) {
+            String base = baseUrl == null ? "" : baseUrl.toLowerCase(Locale.ROOT);
+            return base + "|" + modelId.toLowerCase(Locale.ROOT) + ":" + effort;
         }
 
         /**
          * 记录某 effort 档位被上游拒绝。
          */
         static void markRejected(String modelId, String effort) {
+            markRejected(null, modelId, effort);
+        }
+
+        static void markRejected(String baseUrl, String modelId, String effort) {
             if (modelId == null || modelId.isEmpty() || effort == null) {
                 return;
             }
-            REJECTED.put(rejectionKey(modelId, effort), System.currentTimeMillis());
+            REJECTED.put(rejectionKey(baseUrl, modelId, effort), System.currentTimeMillis());
         }
 
         /**
          * 该 effort 档位是否已被拒绝(且未过 TTL)。
          */
         static boolean isRejected(String modelId, String effort) {
+            return isRejected(null, modelId, effort);
+        }
+
+        static boolean isRejected(String baseUrl, String modelId, String effort) {
             if (modelId == null || modelId.isEmpty() || effort == null) {
                 return false;
             }
-            Long ts = REJECTED.get(rejectionKey(modelId, effort));
+            if (isRejectedAt(rejectionKey(baseUrl, modelId, effort))) {
+                return true;
+            }
+            // 回退:无网关维度的全局缓存(兼容旧版本预置的缓存与测试预置数据)
+            return isRejectedAt(rejectionKey(null, modelId, effort));
+        }
+
+        private static boolean isRejectedAt(String key) {
+            Long ts = REJECTED.get(key);
             if (ts == null) {
                 return false;
             }
             // TTL 过期:移除并返回 false,允许重新探测(模型可能已更新支持该档位)
             if (System.currentTimeMillis() - ts > TTL_MS) {
-                REJECTED.remove(rejectionKey(modelId, effort), ts);
+                REJECTED.remove(key, ts);
                 return false;
             }
             return true;
@@ -777,11 +813,15 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
          * 所有已知档位是否都被拒绝(模型完全不支持 reasoning_effort)。
          */
         static boolean isFullyDisabled(String modelId) {
+            return isFullyDisabled(null, modelId);
+        }
+
+        static boolean isFullyDisabled(String baseUrl, String modelId) {
             if (modelId == null || modelId.isEmpty()) {
                 return false;
             }
             for (String e : DOWNGRADE_CHAIN) {
-                if (!isRejected(modelId, e)) {
+                if (!isRejected(baseUrl, modelId, e)) {
                     return false;
                 }
             }
@@ -793,18 +833,22 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
          * @return 可用的 effort;若全部被拒返回 null(应禁用 reasoning_effort 参数)
          */
         static String resolveEffort(String modelId, String requestedEffort) {
+            return resolveEffort(null, modelId, requestedEffort);
+        }
+
+        static String resolveEffort(String baseUrl, String modelId, String requestedEffort) {
             if (modelId == null || modelId.isEmpty() || requestedEffort == null) {
                 return requestedEffort;
             }
             // 用户选的档位未被拒,直接用(用户调整优先)
-            if (!isRejected(modelId, requestedEffort)) {
+            if (!isRejected(baseUrl, modelId, requestedEffort)) {
                 return requestedEffort;
             }
             // 用户选的档位被拒,沿降级链找下一个可用档位
             int start = indexOfEffort(requestedEffort);
             if (start >= 0) {
                 for (int i = start + 1; i < DOWNGRADE_CHAIN.length; i++) {
-                    if (!isRejected(modelId, DOWNGRADE_CHAIN[i])) {
+                    if (!isRejected(baseUrl, modelId, DOWNGRADE_CHAIN[i])) {
                         return DOWNGRADE_CHAIN[i];
                     }
                 }
@@ -828,8 +872,8 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             if (modelId == null || modelId.isEmpty()) {
                 return;
             }
-            String prefix = modelId.toLowerCase(Locale.ROOT) + ":";
-            REJECTED.keySet().removeIf(k -> k.startsWith(prefix));
+            String prefix = "|" + modelId.toLowerCase(Locale.ROOT) + ":";
+            REJECTED.keySet().removeIf(k -> k.endsWith(prefix) || k.contains(prefix));
         }
 
         static void clearForTest() {
