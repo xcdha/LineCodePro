@@ -185,6 +185,18 @@ final class ChatInteractionController {
             return;
         }
         host.ensureCurrentConversation();
+        ModelConfig selectedModel = modelRepository.getSelectedModel();
+        String currentModelId = selectedModel != null ? selectedModel.getModelId() : "";
+        // 先插入切换通知(在用户消息之前),这样通知在消息上方,表示"切换了模型,然后用户发了消息",
+        // 不会突兀地出现在消息下面。from=上次发消息的模型,准确无误。
+        if (lastMessageModelId.length() > 0 && currentModelId.length() > 0
+                && !lastMessageModelId.equals(currentModelId)) {
+            messages.add(ChatMessage.modelSwitchNotice(host.nextId(), lastMessageModelId, currentModelId));
+        }
+        if (currentModelId.length() > 0) {
+            lastMessageModelId = currentModelId;
+        }
+        // 再插入用户消息
         String userContent = composeUserContent(trimmed, safeAttachments);
         ChatMessage userMessage = new ChatMessage(
                 host.nextId(), ChatMessage.Role.USER, userContent, "",
@@ -195,7 +207,6 @@ final class ChatInteractionController {
                 "", rawInputJson, safeAttachments);
         messages.add(userMessage);
         host.persistCurrentConversation();
-        ModelConfig selectedModel = modelRepository.getSelectedModel();
         if (selectedModel == null) {
             messages.add(new ChatMessage(host.nextId(), ChatMessage.Role.ASSISTANT,
                     "还没有可用模型。请进入 设置 → 模型管理 → 添加模型，保存后再发送消息。",
@@ -204,13 +215,6 @@ final class ChatInteractionController {
             host.render();
             return;
         }
-
-        String currentModelId = selectedModel.getModelId();
-        if (lastMessageModelId.length() > 0 && !lastMessageModelId.equals(currentModelId)) {
-            messages.add(ChatMessage.modelSwitchNotice(host.nextId(), lastMessageModelId, currentModelId));
-            host.persistCurrentConversation();
-        }
-        lastMessageModelId = currentModelId;
 
         int generationId = chatSessionStore.nextGenerationId();
         ModelCancellationToken cancellationToken = new ModelCancellationToken();
@@ -315,22 +319,14 @@ final class ChatInteractionController {
     }
 
     /**
-     * 快速切换模型时调用:如果当前已有消息且新模型与上次发消息的模型不同,
-     * 立即插入切换通知(此时 from 是真正生成上一条消息的模型,准确无误),
-     * 并更新 lastMessageModelId。这样后续发消息时不会再重复插入通知。
+     * 快速切换模型时调用:仅记录切换意图,不插入通知。
+     * 切换通知在 dispatchMessage 时插入(在用户消息之前),from=上次发消息的模型,
+     * 这样通知和对话消息一起出现,不会"无缘无故"单独冒出来。
      */
     void onModelQuickSwitched(String newModelId) {
-        if (newModelId == null || newModelId.length() == 0) {
-            return;
-        }
-        if (chatSessionStore.isStreaming()) {
-            return;
-        }
-        if (lastMessageModelId.length() > 0 && !lastMessageModelId.equals(newModelId)) {
-            messages.add(ChatMessage.modelSwitchNotice(host.nextId(), lastMessageModelId, newModelId));
-            host.persistCurrentConversation();
-        }
-        lastMessageModelId = newModelId;
+        // 不更新 lastMessageModelId,不插入通知。
+        // dispatchMessage 时 lastMessageModelId 仍是上次发消息的模型,
+        // 若与当前模型不同则插入通知,确保 from 准确且通知出现在对话上下文中。
     }
 
     private ArrayList<InputAttachment> sanitizeAttachments(List<InputAttachment> rawAttachments) {
