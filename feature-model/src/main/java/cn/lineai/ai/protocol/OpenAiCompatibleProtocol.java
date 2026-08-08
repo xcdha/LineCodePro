@@ -157,7 +157,14 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         // 5xx 重试:服务端临时错误(500/501/502/503/504)在协议层带退避重试,减少冒泡到应用级。
         boolean stripOptionalParams = false;
         int serverErrorRetries = 0;
-        for (int attempt = 0; attempt < 10; attempt++) {
+        // BUG-1 修复:用包装 callback 追踪是否已发送 delta。流中途出错(已发 delta)时,
+        // 不能在协议层重试(会导致重复输出),应直接冒泡到应用层(应用层会移除失败消息再重试)。
+        DeltaTrackingCallback trackingCallback = new DeltaTrackingCallback(callback);
+        for (int attempt = 0; attempt < 8; attempt++) {
+            // BUG-3 修复:每次尝试前检查取消,避免取消后仍静默重试
+            if (cancellationToken != null && cancellationToken.isCancelled()) {
+                break;
+            }
             // 每次尝试前算出本次实际发送的 effort(resolveEffort 会沿降级链降级)。
             // 温度的思考模式跟随用户设置(userReasoningEnabled),不跟随 effort 降级:
             // effort 降级到 null 仅表示不发 reasoning_effort,但 thinking 字段仍由用户设置决定,
@@ -167,13 +174,14 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     : null;
             boolean effectiveReasoningEnabled = userReasoningEnabled;
             try {
-                return streamOnce(config, messages, callback, cancellationToken, options, forcedTemperature, effectiveReasoningEnabled, stripOptionalParams);
+                return streamOnce(config, messages, trackingCallback, cancellationToken, options, forcedTemperature, effectiveReasoningEnabled, stripOptionalParams);
             } catch (ModelCompletionException e) {
                 lastError = e;
                 String msg = e.getMessage();
                 // 温度错误:解析硬性温度,按本次实际思考模式写缓存,重试时用 forcedTemperature
+                // BUG-4 修复:用 forcedTemperature 判断避免重复命中(而非 config.getTemperature())
                 Double hard = parseHardTemperature(msg);
-                if (hard != null && config != null && config.getTemperature() != hard) {
+                if (hard != null && (forcedTemperature == null || forcedTemperature != hard.doubleValue())) {
                     HardTemperatureCache.put(modelId, effectiveReasoningEnabled, hard);
                     forcedTemperature = hard;
                     continue;
@@ -184,12 +192,15 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                     continue;
                 }
                 // 裸请求降级:HTTP 400/422 参数错误且尚未 strip 时,移除可选参数重试
-                if (!stripOptionalParams && isClientParamError(msg)) {
+                // BUG-6 修复:仅在未发 delta 时 strip(参数错误通常在建连阶段,未发 delta)
+                if (!stripOptionalParams && !trackingCallback.hasDelta() && isClientParamError(msg)) {
                     stripOptionalParams = true;
+                    trackingCallback.reset();
                     continue;
                 }
-                // 5xx 服务端错误:带指数退避重试(1s/2s/4s),最多 3 次,减少冒泡到应用级无脑重试
-                if (serverErrorRetries < 3 && isServerError(msg)) {
+                // 5xx 服务端错误:带指数退避重试(1s/4s/9s),最多 2 次,减少冒泡到应用级
+                // BUG-1 修复:仅在未发 delta 时重试(流中途出错已发 delta 则冒泡到应用层)
+                if (serverErrorRetries < 2 && !trackingCallback.hasDelta() && isServerError(msg)) {
                     serverErrorRetries++;
                     try {
                         Thread.sleep(1000L * serverErrorRetries * serverErrorRetries);
@@ -197,12 +208,50 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                         Thread.currentThread().interrupt();
                         break;
                     }
+                    trackingCallback.reset();
                     continue;
                 }
                 break;
             }
         }
         throw lastError;
+    }
+
+    /**
+     * 包装 callback,追踪是否已发送过 delta。
+     * 流中途出错(已发 delta)时,协议层不能重试(会导致重复输出),应冒泡到应用层。
+     */
+    private static final class DeltaTrackingCallback implements ModelStreamCallback {
+        private final ModelStreamCallback delegate;
+        private volatile boolean deltaSent;
+
+        DeltaTrackingCallback(ModelStreamCallback delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void onTextDelta(String delta) {
+            if (delta != null && !delta.isEmpty()) {
+                deltaSent = true;
+            }
+            delegate.onTextDelta(delta);
+        }
+
+        @Override
+        public void onReasoningDelta(String delta) {
+            if (delta != null && !delta.isEmpty()) {
+                deltaSent = true;
+            }
+            delegate.onReasoningDelta(delta);
+        }
+
+        boolean hasDelta() {
+            return deltaSent;
+        }
+
+        void reset() {
+            deltaSent = false;
+        }
     }
 
     private ModelCompletionResponse streamOnce(
