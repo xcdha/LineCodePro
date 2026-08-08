@@ -115,6 +115,14 @@
 - **应用层指数退避** - `GenerationFlowController` MAX_RETRIES 从 3 提升到 5，重试延迟从固定 5s 改为指数退避（3s/6s/12s/24s），给上游更多恢复时间
 - **效果** - 协议层先内部重试 3 次（共约 14s），若仍失败冒泡到应用层再重试 5 次（共约 45s），总计约 60s 的重试窗口，大幅提升 503 临时错误的恢复概率
 
+### 重试链路系统性修复（重复输出 + 老是看到重试）
+
+- **BUG-1：5xx 重试导致重复输出** - 协议层 5xx 重试复用同一个 callback，当 200 已建立、流中途出现 error 事件（如 overloaded）时，已发送的 delta 无法撤回，重试后 UI 显示"第 1 次部分 + 第 2 次内容"拼接。修复：新增 `DeltaTrackingCallback` 追踪是否已发送 delta，仅在未发 delta 时协议层重试，已发 delta 则冒泡到应用层（应用层会移除失败消息再重试，无重复）
+- **BUG-2：重试乘性叠加** - 协议层 5xx 重试计数是局部变量，每次应用层调用都从 0 重新计数，最坏 5×4=20 次请求。修复：协议层 5xx 重试降到 2 次，应用层 MAX_RETRIES 降到 3 次，最坏 9 次请求
+- **BUG-3：取消后仍静默重试** - 协议层重试循环不检查 `cancellationToken`，5xx 的 `Thread.sleep` 也不响应取消，用户按停止后仍静默重试最长 9s。修复：每次尝试前检查取消
+- **BUG-4：温度分支重复命中** - 温度判断用 `config.getTemperature() != hard` 而非 `forcedTemperature`，同一温度错误可重复命中浪费 attempt。修复：改用 `forcedTemperature` 判断
+- **BUG-6：参数错误与 5xx 错误顺序冲突** - `isClientParamError` 的 `not supported`/`not allowed` 关键词可能与 5xx 错误体冲突，且检查在 `isServerError` 之前。修复：仅在未发 delta 时 strip（参数错误通常在建连阶段，未发 delta）
+
 ### 版本
 
 - 版本号升级到 `1.2.6`，versionCode 29

@@ -67,7 +67,9 @@ final class GenerationFlowController {
         String formatModelFailed(String error);
     }
 
-    private static final int MAX_RETRIES = 5;
+    // BUG-2 修复:协议层已有 5xx 重试(最多 2 次),应用层重试次数控制在 3 次,
+    // 避免乘性叠加(协议层 2 次 + 应用层 3 次 = 最坏 9 次请求,而非之前的 20 次)。
+    private static final int MAX_RETRIES = 3;
     private static final long RETRY_BASE_DELAY_MS = 3000L;
 
     private final ArrayList<ChatMessage> messages;
