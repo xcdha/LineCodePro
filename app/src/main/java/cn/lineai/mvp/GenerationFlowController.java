@@ -373,6 +373,12 @@ final class GenerationFlowController {
             int attempt,
             String userInput
     ) {
+        // BUG-5 修复:延迟重试/续跑回调可能在用户切换模型、停止生成或发送新消息后仍被触发,
+        // 此时该 generation 已失效。若不校验就插入 assistant 消息,空消息会追加到新消息之后,
+        // 造成"错误重试跑到下一条消息上"的顺序混乱。必须在这里拦截。
+        if (!chatSessionStore.isActiveGeneration(generationId)) {
+            return;
+        }
         String assistantId = host.nextId();
         streamingRenderController.initRawText(assistantId);
         messages.add(new ChatMessage(assistantId, ChatMessage.Role.ASSISTANT, "", true));
@@ -452,7 +458,12 @@ final class GenerationFlowController {
             host.render();
 
             mainThread.postDelayed(() -> {
+                // 延迟重试期间用户可能切换模型、停止生成或发送新消息,
+                // 此时 generation 已失效,重试回调必须中止,否则旧生成的消息会插入到新消息之后。
                 if (cancellationToken != null && cancellationToken.isCancelled()) {
+                    return;
+                }
+                if (!chatSessionStore.isActiveGeneration(generationId)) {
                     return;
                 }
                 retryableModelStream(generationId, selectedModel, cancellationToken,

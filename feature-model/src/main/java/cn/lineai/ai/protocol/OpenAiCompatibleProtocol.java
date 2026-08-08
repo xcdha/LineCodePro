@@ -67,7 +67,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         // kimi-k2.5/k2.6 不发 thinking 默认思考模式 → 温度取思考模式值(1.0);
         // gpt-5初代/o系列 始终推理 → 温度固定 1.0。
         String modelId = ModelContextParser.apiModelId(config);
-        boolean reasoningEnabled = OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted(modelId);
+        boolean reasoningEnabled = OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted(config.getBaseUrl(), modelId);
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
         // 最多 3 次尝试:原始 → 温度修复 → 裸请求(移除温度字段)
@@ -79,9 +79,10 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 lastError = e;
                 String msg = e.getMessage();
                 // 温度错误:解析硬性温度,按本次思考模式写缓存,重试时用 forcedTemperature
+                // 缓存 key 带 baseUrl 维度,与 stream 路径一致,避免切换模型串缓存
                 Double hard = parseHardTemperature(msg);
                 if (hard != null && config != null && config.getTemperature() != hard) {
-                    HardTemperatureCache.put(modelId, reasoningEnabled, hard);
+                    HardTemperatureCache.put(config.getBaseUrl(), modelId, reasoningEnabled, hard);
                     forcedTemperature = hard;
                     continue;
                 }
@@ -180,15 +181,16 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 String msg = e.getMessage();
                 // 温度错误:解析硬性温度,按本次实际思考模式写缓存,重试时用 forcedTemperature
                 // BUG-4 修复:用 forcedTemperature 判断避免重复命中(而非 config.getTemperature())
+                // 缓存 key 带 baseUrl 维度,避免切换同 modelId 不同网关的模型时串用旧缓存
                 Double hard = parseHardTemperature(msg);
                 if (hard != null && (forcedTemperature == null || forcedTemperature != hard.doubleValue())) {
-                    HardTemperatureCache.put(modelId, effectiveReasoningEnabled, hard);
+                    HardTemperatureCache.put(config.getBaseUrl(), modelId, effectiveReasoningEnabled, hard);
                     forcedTemperature = hard;
                     continue;
                 }
                 // effort 错误:记录当前 effort 被拒,下次 resolveEffort 自动降级到下一档
                 if (currentEffort != null && isReasoningEffortError(msg)) {
-                    ReasoningEffortCache.markRejected(modelId, currentEffort);
+                    ReasoningEffortCache.markRejected(config.getBaseUrl(), modelId, currentEffort);
                     continue;
                 }
                 // 裸请求降级:HTTP 400/422 参数错误且尚未 strip 时,移除可选参数重试
@@ -269,7 +271,6 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             JSONObject body = new JSONObject();
             body.put("model", ModelContextParser.apiModelId(config));
             body.put("messages", messageSerializer.messagesJson(messages, requestOptions.isPreserveReasoning()));
-            applyTemperature(body, config, forcedTemperature, reasoningEnabled);
             body.put("stream", true);
             // 裸请求模式:跳过 tools 和 reasoning 参数,兼容不支持这些可选参数的模型
             if (!stripOptionalParams && !requestOptions.getTools().isEmpty()) {
@@ -277,8 +278,13 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 body.put("tool_choice", "auto");
             }
             if (!stripOptionalParams) {
-                applyReasoningRequest(config, body, requestOptions);
+                // 思考模式与温度联动:applyReasoningRequest 返回实际生效的思考模式
+                // (effort 全被拒时返回 false),温度按实际模式取,避免思考/非思考温度
+                // 要求不同的模型(如 kimi-k2.5/k2.6)发错温度而报错重试。
+                reasoningEnabled = applyReasoningRequest(config, body, requestOptions);
             }
+            // 温度必须在确定实际思考模式之后再写入
+            applyTemperature(body, config, forcedTemperature, reasoningEnabled);
 
             HashMap<String, String> headers = new HashMap<>();
             headers.put("Authorization", "Bearer " + config.getApiKey());
@@ -583,9 +589,15 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         return null;
     }
 
-    private void applyReasoningRequest(ModelConfig config, JSONObject body, ModelRequestOptions options) throws Exception {
+    /**
+     * 应用思考/effort 参数到请求体。
+     * @return 实际生效的思考模式。当模型所有 effort 档位都被拒时,不发送思考参数,
+     *         按"非思考"处理返回 {@code false},使温度与参数保持一致,避免思考/非思考
+     *         温度要求不同的模型(如 kimi-k2.5/k2.6 思考 1.0/非思考 0.6)发错温度而报错重试。
+     */
+    private boolean applyReasoningRequest(ModelConfig config, JSONObject body, ModelRequestOptions options) throws Exception {
         if (!OpenAiCompatibleCapabilities.supportsReasoningRequestParameters(config)) {
-            return;
+            return false;
         }
         String base = config.getBaseUrl().toLowerCase(java.util.Locale.ROOT);
         String model = ModelContextParser.apiModelId(config).toLowerCase(java.util.Locale.ROOT);
@@ -598,8 +610,8 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         if (enabled) {
             concrete = ReasoningEffortCache.resolveEffort(config.getBaseUrl(), model, concrete);
             if (concrete == null) {
-                // 模型所有档位都被拒,完全不支持 reasoning_effort,不发参数
-                return;
+                // 模型所有档位都被拒,完全不支持 reasoning_effort,按非思考处理(不发思考参数)
+                return false;
             }
         }
         ReasoningRequestContext context = new ReasoningRequestContext(
@@ -608,6 +620,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         if (strategy != null) {
             strategy.apply(body, context);
         }
+        return enabled;
     }
 
     JSONObject reasoningRequestBodyForTest(ModelConfig config, ModelRequestOptions options) throws Exception {
