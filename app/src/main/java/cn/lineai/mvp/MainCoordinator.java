@@ -507,7 +507,12 @@ public final class MainCoordinator implements MainUiController {
     @Override
     public void onModelQuickSwitch(String modelId) {
         modelInteractionController.quickSwitch(modelId);
-        chatInteractionController.onModelQuickSwitched(modelId);
+        // ComposerView 传入的 modelId 是 ModelConfig 的内部数据库 ID(时间戳生成的数字),
+        // 不是真正的 modelId(如 "claude-fable-5")。切换后从 selectedModel 取真正的 modelId。
+        ModelConfig selected = modelRepository.getSelectedModel();
+        if (selected != null) {
+            chatInteractionController.onModelQuickSwitched(selected.getModelId());
+        }
     }
 
     @Override
