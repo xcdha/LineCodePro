@@ -61,16 +61,32 @@ public final class OpenAiCompatibleCapabilitiesTest {
     }
 
     @Test
-    public void knownHardTemperatureReturnsOneForOpenAiReasoningModels() {
-        // OpenAI o 系列与 gpt-5 系列推理模型只接受 temperature=1,与思考模式无关
+    public void knownHardTemperatureReturnsOneForOpenAiAlwaysReasoningModels() {
+        // o 系列与 gpt-5 初代/pro/codex/mini/nano 始终推理,temperature 固定 1,与思考模式无关
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o1", true));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o1-mini", false));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o3", true));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o3-mini", false));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o4-mini", true));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", false));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-mini", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-pro", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-codex", true));
         assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1-codex", true));
+    }
+
+    @Test
+    public void knownHardTemperatureForGpt52Gpt51DiffersByThinkingMode() {
+        // gpt-5.2/5.1 支持 reasoning_effort=none(关闭思考),关闭时允许 temperature(top_p);
+        // 思考模式(effort != none)下只接受 temperature=1。
+        // 来源:community.openai.com/t/1371738 脚注¹
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-codex", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-codex", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.1", false));
     }
 
     @Test
@@ -95,5 +111,67 @@ public final class OpenAiCompatibleCapabilitiesTest {
                 OpenAiCompatibleCapabilities.knownHardTemperature("gpt-4o-search-preview", false));
         assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
                 OpenAiCompatibleCapabilities.knownHardTemperature("gpt-4o-mini-search-preview", true));
+    }
+
+    // ========== supportsNoneEffort ==========
+
+    @Test
+    public void supportsNoneEffortForGpt52Gpt51Only() {
+        // gpt-5.2/5.1 系列支持 reasoning_effort=none(关闭思考)
+        assertTrue(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5.2"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5.2-codex"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5.1"));
+        // chat-latest 变体不支持(只支持 medium)
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5.2-chat-latest"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5.1-chat-latest"));
+        // gpt-5 初代/pro/codex/mini/nano 不支持 none
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5-pro"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("gpt-5-codex"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("o3"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort(null));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort(""));
+    }
+
+    // ========== supportsXhigh ==========
+
+    @Test
+    public void supportsXhighForGpt52AndCodexMaxOnly() {
+        // gpt-5.2 系列与 gpt-5.1-codex-max 支持 xhigh(最高强度)
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5.2"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5.2-codex"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5.2-pro"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5.1-codex-max"));
+        // 其他模型不支持 xhigh,应降级到 high
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5-pro"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5.1"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5.1-codex"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh("o3"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh("gpt-5.2-chat-latest"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh(null));
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh(""));
+    }
+
+    // ========== defaultReasoningEnabledWhenOmitted ==========
+
+    @Test
+    public void defaultReasoningEnabledWhenOmittedForGpt52Gpt51IsFalse() {
+        // gpt-5.2/5.1 不发 reasoning_effort 时默认 none(非思考)
+        assertFalse(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("gpt-5.2"));
+        assertFalse(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("gpt-5.2-codex"));
+        assertFalse(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("gpt-5.1"));
+    }
+
+    @Test
+    public void defaultReasoningEnabledWhenOmittedForOtherModelsIsTrue() {
+        // gpt-5 初代/o系列/kimi/未知模型 不发参数时默认思考模式
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("gpt-5"));
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("gpt-5-pro"));
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("o3"));
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("kimi-k2.6"));
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("future-model"));
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted(null));
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted(""));
     }
 }

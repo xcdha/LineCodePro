@@ -31,7 +31,9 @@ public final class OpenAiCompatibleCapabilities {
      * 返回 {@link #TEMPERATURE_MUST_OMIT} 表示该模型必须省略 temperature 字段(传任何值都报错)。
      * <p>{@code reasoningEnabled} 表示本次请求是否启用思考模式:部分模型(如 kimi-k2.5/k2.6)
      * 在思考与非思考模式下温度硬性要求不同,必须按实际模式取值,否则上游报错。
-     * <p>数据来源:各提供商官方 API 文档(截至 2026-08)。
+     * <p>gpt-5.2/5.1 支持 {@code reasoning_effort=none}(关闭思考),关闭时允许 temperature/top_p;
+     * 思考模式(effort=low/medium/high/xhigh)下则只接受 temperature=1,与非思考模式不同。
+     * <p>数据来源:各提供商官方 API 文档 + OpenAI 社区兼容性矩阵(截至 2026-08)。
      */
     public static Double knownHardTemperature(String modelId, boolean reasoningEnabled) {
         if (modelId == null || modelId.isEmpty()) {
@@ -49,9 +51,23 @@ public final class OpenAiCompatibleCapabilities {
         if (m.startsWith("kimi-k2.6")) return reasoningEnabled ? 1.0 : 0.6;
         if (m.startsWith("kimi-k2.5")) return reasoningEnabled ? 1.0 : 0.6;
 
-        // OpenAI o 系列与 gpt-5 系列推理模型:只接受 temperature=1
-        // 来源:platform.openai.com、Azure OpenAI reasoning 文档、社区兼容性矩阵
-        if (isOpenAiReasoningModel(m)) return 1.0;
+        // OpenAI o 系列:始终推理,temperature 固定 1
+        // 来源:platform.openai.com、Azure OpenAI reasoning 文档
+        if (m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4")) {
+            return 1.0;
+        }
+
+        // gpt-5 系列(排除 chat-latest 非推理变体与 search 变体)
+        if (m.startsWith("gpt-5") && !m.contains("-chat-latest") && !m.contains("search")) {
+            // gpt-5.2/5.1 支持 reasoning_effort=none(关闭思考),关闭时允许 temperature/top_p;
+            // 思考模式(effort != none)下只接受 temperature=1。
+            // 来源:community.openai.com/t/1371738 脚注¹
+            if (supportsNoneEffort(m) && !reasoningEnabled) {
+                return null;
+            }
+            // 其他 gpt-5 变体(gpt-5初代/pro/codex/mini/nano)始终推理,temperature 固定 1
+            return 1.0;
+        }
 
         // OpenAI search 变体:必须省略 temperature 字段(传任何值都报错)
         // 来源:platform.openai.com docs、社区兼容性矩阵
@@ -68,18 +84,63 @@ public final class OpenAiCompatibleCapabilities {
     public static final Double TEMPERATURE_MUST_OMIT = Double.NEGATIVE_INFINITY;
 
     /**
-     * OpenAI 推理模型判定:o1/o3/o4 系列与 gpt-5 系列均只接受 temperature=1。
-     * 排除 {@code *-chat-latest} 变体(非推理,支持灵活温度,如 gpt-5-chat-latest、gpt-5.2-chat-latest)
-     * 与 search 变体(必须省略 temperature,如 gpt-5-search-api)。
+     * 判断模型是否支持 {@code reasoning_effort=none}(关闭思考)。
+     * gpt-5.2/5.1 系列默认 reasoning_effort=none,允许 temperature/top_p;
+     * 其他 gpt-5 变体(初代/pro/codex/mini/nano)与 o 系列不支持 none,始终推理。
+     * 来源:developers.openai.com gpt-5.1 文档、community.openai.com 兼容性矩阵
      */
-    private static boolean isOpenAiReasoningModel(String m) {
-        if (m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4")) {
-            return true;
+    public static boolean supportsNoneEffort(String modelId) {
+        if (modelId == null || modelId.isEmpty()) {
+            return false;
         }
-        if (m.startsWith("gpt-5") && !m.contains("-chat-latest") && !m.contains("search")) {
-            return true;
-        }
+        String m = modelId.toLowerCase(java.util.Locale.ROOT);
+        // gpt-5.2 系列(排除 chat-latest)支持 none(默认)
+        if (m.startsWith("gpt-5.2") && !m.contains("-chat-latest")) return true;
+        // gpt-5.1 系列(排除 chat-latest)支持 none(默认)
+        if (m.startsWith("gpt-5.1") && !m.contains("-chat-latest")) return true;
         return false;
+    }
+
+    /**
+     * 判断模型是否支持 {@code reasoning_effort=xhigh}(最高思考强度)。
+     * gpt-5.2 系列、gpt-5.1-codex-max 支持 xhigh;其他模型不支持,应降级到 high。
+     * 来源:community.openai.com/t/1371738 兼容性矩阵
+     */
+    public static boolean supportsXhigh(String modelId) {
+        if (modelId == null || modelId.isEmpty()) {
+            return false;
+        }
+        String m = modelId.toLowerCase(java.util.Locale.ROOT);
+        // chat-latest 变体只支持 medium,不支持 xhigh
+        if (m.contains("-chat-latest")) return false;
+        // gpt-5.2 系列支持 xhigh
+        if (m.startsWith("gpt-5.2")) return true;
+        // gpt-5.1-codex-max 支持 xhigh
+        if (m.contains("gpt-5.1") && m.contains("codex-max")) return true;
+        return false;
+    }
+
+    /**
+     * 不发 reasoning_effort/thinking 参数时,模型默认是否处于思考模式。
+     * <p>complete 路径不发思考参数,温度需按模型默认模式取值:
+     * <ul>
+     *   <li>gpt-5.2/5.1:默认 reasoning_effort=none(非思考),允许用户温度</li>
+     *   <li>gpt-5 初代/pro/codex/mini/nano:默认 medium/always(思考),温度固定 1</li>
+     *   <li>kimi-k2.5/k2.6:不发 thinking 时默认思考模式,温度取思考模式值</li>
+     *   <li>o 系列:始终思考,温度固定 1</li>
+     *   <li>未知模型:保守取 true(与历史行为一致)</li>
+     * </ul>
+     * 来源:developers.openai.com、platform.openai.com、platform.kimi.com
+     */
+    public static boolean defaultReasoningEnabledWhenOmitted(String modelId) {
+        if (modelId == null || modelId.isEmpty()) {
+            return true;
+        }
+        String m = modelId.toLowerCase(java.util.Locale.ROOT);
+        // gpt-5.2/5.1 不发 reasoning_effort 时默认 none(非思考)
+        if (supportsNoneEffort(m)) return false;
+        // 其他模型不发参数时默认思考模式
+        return true;
     }
 
     /**

@@ -62,13 +62,12 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
     @Override
     public ModelCompletionResponse complete(ModelConfig config, List<ModelMessage> messages) throws ModelCompletionException {
-        // complete 路径不发 reasoning_effort/thinking 参数,模型按其默认行为运行。
-        // kimi-k2.5/k2.6 不发 thinking 时默认走思考模式,温度按思考模式取(1.0);
-        // 其他无硬性温度要求的模型 knownHardTemperature 返回 null,不传温度,不受影响。
-        // 注意:isFullyDisabled 表示"模型不支持 reasoning_effort 参数",不等于"不处于思考模式",
-        // 故不能用其判断温度模式 —— 否则 kimi-k2.6 会被误判为非思考模式,温度取 0.6 导致上游报错。
+        // complete 路径不发 reasoning_effort/thinking 参数,温度按模型默认思考模式取值:
+        // gpt-5.2/5.1 默认 reasoning_effort=none(非思考)→ 允许用户温度;
+        // kimi-k2.5/k2.6 不发 thinking 默认思考模式 → 温度取思考模式值(1.0);
+        // gpt-5初代/o系列 始终推理 → 温度固定 1.0。
         String modelId = ModelContextParser.apiModelId(config);
-        boolean reasoningEnabled = true;
+        boolean reasoningEnabled = OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted(modelId);
         Double forcedTemperature = null;
         ModelCompletionException lastError = null;
         // 最多 2 次尝试:原始 → 温度修复(complete 路径不发 reasoning_effort,无 effort 降级)
@@ -532,23 +531,46 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
      * 未知模型则会再试错一次后重新进缓存 —— 每模型每模式每进程最多付一次试错成本。
      * <p>缓存 key 按 "模型 + 思考模式" 区分:kimi-k2.5/k2.6 思考模式固定 1.0、非思考模式固定 0.6,
      * 若不区分模式会互相覆盖导致后续请求传错值。
+     * <p>TTL 24 小时:过期后视为未缓存,重新探测。模型提供商可能更新 API 支持新的温度值,
+     * TTL 避免陈旧缓存永久锁死。内置表模型不受 TTL 影响(每次重新查表)。
      */
     static final class HardTemperatureCache {
-        private static final java.util.concurrent.ConcurrentMap<String, Double> CACHE =
+        private static final long TTL_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(24);
+
+        private static final class CachedTemperature {
+            final double temperature;
+            final long timestamp;
+            CachedTemperature(double temperature, long timestamp) {
+                this.temperature = temperature;
+                this.timestamp = timestamp;
+            }
+        }
+
+        private static final java.util.concurrent.ConcurrentMap<String, CachedTemperature> CACHE =
                 new java.util.concurrent.ConcurrentHashMap<>();
 
         static Double get(String modelId, boolean reasoningEnabled) {
             if (modelId == null || modelId.isEmpty()) {
                 return null;
             }
-            return CACHE.get(cacheKey(modelId, reasoningEnabled));
+            CachedTemperature c = CACHE.get(cacheKey(modelId, reasoningEnabled));
+            if (c == null) {
+                return null;
+            }
+            // TTL 过期:移除并返回 null,触发重新探测(模型可能已更新支持新温度值)
+            if (System.currentTimeMillis() - c.timestamp > TTL_MS) {
+                CACHE.remove(cacheKey(modelId, reasoningEnabled), c);
+                return null;
+            }
+            return c.temperature;
         }
 
         static void put(String modelId, boolean reasoningEnabled, double temperature) {
             if (modelId == null || modelId.isEmpty()) {
                 return;
             }
-            CACHE.put(cacheKey(modelId, reasoningEnabled), temperature);
+            CACHE.put(cacheKey(modelId, reasoningEnabled),
+                    new CachedTemperature(temperature, System.currentTimeMillis()));
         }
 
         private static String cacheKey(String modelId, boolean reasoningEnabled) {
@@ -568,8 +590,12 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
      * 若该档位在拒绝集合中则降到下一档,直到找到模型支持的档位或全部被拒(禁用参数)。
      * <p>用户调整优先:用户选某档时,先用该档(若未被拒),被拒再降级——不预先降级,
      * 保证用户在 AI 行为设置里的调整能生效。缓存命中后后续请求零试错。
+     * <p>TTL 24 小时:过期后视为未拒绝,允许重新探测。模型提供商可能更新支持新的 effort 档位,
+     * TTL 避免陈旧拒绝记录永久锁死。
      */
     static final class ReasoningEffortCache {
+        private static final long TTL_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(24);
+
         /** effort 降级链:从高到低。max→high→medium→low,low 再被拒则禁用参数 */
         private static final String[] DOWNGRADE_CHAIN = {
                 AiBehaviorSettings.REASONING_MAX,
@@ -578,8 +604,13 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
                 AiBehaviorSettings.REASONING_LOW
         };
 
-        private static final java.util.concurrent.ConcurrentMap<String, java.util.Set<String>> CACHE =
+        /** 拒绝记录:value 为拒绝时间戳,用于 TTL 过期判断 */
+        private static final java.util.concurrent.ConcurrentMap<String, Long> REJECTED =
                 new java.util.concurrent.ConcurrentHashMap<>();
+
+        private static String rejectionKey(String modelId, String effort) {
+            return modelId.toLowerCase(Locale.ROOT) + ":" + effort;
+        }
 
         /**
          * 记录某 effort 档位被上游拒绝。
@@ -588,19 +619,26 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             if (modelId == null || modelId.isEmpty() || effort == null) {
                 return;
             }
-            CACHE.computeIfAbsent(modelId.toLowerCase(Locale.ROOT),
-                    k -> java.util.concurrent.ConcurrentHashMap.newKeySet()).add(effort);
+            REJECTED.put(rejectionKey(modelId, effort), System.currentTimeMillis());
         }
 
         /**
-         * 该 effort 档位是否已被拒绝。
+         * 该 effort 档位是否已被拒绝(且未过 TTL)。
          */
         static boolean isRejected(String modelId, String effort) {
             if (modelId == null || modelId.isEmpty() || effort == null) {
                 return false;
             }
-            java.util.Set<String> rejected = CACHE.get(modelId.toLowerCase(Locale.ROOT));
-            return rejected != null && rejected.contains(effort);
+            Long ts = REJECTED.get(rejectionKey(modelId, effort));
+            if (ts == null) {
+                return false;
+            }
+            // TTL 过期:移除并返回 false,允许重新探测(模型可能已更新支持该档位)
+            if (System.currentTimeMillis() - ts > TTL_MS) {
+                REJECTED.remove(rejectionKey(modelId, effort), ts);
+                return false;
+            }
+            return true;
         }
 
         /**
@@ -610,12 +648,8 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             if (modelId == null || modelId.isEmpty()) {
                 return false;
             }
-            java.util.Set<String> rejected = CACHE.get(modelId.toLowerCase(Locale.ROOT));
-            if (rejected == null) {
-                return false;
-            }
             for (String e : DOWNGRADE_CHAIN) {
-                if (!rejected.contains(e)) {
+                if (!isRejected(modelId, e)) {
                     return false;
                 }
             }
@@ -662,11 +696,12 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             if (modelId == null || modelId.isEmpty()) {
                 return;
             }
-            CACHE.remove(modelId.toLowerCase(Locale.ROOT));
+            String prefix = modelId.toLowerCase(Locale.ROOT) + ":";
+            REJECTED.keySet().removeIf(k -> k.startsWith(prefix));
         }
 
         static void clearForTest() {
-            CACHE.clear();
+            REJECTED.clear();
         }
     }
 }

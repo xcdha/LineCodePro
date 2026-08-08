@@ -45,12 +45,14 @@ public final class ReasoningEffortAutoAdaptTest {
     @Test
     public void userEffortUsedWhenNotRejected() throws Exception {
         // 无缓存时,用户选任意档直接用(用户调整优先)
+        // 注意:future-unknown-model 不支持 xhigh,项目档位 max 经 DefaultReasoningStrategy
+        // 降级为 high(与 gpt-5 初代/o系列行为一致);high/medium/low/auto 直接用。
         OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
         OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
         try {
             ModelConfig config = unknownModel();
-            // 六档全覆盖(auto 归一化为 medium)
-            assertEquals("max", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
+            // 六档全覆盖(auto 归一化为 medium;max 降级为 high,因 future-unknown-model 不支持 xhigh)
+            assertEquals("high", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
             assertEquals("high", bodyFor(config, AiBehaviorSettings.REASONING_HIGH).getString("reasoning_effort"));
             assertEquals("medium", bodyFor(config, AiBehaviorSettings.REASONING_MEDIUM).getString("reasoning_effort"));
             assertEquals("medium", bodyFor(config, AiBehaviorSettings.REASONING_AUTO).getString("reasoning_effort"));
@@ -211,7 +213,8 @@ public final class ReasoningEffortAutoAdaptTest {
             assertFalse(OpenAiCompatibleProtocol.ReasoningEffortCache.isRejected("future-unknown-model", "max"));
 
             ModelConfig config = unknownModel();
-            assertEquals("max", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
+            // max 降级为 high(future-unknown-model 不支持 xhigh)
+            assertEquals("high", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
         } finally {
             OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
             OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
@@ -228,7 +231,8 @@ public final class ReasoningEffortAutoAdaptTest {
         try {
             OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("model-a", "max");
             ModelConfig configB = unknownModel("model-b");
-            assertEquals("max", bodyFor(configB, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
+            // max 降级为 high(model-b 不支持 xhigh)
+            assertEquals("high", bodyFor(configB, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
         } finally {
             OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
             OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
@@ -262,6 +266,22 @@ public final class ReasoningEffortAutoAdaptTest {
             assertNull(OpenAiCompatibleProtocol.ReasoningEffortCache.resolveEffort("m", "low"));
         } finally {
             OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        }
+    }
+
+    // ========== xhigh 精确映射(gpt-5.2) ==========
+
+    @Test
+    public void gpt52MaxMapsToXhighWhenNotRejected() throws Exception {
+        // gpt-5.2 支持 xhigh,选 max 时直接发 xhigh(不降级到 high)
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            ModelConfig config = unknownModel("gpt-5.2");
+            assertEquals("xhigh", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
         }
     }
 
@@ -300,28 +320,27 @@ public final class ReasoningEffortAutoAdaptTest {
     }
 
     @Test
-    public void completePathAlwaysUsesReasoningTemperature() throws Exception {
-        // complete 路径不发 reasoning_effort/thinking 参数,模型按默认行为运行。
-        // kimi-k2.6 不发 thinking 时默认走思考模式,温度按思考模式取(1.0)。
-        // isFullyDisabled(模型不支持 reasoning_effort)不影响 complete 路径温度模式判断,
-        // 否则 kimi-k2.6 会被误判为非思考模式,温度取 0.6 导致上游报错。
-        // 验证:complete 路径始终按思考模式取温度,不受 isFullyDisabled 影响。
+    public void completePathUsesDefaultReasoningModeForTemperature() throws Exception {
+        // complete 路径不发 reasoning_effort/thinking 参数,温度按模型默认思考模式取值:
+        // kimi-k2.6 不发 thinking 时默认思考模式 → 温度取 1.0;
+        // gpt-5.2 不发 reasoning_effort 时默认 none(非思考)→ 允许用户温度。
+        // isFullyDisabled(模型不支持 reasoning_effort)不影响 complete 路径温度模式判断。
         OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
         OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
         try {
-            // 未 DISABLED:complete 按思考模式(温度 1.0)
-            assertFalse(OpenAiCompatibleProtocol.ReasoningEffortCache.isFullyDisabled("kimi-k2.6"));
-            Double reasoningTemp = OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.6", true);
-            assertEquals(Double.valueOf(1.0), reasoningTemp);
+            // kimi-k2.6:defaultReasoningEnabledWhenOmitted=true → 思考模式 → 温度 1.0
+            assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("kimi-k2.6"));
+            Double kimiTemp = OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.6", true);
+            assertEquals(Double.valueOf(1.0), kimiTemp);
 
-            // DISABLED 后:complete 仍按思考模式(温度 1.0),不因 isFullyDisabled 切非思考模式
-            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "max");
-            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "high");
-            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "medium");
-            OpenAiCompatibleProtocol.ReasoningEffortCache.markRejected("kimi-k2.6", "low");
-            assertTrue(OpenAiCompatibleProtocol.ReasoningEffortCache.isFullyDisabled("kimi-k2.6"));
-            Double stillReasoningTemp = OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.6", true);
-            assertEquals(Double.valueOf(1.0), stillReasoningTemp);
+            // gpt-5.2:defaultReasoningEnabledWhenOmitted=false → 非思考模式 → 允许用户温度(null)
+            assertFalse(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("gpt-5.2"));
+            assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2", false));
+
+            // gpt-5 初代:defaultReasoningEnabledWhenOmitted=true → 思考模式 → 温度 1.0
+            assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("gpt-5"));
+            Double gpt5Temp = OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5", true);
+            assertEquals(Double.valueOf(1.0), gpt5Temp);
         } finally {
             OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
             OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();

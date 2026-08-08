@@ -328,6 +328,58 @@ public final class OpenAiCompatibleProtocolTest {
     }
 
     @org.junit.Test
+    public void gpt52NonReasoningModeAllowsUserTemperature() throws Exception {
+        // gpt-5.2 非思考模式(reasoning_effort=none)允许 temperature/top_p,用户填的值完全生效
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://api.openai.com/v1", "k", "gpt-5.2")
+                    .temperature(0.5)
+                    .build();
+
+            // 非思考模式:用户温度生效
+            JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config, false);
+            org.junit.Assert.assertEquals(0.5, body.optDouble("temperature", Double.NaN), 0.0);
+
+            // 思考模式:内置表返回 1.0,覆盖用户温度
+            JSONObject bodyReasoning = new OpenAiCompatibleProtocol().temperatureBodyForTest(config, true);
+            org.junit.Assert.assertEquals(1.0, bodyReasoning.optDouble("temperature", Double.NaN), 0.0);
+        } finally {
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @org.junit.Test
+    public void gpt52MaxEffortMapsToXhigh() throws Exception {
+        // gpt-5.2 支持 xhigh,项目档位 max 应映射到 xhigh(而非降级到 high)
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://api.openai.com/v1", "k", "gpt-5.2").build();
+            JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                    config, new ModelRequestOptions(AiBehaviorSettings.REASONING_MAX, false));
+            org.junit.Assert.assertEquals("xhigh", body.getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        }
+    }
+
+    @org.junit.Test
+    public void gpt5MaxEffortDowngradesToHigh() throws Exception {
+        // gpt-5 初代不支持 xhigh,max 应降级到 high
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://api.openai.com/v1", "k", "gpt-5").build();
+            JSONObject body = new OpenAiCompatibleProtocol().reasoningRequestBodyForTest(
+                    config, new ModelRequestOptions(AiBehaviorSettings.REASONING_MAX, false));
+            org.junit.Assert.assertEquals("high", body.getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        }
+    }
+
+    @org.junit.Test
     public void applyTemperatureDiffersByThinkingModeForKimiK26() throws Exception {
         // kimi-k2.6 未设温度时,思考模式取内置表 1.0,非思考模式取 0.6
         OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
