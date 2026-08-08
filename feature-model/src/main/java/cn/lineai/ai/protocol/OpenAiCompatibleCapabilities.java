@@ -47,13 +47,15 @@ public final class OpenAiCompatibleCapabilities {
 
         // Moonshot / Kimi 推理模型
         // 来源:platform.kimi.com/docs/api/models-overview
+        // 用 contains 容忍第三方网关改名(前缀 x/后缀 -pro/横线丢失):
+        //   xkimi-k3 / xkimik3 / kimi-k3-pro / kimik3.1 均命中。
         // kimi-k3:始终推理,temperature 固定 1.0
-        if (m.startsWith("kimi-k3")) return 1.0;
+        if (containsKimiToken(m, "kimi-k3")) return 1.0;
         // kimi-k2.7-code(含 highspeed 变体):思考始终开启,temperature 固定 1.0
-        if (m.startsWith("kimi-k2.7-code")) return 1.0;
+        if (containsKimiToken(m, "kimi-k2.7-code")) return 1.0;
         // kimi-k2.6 / kimi-k2.5:思考模式固定 1.0,非思考模式固定 0.6,传其他值报错
-        if (m.startsWith("kimi-k2.6")) return reasoningEnabled ? 1.0 : 0.6;
-        if (m.startsWith("kimi-k2.5")) return reasoningEnabled ? 1.0 : 0.6;
+        if (containsKimiToken(m, "kimi-k2.6")) return reasoningEnabled ? 1.0 : 0.6;
+        if (containsKimiToken(m, "kimi-k2.5")) return reasoningEnabled ? 1.0 : 0.6;
 
         // OpenAI o 系列:始终推理,temperature 固定 1
         // 收紧匹配:o1 / o3 / o4 后必须跟边界(-/preview/mini 等),避免 o1bak / qwen-o1 误判。
@@ -63,7 +65,8 @@ public final class OpenAiCompatibleCapabilities {
         }
 
         // gpt-5 系列(排除 chat-latest 非推理变体与 search 变体)
-        if (m.startsWith("gpt-5") && !m.contains("-chat-latest") && !m.contains("search")) {
+        // 用 contains 容忍第三方改名(xgpt-5 / gpt-5.x-pro 等)
+        if (m.contains("gpt-5") && !m.contains("-chat-latest") && !m.contains("search")) {
             // gpt-5.x(x>=1) 支持 reasoning_effort=none(关闭思考),关闭时允许 temperature/top_p;
             // 思考模式(effort != none)下只接受 temperature=1。
             // 覆盖:gpt-5.1 / 5.2 / 5.3 / 5.4 / 5.5 / 5.6 及后续小版本。
@@ -200,12 +203,15 @@ public final class OpenAiCompatibleCapabilities {
     /**
      * 解析 gpt-5 系列的小版本号。
      * @return "gpt-5.X" 中的 X(>=0);gpt-5 初代(gpt-5 / gpt-5-mini / gpt-5-pro 等无小版本)返回 -1;非 gpt-5 返回 -1。
+     * 用 indexOf 容忍第三方前缀(xgpt-5.5 等);版本号必须紧跟 gpt-5 之后(允许 . 或直接数字)。
      */
     private static int gpt5MinorVersion(String m) {
-        if (!m.startsWith("gpt-5")) return -1;
-        String rest = m.substring("gpt-5".length());
+        int idx = m.indexOf("gpt-5");
+        if (idx < 0) return -1;
+        String rest = m.substring(idx + "gpt-5".length());
         if (rest.isEmpty()) return -1; // 裸 "gpt-5"
-        if (!rest.startsWith(".")) return -1; // "gpt-5-mini" / "gpt-5-pro" / "gpt-5-codex" 等初代变体
+        // gpt-5.X 形式:X 为小版本号;"gpt-5-mini"/"gpt-5-pro"/"gpt-5-codex" 等初代变体无小版本
+        if (!rest.startsWith(".")) return -1;
         String numStr = rest.substring(1);
         int end = 0;
         while (end < numStr.length() && Character.isDigit(numStr.charAt(end))) end++;
@@ -287,6 +293,20 @@ public final class OpenAiCompatibleCapabilities {
             m = m.substring(slash + 1);
         }
         return m;
+    }
+
+    /**
+     * Kimi 系列 token 容忍匹配:同时检查带横线与不带横线两种形式。
+     * <p>第三方网关可能丢失横线({@code kimi-k3} → {@code kimik3}),或加前后缀({@code xkimi-k3}、{@code kimi-k3-pro})。
+     * 本方法对 {@code token} 与 {@code token 去横线} 两种形式做 contains,命中任一即返回 true。
+     * 例:token="kimi-k3" 同时匹配 {@code xkimi-k3}、{@code kimi-k3-pro}、{@code xkimik3}、{@code kimik3.1}。
+     */
+    private static boolean containsKimiToken(String m, String token) {
+        if (m.contains(token)) {
+            return true;
+        }
+        String noDash = token.replace("-", "");
+        return !noDash.equals(token) && m.contains(noDash);
     }
 
     /**

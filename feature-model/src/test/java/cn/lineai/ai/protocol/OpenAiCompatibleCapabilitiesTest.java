@@ -378,4 +378,69 @@ public final class OpenAiCompatibleCapabilitiesTest {
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("o123", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("o11", false));
     }
+
+    // ========== 第三方网关改名(前缀/后缀/横线丢失) ==========
+
+    @Test
+    public void kimiK3ToleratesRenamedVariants() {
+        // 第三方可能改名:xkimi-k3 / xkimik3 / kimi-k3-pro / kimik3.1 / moonshot/xkimi-k3
+        // kimi-k3 始终推理,温度固定 1.0,改名后仍应命中
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xkimi-k3", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xkimi-k3", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xkimik3", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xkimik3", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k3-pro", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k3.1", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("kimik3.1", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("moonshot/xkimi-k3", false));
+        // 前缀 + 横线丢失叠加
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("axkimik3", true));
+    }
+
+    @Test
+    public void kimiK2xToleratesRenamedVariants() {
+        // kimi-k2.6 / kimi-k2.5 改名后仍应按思考/非思考区分温度
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xkimi-k2.6", true));
+        assertEquals(Double.valueOf(0.6), OpenAiCompatibleCapabilities.knownHardTemperature("xkimi-k2.6", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.5-pro", true));
+        assertEquals(Double.valueOf(0.6), OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.5-pro", false));
+        // 横线丢失:kimi-k2.6 → kimik2.6
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xkimik2.6", true));
+        assertEquals(Double.valueOf(0.6), OpenAiCompatibleCapabilities.knownHardTemperature("xkimik2.6", false));
+        // kimi-k2.7-code 改名后仍固定 1.0
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xkimi-k2.7-code", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("kimi-k2.7-code-highspeed", false));
+    }
+
+    @Test
+    public void gpt5ToleratesRenamedVariants() {
+        // gpt-5.x 改名:xgpt-5.5 / gpt-5.6-pro 等,思考模式固定 1.0
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xgpt-5.5", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("xgpt-5.6", true));
+        // 非思考模式 gpt-5.x(x>=1) 允许用户温度(null)
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("xgpt-5.5", false));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.6-pro", false));
+        // effort 档位判定也容忍改名
+        assertTrue(OpenAiCompatibleCapabilities.supportsNoneEffort("xgpt-5.1"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsNoneEffort("xgpt-5.6"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("xgpt-5.5"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsMax("xgpt-5.6"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsMax("xgpt-5.5"));
+        // 前缀叠加 provider/xgpt-5.6
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("openai/xgpt-5.6", true));
+        assertTrue(OpenAiCompatibleCapabilities.supportsMax("openai/xgpt-5.6"));
+    }
+
+    @Test
+    public void claude5ToleratesRenamedVariants() {
+        // Claude 5 改名仍 MUST_OMIT
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("xclaude-sonnet-5", true));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("claude-opus-5-pro", false));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("anthropic/xclaude-sonnet-5", true));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("xclaude-sonnet-5"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsMax("xclaude-sonnet-5"));
+    }
 }
