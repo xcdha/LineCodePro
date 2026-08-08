@@ -40,8 +40,21 @@ final class CodexRequestBuilder {
         body.put("tool_choice", "auto");
         if (AiBehaviorSettings.isReasoningEnabled(requestOptions.getReasoningEffort())) {
             String effort = AiBehaviorSettings.concreteReasoningEffort(requestOptions.getReasoningEffort());
+            String modelId = ModelContextParser.apiModelId(config);
+            // Responses API 的 reasoning.effort 按模型能力映射 max:
+            //   支持 max(gpt-5.6+ / Claude 5)→ max;支持 xhigh(gpt-5.2/5.5 等)→ xhigh;否则 high。
+            // 来源:developers.openai.com gpt-5.6 model guidance、community.openai.com 兼容性矩阵
+            if (AiBehaviorSettings.REASONING_MAX.equals(effort)) {
+                if (OpenAiCompatibleCapabilities.supportsMax(modelId)) {
+                    effort = AiBehaviorSettings.REASONING_MAX;
+                } else if (OpenAiCompatibleCapabilities.supportsXhigh(modelId)) {
+                    effort = "xhigh";
+                } else {
+                    effort = AiBehaviorSettings.REASONING_HIGH;
+                }
+            }
             body.put("reasoning", new JSONObject()
-                    .put("effort", AiBehaviorSettings.REASONING_MAX.equals(effort) ? "high" : effort)
+                    .put("effort", effort)
                     .put("summary", "auto"));
             include.put("reasoning.encrypted_content");
         }

@@ -158,13 +158,19 @@ public final class AnthropicMessagesProtocol extends AbstractHttpModelProtocol {
     }
 
     /**
-     * adaptive thinking 的 effort:max 仅 Opus 4.6 支持,其他模型(含 Sonnet 4.6)传 max 会返回错误,
-     * 统一降级到 high 保证全模型兼容。low/medium/high 原样保留。
+     * adaptive thinking 的 effort 档位映射。
+     * <p>Claude Opus 4.6+ 与 Claude 5 家族(Sonnet-5/Opus-5/Fable-5/Mythos-5)支持 max;
+     * Opus 4.5 支持 xhigh;更早模型仅支持 low/medium/high。
+     * 选 max 时:支持 max 则发 max,否则支持 xhigh 则发 xhigh,否则降级 high 保证全模型兼容。
+     * low/medium/high 原样保留。来源:platform.claude.com migration-guide、datallmlab 采样参数支持表。
      */
     private static String adaptiveEffort(String modelId, String effort) {
         if (AiBehaviorSettings.REASONING_MAX.equals(effort)) {
-            if (modelId != null && modelId.contains("opus-4-6")) {
+            if (OpenAiCompatibleCapabilities.supportsMax(modelId)) {
                 return AiBehaviorSettings.REASONING_MAX;
+            }
+            if (OpenAiCompatibleCapabilities.supportsXhigh(modelId)) {
+                return "xhigh";
             }
             return AiBehaviorSettings.REASONING_HIGH;
         }

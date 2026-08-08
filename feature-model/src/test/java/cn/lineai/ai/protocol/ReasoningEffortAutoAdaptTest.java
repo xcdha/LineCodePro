@@ -273,12 +273,56 @@ public final class ReasoningEffortAutoAdaptTest {
 
     @Test
     public void gpt52MaxMapsToXhighWhenNotRejected() throws Exception {
-        // gpt-5.2 支持 xhigh,选 max 时直接发 xhigh(不降级到 high)
+        // gpt-5.2 支持 xhigh 但不支持 max,选 max 时发 xhigh(不降级到 high)
         OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
         OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
         try {
             ModelConfig config = unknownModel("gpt-5.2");
             assertEquals("xhigh", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    // ========== max 原生映射(gpt-5.6 / Claude 5) ==========
+
+    @Test
+    public void gpt56MaxMapsToMaxWhenNotRejected() throws Exception {
+        // gpt-5.6 支持 max,选 max 时直接发 max(原生最高强度,不降级到 xhigh)
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            ModelConfig config = unknownModel("gpt-5.6");
+            assertEquals("max", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @Test
+    public void gpt55MaxMapsToXhighWhenNotRejected() throws Exception {
+        // gpt-5.5 支持 xhigh 但不支持 max,选 max 时发 xhigh
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            ModelConfig config = unknownModel("gpt-5.5");
+            assertEquals("xhigh", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
+        } finally {
+            OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @Test
+    public void claude5MaxMapsToMaxWhenNotRejected() throws Exception {
+        // Claude 5 家族支持 max,选 max 时直接发 max(原生最高强度)
+        OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            ModelConfig config = unknownModel("claude-sonnet-5");
+            assertEquals("max", bodyFor(config, AiBehaviorSettings.REASONING_MAX).getString("reasoning_effort"));
         } finally {
             OpenAiCompatibleProtocol.ReasoningEffortCache.clearForTest();
             OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
