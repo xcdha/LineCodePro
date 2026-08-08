@@ -33,6 +33,18 @@
 - **search 变体必须省略 temperature** - 新增 TEMPERATURE_MUST_OMIT 哨兵值，与 null（无硬性要求）区分；即使用户填了温度也不发送
 - **gpt-5.2/5.1 非思考模式温度** - 修复此前对所有 gpt-5 系列统一返回 1.0 的问题，gpt-5.2/5.1 在 reasoning_effort=none 时允许用户温度
 
+### 第三方网关模型名适配
+
+- **provider 前缀剥离** - 新增 `stripProviderPrefix(modelId)`，自动剥离最后一个 `/` 之前的 provider 前缀（`openai/gpt-5.5` → `gpt-5.5`、`moonshot/xkimi-k3` → `xkimi-k3`），所有 public 识别方法入口统一接入；多段前缀只剥最后一段，尾部斜杠不剥避免返回空
+- **品牌词锚点 + 正则惰性版本提取** - 解决第三方网关在品牌词与版本号之间插入任意字符（数量/位置不固定）导致的失配：kimi/gpt/claude/glm/qwen 系列改用预编译正则（`.*?` 惰性匹配）提取版本号，覆盖 `abc-kimi-xx-k3`、`gpt-def-5.6-v2`、`xglm-5.2`、`abc-qwen-xx-3.8-max` 等任意改名
+- **新增 6 个预编译正则** - `KIMI_VERSION`（k 后主.次版本）、`GPT5_MINOR`（gpt 后 5.X）、`CLAUDE_VARIANT_MAJOR`（变体后第一个数字）、`CLAUDE_OPUS4_MINOR`（opus-4 后小版本）、`GLM_VERSION`、`QWEN_VERSION`，全部 `Pattern.DOTALL` 容忍跨段字符
+- **4 个 public 版本提取方法** - `kimiMajorVersion`/`kimiMinorVersion`/`glmVersion`/`qwenVersion` 供 ReasoningStrategy 子包复用，统一识别口径
+- **误判防护** - `kimi-k30` 不误判为 k3（版本号后边界 `(?=\D|$)`）；`gpt-50` 不误判为 gpt-5（5 后非数字）；`gpt-4o` 不误判为 gpt-5（要求 gpt 后跟 5）；`claude-opus-4-5` 不误判为 Claude 5（取变体后第一个数字 4≠5，走 opus-4 分支）；跨品牌独立识别避免互串
+- **ReasoningStrategy 复用正则** - `MoonshotReasoningStrategy.isKimiK3`/`isGlm52Plus`、`DashscopeReasoningStrategy.isQwen38Plus` 复用 `OpenAiCompatibleCapabilities` 版本提取方法，移除本地 `parseGlmVersion` 等重复实现
+- **search 变体收紧** - `isSearchVariant` 去掉 `endsWith("-search")`，只保留 `contains("-search-")`/`search-preview`/`search-api`，避免 `perplexity-search`、`research-1.0` 误判
+- **o 系列收紧** - 新增 `isOpenAiOSeries`，要求 o1/o3/o4 后跟边界（`-` 或结尾），避免 `o1bak`、`qwen-o1`、`o123` 误判
+- **运行时兜底** - 品牌词被彻底篡改时（如 `kimi`→`km`），静态匹配无法还原，靠 `HardTemperatureCache`/`ReasoningEffortCache`（24h TTL）按模型隔离缓存兜底，首次试错后零成本命中
+
 ### 提供商差异化推理策略
 
 - **MoonshotReasoningStrategy** - kimi-k3 写 reasoning_effort（kimiK3Effort 映射），kimi-k2.x 写 thinking 字段（含可选 keep），GLM-5.2+ 写 reasoning_effort（glmEffort 映射）
@@ -45,6 +57,7 @@
 - 新增 `ReasoningEffortAutoAdaptTest`：六档逐档降级、用户调整优先、缓存按模型隔离、effort 降级与温度联动、xhigh 精确映射
 - 扩展 `OpenAiCompatibleCapabilitiesTest`：gpt-5.2/5.1 非思考模式温度、supportsNoneEffort、supportsXhigh、defaultReasoningEnabledWhenOmitted、search 变体省略温度
 - 扩展 `OpenAiCompatibleProtocolTest`：gpt-5.2 非思考模式用户温度生效、max→xhigh 映射、search 变体省略温度
+- 扩展 `OpenAiCompatibleCapabilitiesTest`（第三方网关改名）：kimi/gpt/claude/glm/qwen 中缀任意字符干扰命中（`abc-kimi-xx-k3`/`gpt-def-5.6-v2`/`abc-claude-xx-sonnet-5`/`abc-glm-xx-5.2`/`abc-qwen-xx-3.8-max`）、provider 前缀叠加、误判防护（`kimi-k30`/`gpt-50`/`gpt-4o`/`claude-opus-4-5` 不误判）、o 系列与 search 变体收紧
 
 ### 版本
 
