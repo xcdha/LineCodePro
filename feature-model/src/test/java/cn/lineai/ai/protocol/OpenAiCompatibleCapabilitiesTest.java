@@ -268,4 +268,114 @@ public final class OpenAiCompatibleCapabilitiesTest {
         assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted(null));
         assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted(""));
     }
+
+    // ========== 第三方网关 provider 前缀剥离 ==========
+
+    @Test
+    public void stripProviderPrefixHandlesGatewayNaming() {
+        // 第三方网关(OpenRouter / SiliconFlow / 聚合代理)常用 "provider/model-id" 命名
+        assertEquals("gpt-5.5", OpenAiCompatibleCapabilities.stripProviderPrefix("openai/gpt-5.5"));
+        assertEquals("gpt-5.5", OpenAiCompatibleCapabilities.stripProviderPrefix("OpenAI/GPT-5.5"));
+        assertEquals("kimi-k3", OpenAiCompatibleCapabilities.stripProviderPrefix("moonshot/kimi-k3"));
+        assertEquals("claude-sonnet-5", OpenAiCompatibleCapabilities.stripProviderPrefix("anthropic/claude-sonnet-5"));
+        assertEquals("deepseek-v4-flash", OpenAiCompatibleCapabilities.stripProviderPrefix("deepseek-ai/deepseek-v4-flash"));
+        assertEquals("glm-5.2", OpenAiCompatibleCapabilities.stripProviderPrefix("zhipuai/glm-5.2"));
+        assertEquals("qwen3.8-max", OpenAiCompatibleCapabilities.stripProviderPrefix("alibaba/qwen3.8-max"));
+        // 无前缀原样返回(仅小写)
+        assertEquals("gpt-5.5", OpenAiCompatibleCapabilities.stripProviderPrefix("gpt-5.5"));
+        // 多段前缀只剥离最后一段:/openai/azure/gpt-5.6 → gpt-5.6
+        assertEquals("gpt-5.6", OpenAiCompatibleCapabilities.stripProviderPrefix("openai/azure/gpt-5.6"));
+        // 尾部斜杠不剥离(避免返回空)
+        assertEquals("openai/", OpenAiCompatibleCapabilities.stripProviderPrefix("openai/"));
+        assertEquals("", OpenAiCompatibleCapabilities.stripProviderPrefix(""));
+    }
+
+    @Test
+    public void knownHardTemperatureMatchesAfterStrippingProviderPrefix() {
+        // 带前缀的模型名也能命中内置温度表(核心:避免第三方网关下温度丢失)
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("openai/gpt-5.5", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("openai/gpt-5.6", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("openai/gpt-5.5", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("moonshot/kimi-k3", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("moonshot/kimi-k3", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("moonshot/kimi-k2.6", true));
+        assertEquals(Double.valueOf(0.6), OpenAiCompatibleCapabilities.knownHardTemperature("moonshot/kimi-k2.6", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("openai/o3", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("openai/o3-mini", false));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("anthropic/claude-sonnet-5", true));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("anthropic/claude-opus-5", false));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("anthropic/claude-opus-4-7", true));
+        // 灵活温度模型带前缀仍返回 null
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("deepseek-ai/deepseek-v4-flash", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("zhipuai/glm-5.2", false));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("zhipuai/glm-5.3", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("alibaba/qwen3.8-max", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("openai/gpt-4o", false));
+        // search 变体带前缀仍 MUST_OMIT
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("openai/gpt-5-search-api", true));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("openai/gpt-4o-search-preview", false));
+    }
+
+    @Test
+    public void effortCapabilitiesMatchAfterStrippingProviderPrefix() {
+        // 带前缀的模型名也能命中 effort 档位判定
+        assertTrue(OpenAiCompatibleCapabilities.supportsNoneEffort("openai/gpt-5.1"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsNoneEffort("openai/gpt-5.6"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("openai/gpt-5"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsNoneEffort("openai/gpt-5-pro"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("openai/gpt-5.2"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("openai/gpt-5.5"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("anthropic/claude-sonnet-5"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsXhigh("anthropic/claude-opus-4-5"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsXhigh("openai/gpt-5.1"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsMax("openai/gpt-5.6"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsMax("anthropic/claude-sonnet-5"));
+        assertTrue(OpenAiCompatibleCapabilities.supportsMax("anthropic/claude-opus-4-6"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsMax("openai/gpt-5.5"));
+        assertFalse(OpenAiCompatibleCapabilities.supportsMax("anthropic/claude-opus-4-5"));
+        // defaultReasoningEnabledWhenOmitted 带前缀
+        assertFalse(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("openai/gpt-5.1"));
+        assertFalse(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("openai/gpt-5.2"));
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("openai/gpt-5.5"));
+        assertTrue(OpenAiCompatibleCapabilities.defaultReasoningEnabledWhenOmitted("openai/gpt-5.6"));
+    }
+
+    // ========== search / o 系列防误判 ==========
+
+    @Test
+    public void searchVariantTightMatchAvoidsFalsePositives() {
+        // 已知 search 变体仍 MUST_OMIT
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-search-api", true));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("gpt-4o-search-preview", false));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("gpt-4o-mini-search-preview", true));
+        // research / perplexity-search / 普通模型不应被误判为 search 变体
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("research-1.0", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("perplexity-search", false));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("sonar-research", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-4o", false));
+    }
+
+    @Test
+    public void openAiOSeriesTightMatchAvoidsFalsePositives() {
+        // o1 / o3 / o4 及变体仍固定 1.0
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o1", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o1-mini", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o1-preview", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o3", false));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o3-mini", true));
+        assertEquals(Double.valueOf(1.0), OpenAiCompatibleCapabilities.knownHardTemperature("o4-mini", false));
+        // o1bak / qwen-o1 / o123 / o11 不应被误判为 o 系列
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("o1bak", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("qwen-o1", false));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("o123", true));
+        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("o11", false));
+    }
 }

@@ -43,7 +43,7 @@ public final class OpenAiCompatibleCapabilities {
         if (modelId == null || modelId.isEmpty()) {
             return null;
         }
-        String m = modelId.toLowerCase(java.util.Locale.ROOT);
+        String m = stripProviderPrefix(modelId);
 
         // Moonshot / Kimi 推理模型
         // 来源:platform.kimi.com/docs/api/models-overview
@@ -56,8 +56,9 @@ public final class OpenAiCompatibleCapabilities {
         if (m.startsWith("kimi-k2.5")) return reasoningEnabled ? 1.0 : 0.6;
 
         // OpenAI o 系列:始终推理,temperature 固定 1
+        // 收紧匹配:o1 / o3 / o4 后必须跟边界(-/preview/mini 等),避免 o1bak / qwen-o1 误判。
         // 来源:platform.openai.com、Azure OpenAI reasoning 文档
-        if (m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4")) {
+        if (isOpenAiOSeries(m)) {
             return 1.0;
         }
 
@@ -108,7 +109,7 @@ public final class OpenAiCompatibleCapabilities {
         if (modelId == null || modelId.isEmpty()) {
             return false;
         }
-        String m = modelId.toLowerCase(java.util.Locale.ROOT);
+        String m = stripProviderPrefix(modelId);
         if (m.contains("-chat-latest")) return false;
         // gpt-5.x(x>=1)支持 none;gpt-5 初代(无小版本)/gpt-5-pro/mini 不支持
         return gpt5MinorVersion(m) >= 1;
@@ -124,7 +125,7 @@ public final class OpenAiCompatibleCapabilities {
         if (modelId == null || modelId.isEmpty()) {
             return false;
         }
-        String m = modelId.toLowerCase(java.util.Locale.ROOT);
+        String m = stripProviderPrefix(modelId);
         if (m.contains("-chat-latest")) return false;
         // gpt-5.x(x>=2)支持 xhigh
         if (gpt5MinorVersion(m) >= 2) return true;
@@ -146,7 +147,7 @@ public final class OpenAiCompatibleCapabilities {
         if (modelId == null || modelId.isEmpty()) {
             return false;
         }
-        String m = modelId.toLowerCase(java.util.Locale.ROOT);
+        String m = stripProviderPrefix(modelId);
         if (m.contains("-chat-latest")) return false;
         // gpt-5.6+ 支持 max
         if (gpt5MinorVersion(m) >= 6) return true;
@@ -174,7 +175,7 @@ public final class OpenAiCompatibleCapabilities {
         if (modelId == null || modelId.isEmpty()) {
             return true;
         }
-        String m = modelId.toLowerCase(java.util.Locale.ROOT);
+        String m = stripProviderPrefix(modelId);
         int minor = gpt5MinorVersion(m);
         // gpt-5.1/5.2 不发 reasoning_effort 时默认 none(非思考)
         if (minor == 1 || minor == 2) return false;
@@ -184,11 +185,16 @@ public final class OpenAiCompatibleCapabilities {
 
     /**
      * search 变体判定:必须省略 temperature 字段。
-     * 覆盖 OpenAI search-preview / search-api 系列与 gpt-4o search 变体。
+     * 收紧匹配:仅命中已知 OpenAI search 变体,避免 research / perplexity-search 等误判。
+     * 已知:gpt-5-search-api、gpt-4o-search-preview、gpt-4o-mini-search-preview
+     * (均含 {@code -search-} 中缀或 {@code search-preview}/{@code search-api} 子串)。
+     * 不命中 {@code perplexity-search}、{@code research-1.0} 等非 OpenAI search 模型。
      * 来源:platform.openai.com docs、社区兼容性矩阵
      */
     private static boolean isSearchVariant(String m) {
-        return m.contains("search");
+        return m.contains("-search-")
+                || m.contains("search-preview")
+                || m.contains("search-api");
     }
 
     /**
@@ -264,5 +270,36 @@ public final class OpenAiCompatibleCapabilities {
 
     private static String lower(String value) {
         return value == null ? "" : value.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * 规范化模型 ID:转小写并剥离 provider 前缀。
+     * <p>第三方网关(OpenRouter / SiliconFlow / 聚合代理)常用 {@code "provider/model-id"} 命名,
+     * 例 {@code openai/gpt-5.5}、{@code moonshot/kimi-k3}、{@code deepseek-ai/deepseek-v4-flash}、
+     * {@code anthropic/claude-sonnet-5}、{@code zhipuai/glm-5.2}、{@code alibaba/qwen3.8-max}。
+     * 剥离前缀后才能命中内置温度表与 effort 档位判定。
+     * <p>仅剥离最后一个 {@code /} 之前的部分,保留模型名本身的所有字符(含别名/简写/版本后缀)。
+     */
+    public static String stripProviderPrefix(String modelId) {
+        String m = modelId.toLowerCase(java.util.Locale.ROOT).trim();
+        int slash = m.lastIndexOf('/');
+        if (slash >= 0 && slash < m.length() - 1) {
+            m = m.substring(slash + 1);
+        }
+        return m;
+    }
+
+    /**
+     * OpenAI o 系列判定:o1 / o3 / o4 及其变体始终推理,temperature 固定 1。
+     * 收紧匹配:base 名(o1/o3/o4)或 base-xxx 形式,避免 o1bak / qwen-o1 / o123 误判。
+     */
+    private static boolean isOpenAiOSeries(String m) {
+        if (m.equals("o1") || m.equals("o3") || m.equals("o4")) {
+            return true;
+        }
+        if (m.startsWith("o1-") || m.startsWith("o3-") || m.startsWith("o4-")) {
+            return true;
+        }
+        return false;
     }
 }

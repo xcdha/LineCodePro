@@ -1,5 +1,6 @@
 package cn.lineai.ai.protocol.reasoning;
 
+import cn.lineai.ai.protocol.OpenAiCompatibleCapabilities;
 import cn.lineai.ai.protocol.ReasoningRequestContext;
 import cn.lineai.ai.protocol.ReasoningRequestStrategy;
 import cn.lineai.model.AiBehaviorSettings;
@@ -59,12 +60,17 @@ public final class MoonshotReasoningStrategy implements ReasoningRequestStrategy
     /**
      * GLM-5.2+ 判定:主版本 > 5,或主版本 = 5 且次版本 >= 2。
      * 仅 GLM-5.2 及以上支持 reasoning_effort 参数。
+     * 先剥离 provider 前缀(如 zhipuai/glm-5.2 → glm-5.2),适配第三方网关命名。
      */
     private static boolean isGlm52Plus(String model) {
-        if (model == null || !model.startsWith("glm-")) {
+        if (model == null) {
             return false;
         }
-        String version = model.substring("glm-".length());
+        String m = OpenAiCompatibleCapabilities.stripProviderPrefix(model);
+        if (!m.startsWith("glm-")) {
+            return false;
+        }
+        String version = m.substring("glm-".length());
         String[] parts = version.split("\\.");
         try {
             int major = Integer.parseInt(parts[0]);
