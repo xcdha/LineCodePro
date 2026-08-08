@@ -145,7 +145,7 @@ public final class PromptTemplateRepository {
                 R.string.prompt_template_system_prompt_title,
                 R.string.prompt_template_system_prompt_description,
                 "prompts/system-prompt-template.txt",
-                "TOOLS_CONTEXT", "TONE_CONTEXT", "CHAT_MODE_CONTEXT", "WORK_DIRECTORY_CONTEXT", "LEARNING_CONTEXT", "MODEL_IDENTITY"
+                "TOOLS_CONTEXT", "TONE_CONTEXT", "CHAT_MODE_CONTEXT", "WORK_DIRECTORY_CONTEXT", "LEARNING_CONTEXT", "MODEL_IDENTITY", "MODEL_IDENTITY_BRIEF"
         ));
         definitions.add(new Definition(
                 ID_WORK_DIRECTORY,
