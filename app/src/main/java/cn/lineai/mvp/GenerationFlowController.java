@@ -420,7 +420,9 @@ final class GenerationFlowController {
             return;
         }
         int nextAttempt = failedAttempt + 1;
-        if (nextAttempt >= MAX_RETRIES) {
+        // 仅对"可能成功"的服务端/临时错误重试;对认证、权限、配置等客户端错误直接失败,
+        // 避免无意义的重复 HTTP 报错与长时间等待(401/403/404/400 重试多少次都不会成功)。
+        if (nextAttempt >= MAX_RETRIES || !isRetryable(error.getMessage())) {
             failGeneration(generationId, failedAssistantId, host.formatModelFailed(error.getMessage()));
             return;
         }
@@ -463,6 +465,41 @@ final class GenerationFlowController {
      */
     private static long retryDelayFor(int attempt) {
         return RETRY_BASE_DELAY_MS * (1L << (attempt - 1));
+    }
+
+    /**
+     * 判断错误是否值得应用层重试。只有服务端临时错误(5xx)与限流(429)重试才有意义;
+     * 认证(401/403)、配置/模型不存在(404)、参数错误(400/422)等客户端错误重试永远失败,
+     * 直接报错交由用户处理,避免反复弹出 HTTP 错误并无意义地等待。
+     */
+    private static boolean isRetryable(String message) {
+        if (message == null || message.isEmpty()) {
+            // 无错误信息时保守重试
+            return true;
+        }
+        String lower = message.toLowerCase(java.util.Locale.ROOT);
+        // 5xx 服务端错误:可重试
+        if (lower.contains("http 500") || lower.contains("http 501")
+                || lower.contains("http 502") || lower.contains("http 503")
+                || lower.contains("http 504") || lower.contains("http 507")
+                || lower.contains("internal server error") || lower.contains("service unavailable")
+                || lower.contains("bad gateway") || lower.contains("gateway timeout")
+                || lower.contains("server error") || lower.contains("overloaded")
+                || lower.contains("endpoint is unavailable")) {
+            return true;
+        }
+        // 429 限流:可重试
+        if (lower.contains("http 429") || lower.contains("rate limit") || lower.contains("too many requests")) {
+            return true;
+        }
+        // 连接/网络超时:可重试
+        if (lower.contains("timeout") || lower.contains("timed out")
+                || lower.contains("connection reset") || lower.contains("unable to connect")
+                || lower.contains("socket") || lower.contains("connect timed out")) {
+            return true;
+        }
+        // 其余客户端错误(401/403/404/400/422 等)不可重试
+        return false;
     }
 
     void handleToolReview(String state) {

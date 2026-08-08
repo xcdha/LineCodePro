@@ -11,6 +11,27 @@ import org.junit.Test;
 
 public final class GenerationFlowControllerTest {
     @Test
+    public void isRetryableAllowsServerAndThrottleErrors() throws Exception {
+        // 服务端临时错误(5xx)与限流(429)应重试
+        Assert.assertTrue(retryable("HTTP 503: endpoint is unavailable"));
+        Assert.assertTrue(retryable("HTTP 500 Internal Server Error"));
+        Assert.assertTrue(retryable("HTTP 429 Too Many Requests"));
+        Assert.assertTrue(retryable("Request timed out"));
+        // 认证、权限、配置等客户端错误不应重试
+        Assert.assertFalse(retryable("HTTP 401 Unauthorized"));
+        Assert.assertFalse(retryable("HTTP 403 Forbidden"));
+        Assert.assertFalse(retryable("HTTP 404 Model Not Found"));
+        Assert.assertFalse(retryable("HTTP 400 invalid temperature"));
+        Assert.assertFalse(retryable("HTTP 422 unsupported parameter"));
+    }
+
+    private static boolean retryable(String message) throws Exception {
+        java.lang.reflect.Method method = GenerationFlowController.class.getDeclaredMethod("isRetryable", String.class);
+        method.setAccessible(true);
+        return (Boolean) method.invoke(null, message);
+    }
+
+    @Test
     public void agentHostToolResultDispatchesToOuterControllerOnce() {
         ArrayList<ChatMessage> messages = new ArrayList<>();
         ToolMessageController toolMessages = new ToolMessageController(messages, new IncrementingIdProvider());
