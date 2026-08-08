@@ -435,8 +435,15 @@ final class GenerationFlowController {
             }
             streamingRenderController.removeRawText(failedAssistantId);
 
+            // 在失败消息的原位置插入重试通知,而不是追加到列表末尾。
+            // 否则失败消息在中间时(如工具调用后),重试通知会跑到后续消息后面,造成顺序混乱。
             String retryText = host.formatRetryNotice(nextAttempt + 1, MAX_RETRIES, error.getMessage());
-            messages.add(ChatMessage.retryNotice(host.nextId(), retryText));
+            ChatMessage retryNotice = ChatMessage.retryNotice(host.nextId(), retryText);
+            if (index >= 0 && index <= messages.size()) {
+                messages.add(index, retryNotice);
+            } else {
+                messages.add(retryNotice);
+            }
             host.persistCurrentConversation();
             host.render();
 
