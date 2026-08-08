@@ -73,6 +73,12 @@ final class GenerationFlowController {
     private static final long RETRY_BASE_DELAY_MS = 3000L;
 
     private final ArrayList<ChatMessage> messages;
+    /**
+     * 本 generation 已插入的重试通知 id。重试成功({@link #finishGeneration})或最终失败
+     * ({@link #failGeneration})时必须移除,否则"正在重试"通知会残留在消息历史里,
+     * 并跑到下一条消息上(被持久化后再次进入上下文)。
+     */
+    private final ArrayList<String> pendingRetryNoticeIds = new ArrayList<>();
     private final ChatSessionStore chatSessionStore;
     private final ModelClient modelClient;
     private final AiBehaviorSettingsRepository aiBehaviorSettingsRepository;
@@ -449,6 +455,7 @@ final class GenerationFlowController {
             // 否则失败消息在中间时(如工具调用后),重试通知会跑到后续消息后面,造成顺序混乱。
             String retryText = host.formatRetryNotice(nextAttempt + 1, MAX_RETRIES, error.getMessage());
             ChatMessage retryNotice = ChatMessage.retryNotice(host.nextId(), retryText);
+            pendingRetryNoticeIds.add(retryNotice.getId());
             if (index >= 0 && index <= messages.size()) {
                 messages.add(index, retryNotice);
             } else {
@@ -460,10 +467,17 @@ final class GenerationFlowController {
             mainThread.postDelayed(() -> {
                 // 延迟重试期间用户可能切换模型、停止生成或发送新消息,
                 // 此时 generation 已失效,重试回调必须中止,否则旧生成的消息会插入到新消息之后。
+                // 同时清理本 generation 已插入的重试通知,避免"正在重试"残留在历史中。
                 if (cancellationToken != null && cancellationToken.isCancelled()) {
+                    removePendingRetryNotices();
+                    host.persistCurrentConversation();
+                    host.render();
                     return;
                 }
                 if (!chatSessionStore.isActiveGeneration(generationId)) {
+                    removePendingRetryNotices();
+                    host.persistCurrentConversation();
+                    host.render();
                     return;
                 }
                 retryableModelStream(generationId, selectedModel, cancellationToken,
@@ -663,6 +677,7 @@ final class GenerationFlowController {
             }
             int index = findMessageIndex(assistantId);
             if (index < 0) {
+                removePendingRetryNotices();
                 return;
             }
             ChatMessage message = messages.get(index);
@@ -682,6 +697,9 @@ final class GenerationFlowController {
             if (finalText.trim().length() == 0 && finalReasoning.trim().length() == 0 && !hasToolCalls) {
                 finalText = "模型没有返回文本。";
             }
+            // 重试成功:先清理本 generation 插入的重试通知,再原位替换 assistant 消息内容,
+            // 避免"正在重试(2/3)"残留在历史中跑到下一条消息上。
+            removePendingRetryNotices();
             messages.set(index, message.withContent(finalText, finalReasoning, false)
                     .withToolCalls(toolCalls, false));
             if (hasToolCalls) {
@@ -929,13 +947,49 @@ final class GenerationFlowController {
                 ChatMessage message = messages.get(index);
                 messages.set(index, message.withContent(displayText, message.getReasoningContent(), false));
             } else {
-                messages.add(new ChatMessage(host.nextId(), ChatMessage.Role.ASSISTANT, displayText, false));
+                // 失败消息可能已被 handleModelError 移除(替换为重试通知)。
+                // 此时不应追加到列表末尾(会跑到后续消息之后),而是复用最后一条重试通知的位置。
+                int retryIndex = findLastRetryNoticeIndex();
+                if (retryIndex >= 0) {
+                    ChatMessage retryNotice = messages.get(retryIndex);
+                    messages.set(retryIndex, retryNotice.withContent(displayText, retryNotice.getReasoningContent(), false));
+                } else {
+                    messages.add(new ChatMessage(host.nextId(), ChatMessage.Role.ASSISTANT, displayText, false));
+                }
             }
             streamingRenderController.removeRawText(assistantId);
+            removePendingRetryNotices();
             finishActiveGeneration();
             host.persistCurrentConversation();
             host.render();
         });
+    }
+
+    /**
+     * 移除本 generation 插入的所有重试通知。重试成功或最终失败时调用,
+     * 防止"正在重试"通知残留在消息历史里跑到下一条消息上。
+     */
+    private void removePendingRetryNotices() {
+        if (pendingRetryNoticeIds.isEmpty()) {
+            return;
+        }
+        for (String id : new ArrayList<>(pendingRetryNoticeIds)) {
+            int idx = findMessageIndex(id);
+            if (idx >= 0) {
+                messages.remove(idx);
+            }
+        }
+        pendingRetryNoticeIds.clear();
+    }
+
+    private int findLastRetryNoticeIndex() {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage message = messages.get(i);
+            if (message != null && pendingRetryNoticeIds.contains(message.getId())) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private void finishActiveGeneration() {

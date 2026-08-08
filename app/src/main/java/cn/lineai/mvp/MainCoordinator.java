@@ -506,6 +506,12 @@ public final class MainCoordinator implements MainUiController {
 
     @Override
     public void onModelQuickSwitch(String modelId) {
+        // 正在生成(含错误重试等待)时切换模型:先停止当前 generation,否则
+        // quickSwitch 因 isStreaming() 静默返回、dispatchMessage 又丢弃新消息,
+        // 用户会看到"切换后继续对话没反应/仍报错",且旧重试回调会插入消息污染新对话。
+        if (chatSessionStore.isStreaming()) {
+            chatInteractionController.stopGeneration();
+        }
         modelInteractionController.quickSwitch(modelId);
         // ComposerView 传入的 modelId 是 ModelConfig 的内部数据库 ID(时间戳生成的数字),
         // 不是真正的 modelId(如 "claude-fable-5")。切换后从 selectedModel 取真正的 modelId。
@@ -852,6 +858,10 @@ public final class MainCoordinator implements MainUiController {
 
     @Override
     public void onModelSelected(String id) {
+        // 模型管理页切换同样中断进行中的生成,避免旧 generation 的重试/流回调污染新对话。
+        if (chatSessionStore.isStreaming()) {
+            chatInteractionController.stopGeneration();
+        }
         modelManagementController.selectModel(id);
         ModelConfig selected = modelRepository.getSelectedModel();
         if (selected != null) {
