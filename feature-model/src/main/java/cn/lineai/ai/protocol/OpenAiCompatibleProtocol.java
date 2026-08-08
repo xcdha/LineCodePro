@@ -347,14 +347,18 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
      * 否则走 {@link #resolveTemperature(ModelConfig, boolean)} 的优先级决策。
      * <p>{@code reasoningEnabled} 表示本次请求是否启用思考模式：部分模型（如 kimi-k2.5/k2.6）
      * 在思考与非思考模式下温度硬性要求不同，必须按实际模式取值，否则上游报错。
+     * <p>返回 {@link OpenAiCompatibleCapabilities#TEMPERATURE_MUST_OMIT} 时省略 temperature 字段
+     * (search 变体等必须省略温度的模型)。
      */
     private static void applyTemperature(JSONObject body, ModelConfig config, Double forcedTemperature, boolean reasoningEnabled) {
         Double resolved = forcedTemperature != null ? forcedTemperature : resolveTemperature(config, reasoningEnabled);
-        if (resolved != null) {
-            try {
-                body.put("temperature", resolved);
-            } catch (org.json.JSONException ignored) {
-            }
+        // TEMPERATURE_MUST_OMIT 哨兵值:search 变体等必须省略 temperature,不写字段
+        if (resolved == null || resolved.equals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT)) {
+            return;
+        }
+        try {
+            body.put("temperature", resolved);
+        } catch (org.json.JSONException ignored) {
         }
     }
 
@@ -410,11 +414,14 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
     }
 
     /**
-     * 返回应当发送的 temperature 值;返回 {@code null} 表示不发送该字段,让上游使用模型默认值。
+     * 返回应当发送的 temperature 值;返回 {@code null} 或 {@link OpenAiCompatibleCapabilities#TEMPERATURE_MUST_OMIT}
+     * 表示不发送该字段,让上游使用模型默认值(或必须省略)。
      * <p>优先级:硬性温度模型(缓存/内置表命中)> 用户自定义温度 > 不传字段。
      * <p>硬性温度模型(kimi-k3/k2.5/k2.6、o-series、gpt-5 等)只接受固定温度值,传其他值上游必报错。
      * 故缓存/内置表命中时直接覆盖用户填的温度,避免每次请求都试错一次:
      * 先查进程内缓存(已遇过 "only X is allowed" 的模型直接复用),再查内置表(已知硬性模型首次即零试错)。
+     * <p>search 变体(gpt-5-search-api、gpt-4o-search-preview 等)必须省略 temperature 字段,
+     * 内置表返回 {@link OpenAiCompatibleCapabilities#TEMPERATURE_MUST_OMIT} 哨兵值,applyTemperature 据此省略字段。
      * <p>非硬性温度模型(绝大多数)走用户自定义温度,用户填 0.2/0.7/1.0 等任意值完全生效;
      * 用户未设置则不传字段,交由上游用模型默认值 —— 若上游报硬性温度错误(此前未知的硬性模型),
      * complete/stream 会自动重试并写入缓存,后续请求零试错。
@@ -434,6 +441,7 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         }
         Double known = OpenAiCompatibleCapabilities.knownHardTemperature(modelId, reasoningEnabled);
         if (known != null) {
+            // 内置表可能返回 TEMPERATURE_MUST_OMIT(search 变体必须省略温度)
             return known;
         }
         // 非硬性温度模型:用户填的值完全生效

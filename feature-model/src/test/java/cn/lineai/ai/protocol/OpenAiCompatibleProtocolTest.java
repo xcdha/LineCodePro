@@ -310,6 +310,24 @@ public final class OpenAiCompatibleProtocolTest {
     }
 
     @org.junit.Test
+    public void searchVariantOmitsTemperatureEvenWhenUserConfigured() throws Exception {
+        // search 变体必须省略 temperature 字段,即使用户填了温度也不发送
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://api.openai.com/v1", "k", "gpt-5-search-api")
+                    .temperature(0.7)
+                    .build();
+
+            JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+            org.junit.Assert.assertFalse(body.has("temperature"));
+        } finally {
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @org.junit.Test
     public void applyTemperatureDiffersByThinkingModeForKimiK26() throws Exception {
         // kimi-k2.6 未设温度时,思考模式取内置表 1.0,非思考模式取 0.6
         OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();

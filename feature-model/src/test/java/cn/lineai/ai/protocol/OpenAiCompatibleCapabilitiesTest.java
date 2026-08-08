@@ -74,16 +74,26 @@ public final class OpenAiCompatibleCapabilitiesTest {
     }
 
     @Test
-    public void knownHardTemperatureReturnsNullForFlexibleOrSpecialModels() {
-        // 支持灵活温度的普通模型、非推理 chat-latest 变体、必须省略 temperature 的 search 变体均不在硬性表
+    public void knownHardTemperatureReturnsNullForFlexibleModels() {
+        // 支持灵活温度的普通模型、非推理 chat-latest 变体均不在硬性表
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-4o", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-chat-latest", false));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5.2-chat-latest", true));
-        assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-search-api", false));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("deepseek-v4-flash", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("glm-4.6", false));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("qwen3-coder", true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature(null, true));
         assertNull(OpenAiCompatibleCapabilities.knownHardTemperature("", false));
+    }
+
+    @Test
+    public void knownHardTemperatureReturnsMustOmitForSearchVariants() {
+        // search 变体必须省略 temperature 字段(传任何值都报错),返回 TEMPERATURE_MUST_OMIT 哨兵值
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("gpt-5-search-api", true));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("gpt-4o-search-preview", false));
+        assertEquals(OpenAiCompatibleCapabilities.TEMPERATURE_MUST_OMIT,
+                OpenAiCompatibleCapabilities.knownHardTemperature("gpt-4o-mini-search-preview", true));
     }
 }
