@@ -257,10 +257,10 @@ public final class OpenAiCompatibleProtocolTest {
     }
 
     @org.junit.Test
-    public void userTemperatureOverridesBuiltInTableAndCache() throws Exception {
-        // 用户显式设置的温度优先级最高,覆盖内置表与缓存
+    public void hardTemperatureOverridesUserValueForKnownHardModel() throws Exception {
+        // 硬性温度模型只接受固定温度,内置表/缓存命中时直接覆盖用户填的温度,避免每次请求都试错一次。
+        // kimi-k3 只接受 1.0,用户填 0.3 必然失败,故内置表命中时覆盖为 1.0(零试错)。
         OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
-        OpenAiCompatibleProtocol.HardTemperatureCache.put("kimi-k3", true, 1.0);
         try {
             ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
                             "https://opencode.ai/zen/go/v1", "k", "kimi-k3")
@@ -269,10 +269,44 @@ public final class OpenAiCompatibleProtocolTest {
 
             JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
 
-            org.junit.Assert.assertEquals(0.3, body.optDouble("temperature", Double.NaN), 0.0);
+            org.junit.Assert.assertEquals(1.0, body.optDouble("temperature", Double.NaN), 0.0);
         } finally {
             OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
         }
+    }
+
+    @org.junit.Test
+    public void cachedHardTemperatureOverridesUserValueForLearnedModel() throws Exception {
+        // 缓存命中(从上游错误中学到的硬性温度)同样覆盖用户填的温度,零试错。
+        // 模拟此前未知的硬性模型 some-future-model:上游报错后缓存学到 0.5,
+        // 用户填 0.7 也会被覆盖为 0.5,避免每次请求都失败一次。
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.put("some-future-model", true, 0.5);
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://api.x.com/v1", "k", "some-future-model")
+                    .temperature(0.7)
+                    .build();
+
+            JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+            org.junit.Assert.assertEquals(0.5, body.optDouble("temperature", Double.NaN), 0.0);
+        } finally {
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @org.junit.Test
+    public void userTemperatureFullyEffectiveForNonHardModel() throws Exception {
+        // 非硬性温度模型(绝大多数)用户填的值完全生效,不被覆盖
+        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                        "https://api.x.com/v1", "k", "qwen3-coder")
+                .temperature(0.7)
+                .build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+        org.junit.Assert.assertEquals(0.7, body.optDouble("temperature", Double.NaN), 0.0);
     }
 
     @org.junit.Test

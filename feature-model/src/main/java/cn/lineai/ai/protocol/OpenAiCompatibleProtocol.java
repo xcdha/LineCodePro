@@ -411,10 +411,13 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
     /**
      * 返回应当发送的 temperature 值;返回 {@code null} 表示不发送该字段,让上游使用模型默认值。
-     * <p>优先级:用户自定义温度 > 运行时缓存(从上游错误中学到的硬性温度)> 内置硬性温度表 > 不传字段。
-     * <p>用户未设置温度时,先查进程内缓存(已遇过 "only X is allowed" 的模型直接复用,零试错);
-     * 缓存未命中再查内置表(kimi-k3 / o-series / gpt-5 等已知硬性模型,首次即零试错);
-     * 都没有则不传字段,交由上游用默认值 —— 若上游报硬性温度错误,complete/stream 会自动重试并写入缓存。
+     * <p>优先级:硬性温度模型(缓存/内置表命中)> 用户自定义温度 > 不传字段。
+     * <p>硬性温度模型(kimi-k3/k2.5/k2.6、o-series、gpt-5 等)只接受固定温度值,传其他值上游必报错。
+     * 故缓存/内置表命中时直接覆盖用户填的温度,避免每次请求都试错一次:
+     * 先查进程内缓存(已遇过 "only X is allowed" 的模型直接复用),再查内置表(已知硬性模型首次即零试错)。
+     * <p>非硬性温度模型(绝大多数)走用户自定义温度,用户填 0.2/0.7/1.0 等任意值完全生效;
+     * 用户未设置则不传字段,交由上游用模型默认值 —— 若上游报硬性温度错误(此前未知的硬性模型),
+     * complete/stream 会自动重试并写入缓存,后续请求零试错。
      * <p>{@code reasoningEnabled} 区分思考/非思考模式:kimi-k2.5/k2.6 在两种模式下温度硬性要求不同
      * (思考 1.0 / 非思考 0.6),缓存按模式分别记录,避免互相覆盖。
      */
@@ -422,15 +425,22 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         if (config == null) {
             return null;
         }
-        if (config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
-            return config.getTemperature();
-        }
         String modelId = ModelContextParser.apiModelId(config);
+        // 硬性温度模型优先:缓存/内置表命中时直接覆盖用户填的温度,零试错。
+        // 这些模型只接受固定温度,用户填其他值必然失败,覆盖是正确行为。
         Double cached = HardTemperatureCache.get(modelId, reasoningEnabled);
         if (cached != null) {
             return cached;
         }
-        return OpenAiCompatibleCapabilities.knownHardTemperature(modelId, reasoningEnabled);
+        Double known = OpenAiCompatibleCapabilities.knownHardTemperature(modelId, reasoningEnabled);
+        if (known != null) {
+            return known;
+        }
+        // 非硬性温度模型:用户填的值完全生效
+        if (config.getTemperature() != ModelConfig.TEMPERATURE_UNSET) {
+            return config.getTemperature();
+        }
+        return null;
     }
 
     private void applyReasoningRequest(ModelConfig config, JSONObject body, ModelRequestOptions options) throws Exception {
