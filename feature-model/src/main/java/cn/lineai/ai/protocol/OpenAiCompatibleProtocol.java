@@ -64,16 +64,30 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
     public ModelCompletionResponse complete(ModelConfig config, List<ModelMessage> messages) throws ModelCompletionException {
         // complete 路径不携带 reasoning 参数,kimi-k2.6 等模型默认走思考模式,故按思考模式处理温度
         boolean reasoningEnabled = true;
-        try {
-            return completeOnce(config, messages, null, reasoningEnabled);
-        } catch (ModelCompletionException first) {
-            Double hard = parseHardTemperature(first.getMessage());
-            if (hard != null && config != null && config.getTemperature() != hard) {
-                HardTemperatureCache.put(ModelContextParser.apiModelId(config), reasoningEnabled, hard);
-                return completeOnce(config, messages, hard, reasoningEnabled);
+        Double forcedTemperature = null;
+        ModelCompletionException lastError = null;
+        // 最多 3 次尝试:原始 → 温度修复 → effort 降级(温度和 effort 错误可能先后出现)
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                return completeOnce(config, messages, forcedTemperature, reasoningEnabled);
+            } catch (ModelCompletionException e) {
+                lastError = e;
+                String msg = e.getMessage();
+                // 温度错误:解析硬性温度,写缓存,重试时用 forcedTemperature
+                Double hard = parseHardTemperature(msg);
+                if (hard != null && config != null && config.getTemperature() != hard) {
+                    HardTemperatureCache.put(ModelContextParser.apiModelId(config), reasoningEnabled, hard);
+                    forcedTemperature = hard;
+                    continue;
+                }
+                // effort 错误:升级缓存限制(HIGH_ONLY→DISABLED),重试时 applyReasoningRequest 自动读缓存
+                if (handleReasoningEffortError(config, msg)) {
+                    continue;
+                }
+                break;
             }
-            throw first;
         }
+        throw lastError;
     }
 
     private ModelCompletionResponse completeOnce(
@@ -121,16 +135,28 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         // 思考模式由 AI 行为设置的 reasoningEffort 决定:kimi-k2.5/k2.6 等模型温度随模式切换
         ModelRequestOptions requestOptions = options == null ? ModelRequestOptions.defaults() : options;
         boolean reasoningEnabled = AiBehaviorSettings.isReasoningEnabled(requestOptions.getReasoningEffort());
-        try {
-            return streamOnce(config, messages, callback, cancellationToken, options, null, reasoningEnabled);
-        } catch (ModelCompletionException first) {
-            Double hard = parseHardTemperature(first.getMessage());
-            if (hard != null && config != null && config.getTemperature() != hard) {
-                HardTemperatureCache.put(ModelContextParser.apiModelId(config), reasoningEnabled, hard);
-                return streamOnce(config, messages, callback, cancellationToken, options, hard, reasoningEnabled);
+        Double forcedTemperature = null;
+        ModelCompletionException lastError = null;
+        // 最多 3 次尝试:原始 → 温度修复 → effort 降级(温度和 effort 错误可能先后出现)
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                return streamOnce(config, messages, callback, cancellationToken, options, forcedTemperature, reasoningEnabled);
+            } catch (ModelCompletionException e) {
+                lastError = e;
+                String msg = e.getMessage();
+                Double hard = parseHardTemperature(msg);
+                if (hard != null && config != null && config.getTemperature() != hard) {
+                    HardTemperatureCache.put(ModelContextParser.apiModelId(config), reasoningEnabled, hard);
+                    forcedTemperature = hard;
+                    continue;
+                }
+                if (handleReasoningEffortError(config, msg)) {
+                    continue;
+                }
+                break;
             }
-            throw first;
         }
+        throw lastError;
     }
 
     private ModelCompletionResponse streamOnce(
@@ -344,6 +370,42 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
             Pattern.compile("only\\s+([0-9]+(?:\\.[0-9]+)?)\\s+is\\s+allowed");
 
     /**
+     * 判断上游错误是否与 reasoning_effort 参数相关(无效值、不支持参数等)。
+     * 覆盖常见上游错误格式:OpenAI "invalid reasoning_effort"、通用 "unsupported parameter"、
+     * "unrecognized parameter"、"unknown parameter" 等。
+     */
+    private static boolean isReasoningEffortError(String message) {
+        if (message == null || message.isEmpty()) {
+            return false;
+        }
+        String lower = message.toLowerCase(Locale.ROOT);
+        if (lower.contains("reasoning_effort") || lower.contains("reasoning effort")) {
+            return lower.contains("invalid") || lower.contains("unsupported")
+                    || lower.contains("unrecognized") || lower.contains("unknown")
+                    || lower.contains("not supported") || lower.contains("not a valid")
+                    || lower.contains("must be one of") || lower.contains("allowed values");
+        }
+        // 部分网关返回的通用参数错误,含 thinking 字样也视为 reasoning 相关
+        if (lower.contains("thinking") && (lower.contains("unsupported")
+                || lower.contains("unrecognized") || lower.contains("unknown parameter"))) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 处理 reasoning_effort 相关错误:升级缓存限制级别,返回 true 表示已降级可以重试。
+     * 三级降级:正常→HIGH_ONLY(effort降级high)→DISABLED(不发参数)。
+     */
+    private static boolean handleReasoningEffortError(ModelConfig config, String message) {
+        if (config == null || !isReasoningEffortError(message)) {
+            return false;
+        }
+        String modelId = ModelContextParser.apiModelId(config);
+        return ReasoningEffortCache.upgradeRestriction(modelId);
+    }
+
+    /**
      * 返回应当发送的 temperature 值;返回 {@code null} 表示不发送该字段,让上游使用模型默认值。
      * <p>优先级:用户自定义温度 > 运行时缓存(从上游错误中学到的硬性温度)> 内置硬性温度表 > 不传字段。
      * <p>用户未设置温度时,先查进程内缓存(已遇过 "only X is allowed" 的模型直接复用,零试错);
@@ -373,9 +435,17 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
         }
         String base = config.getBaseUrl().toLowerCase(java.util.Locale.ROOT);
         String model = ModelContextParser.apiModelId(config).toLowerCase(java.util.Locale.ROOT);
+        // 运行时自适应:缓存标记不支持 reasoning_effort 的未知模型,直接跳过不发参数
+        if (ReasoningEffortCache.isDisabled(model)) {
+            return;
+        }
         String effort = options.getReasoningEffort();
         boolean enabled = AiBehaviorSettings.isReasoningEnabled(effort);
         String concrete = AiBehaviorSettings.concreteReasoningEffort(effort);
+        // 缓存标记 HIGH_ONLY 的模型,effort 降级到 high(high 是所有支持 reasoning_effort 的模型都接受的通用值)
+        if (enabled && ReasoningEffortCache.isHighOnly(model)) {
+            concrete = AiBehaviorSettings.REASONING_HIGH;
+        }
         ReasoningRequestContext context = new ReasoningRequestContext(
                 enabled, concrete, options.isPreserveReasoning(), base, model, thinkingBudget(concrete));
         ReasoningRequestStrategy strategy = reasoningStrategyRegistry.find(base, model);
@@ -459,6 +529,64 @@ public final class OpenAiCompatibleProtocol extends AbstractHttpModelProtocol {
 
         private static String cacheKey(String modelId, boolean reasoningEnabled) {
             return modelId.toLowerCase(Locale.ROOT) + ":" + (reasoningEnabled ? "think" : "nothink");
+        }
+
+        static void clearForTest() {
+            CACHE.clear();
+        }
+    }
+
+    /**
+     * 运行时推理强度自适应缓存:对未在内置表/strategy 中的未知模型,从上游错误中学习其对
+     * {@code reasoning_effort} 的支持情况,三级降级:
+     * <ol>
+     *   <li>正常(不缓存):按用户选的 effort 发送(DefaultReasoningStrategy 已把 max→high 保守降级)</li>
+     *   <li>{@link #LEVEL_HIGH_ONLY}:effort 被拒,降级到 high(high 是所有支持 reasoning_effort 的模型都接受的通用值)</li>
+     *   <li>{@link #LEVEL_DISABLED}:high 也被拒,说明模型完全不支持 reasoning_effort 参数,不发任何思考参数</li>
+     * </ol>
+     * 缓存命中后后续请求零试错。最多 2 次试错即可学到稳定限制。
+     */
+    static final class ReasoningEffortCache {
+        static final String LEVEL_HIGH_ONLY = "HIGH_ONLY";
+        static final String LEVEL_DISABLED = "DISABLED";
+
+        private static final java.util.concurrent.ConcurrentMap<String, String> CACHE =
+                new java.util.concurrent.ConcurrentHashMap<>();
+
+        static String get(String modelId) {
+            if (modelId == null || modelId.isEmpty()) {
+                return null;
+            }
+            return CACHE.get(modelId.toLowerCase(Locale.ROOT));
+        }
+
+        static boolean isDisabled(String modelId) {
+            return LEVEL_DISABLED.equals(get(modelId));
+        }
+
+        static boolean isHighOnly(String modelId) {
+            return LEVEL_HIGH_ONLY.equals(get(modelId));
+        }
+
+        /**
+         * 收到 effort 相关错误后升级限制级别:正常→HIGH_ONLY→DISABLED。
+         * @return true 表示升级成功可以重试;false 表示已到 DISABLED 无法再降级
+         */
+        static boolean upgradeRestriction(String modelId) {
+            if (modelId == null || modelId.isEmpty()) {
+                return false;
+            }
+            String key = modelId.toLowerCase(Locale.ROOT);
+            String current = CACHE.get(key);
+            if (current == null) {
+                CACHE.put(key, LEVEL_HIGH_ONLY);
+                return true;
+            }
+            if (LEVEL_HIGH_ONLY.equals(current)) {
+                CACHE.put(key, LEVEL_DISABLED);
+                return true;
+            }
+            return false;
         }
 
         static void clearForTest() {
