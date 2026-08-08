@@ -205,6 +205,7 @@ public final class OpenAiCompatibleProtocolTest {
     @org.junit.Test
     public void applyTemperatureOmitsFieldWhenUnset() throws Exception {
         // 未设置采样温度时不发送字段，让上游使用模型默认值
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
         ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
                         "https://api.x.com/v1", "k", "gpt-4o")
                 .build();
@@ -212,6 +213,104 @@ public final class OpenAiCompatibleProtocolTest {
         JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
 
         org.junit.Assert.assertFalse(body.has("temperature"));
+    }
+
+    @org.junit.Test
+    public void applyTemperatureUsesBuiltInTableForKimiK3WhenUnset() throws Exception {
+        // kimi-k3 未设温度时,内置硬性温度表直接返回 1.0,首次即零试错
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                        "https://opencode.ai/zen/go/v1", "k", "kimi-k3").build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+        org.junit.Assert.assertEquals(1.0, body.optDouble("temperature", Double.NaN), 0.0);
+    }
+
+    @org.junit.Test
+    public void applyTemperatureUsesBuiltInTableForOpenAiO3WhenUnset() throws Exception {
+        // o3 未设温度时,内置硬性温度表返回 1.0
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                        "https://api.openai.com/v1", "k", "o3-mini").build();
+
+        JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+        org.junit.Assert.assertEquals(1.0, body.optDouble("temperature", Double.NaN), 0.0);
+    }
+
+    @org.junit.Test
+    public void applyTemperatureUsesRuntimeCacheWhenUnset() throws Exception {
+        // 不在内置表的模型,从运行时缓存命中(模拟上游报错后学到的硬性温度)
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.put("some-future-model", true, 0.5);
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://api.x.com/v1", "k", "some-future-model").build();
+
+            JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+            org.junit.Assert.assertEquals(0.5, body.optDouble("temperature", Double.NaN), 0.0);
+        } finally {
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @org.junit.Test
+    public void userTemperatureOverridesBuiltInTableAndCache() throws Exception {
+        // 用户显式设置的温度优先级最高,覆盖内置表与缓存
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.put("kimi-k3", true, 1.0);
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://opencode.ai/zen/go/v1", "k", "kimi-k3")
+                    .temperature(0.3)
+                    .build();
+
+            JSONObject body = new OpenAiCompatibleProtocol().temperatureBodyForTest(config);
+
+            org.junit.Assert.assertEquals(0.3, body.optDouble("temperature", Double.NaN), 0.0);
+        } finally {
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @org.junit.Test
+    public void applyTemperatureDiffersByThinkingModeForKimiK26() throws Exception {
+        // kimi-k2.6 未设温度时,思考模式取内置表 1.0,非思考模式取 0.6
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://api.moonshot.ai/v1", "k", "kimi-k2.6").build();
+
+            JSONObject thinkingBody = new OpenAiCompatibleProtocol().temperatureBodyForTest(config, true);
+            JSONObject nonThinkingBody = new OpenAiCompatibleProtocol().temperatureBodyForTest(config, false);
+
+            org.junit.Assert.assertEquals(1.0, thinkingBody.optDouble("temperature", Double.NaN), 0.0);
+            org.junit.Assert.assertEquals(0.6, nonThinkingBody.optDouble("temperature", Double.NaN), 0.0);
+        } finally {
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
+    }
+
+    @org.junit.Test
+    public void runtimeCacheIsIsolatedByThinkingMode() throws Exception {
+        // 缓存按思考模式分别记录:同一模型思考模式缓存 1.0、非思考模式缓存 0.6,互不覆盖
+        OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        OpenAiCompatibleProtocol.HardTemperatureCache.put("some-model", true, 1.0);
+        OpenAiCompatibleProtocol.HardTemperatureCache.put("some-model", false, 0.6);
+        try {
+            ModelConfig config = ModelConfig.builder("m", "M", ModelProtocolType.OPENAI_COMPATIBLE, "p",
+                            "https://api.x.com/v1", "k", "some-model").build();
+
+            JSONObject thinkingBody = new OpenAiCompatibleProtocol().temperatureBodyForTest(config, true);
+            JSONObject nonThinkingBody = new OpenAiCompatibleProtocol().temperatureBodyForTest(config, false);
+
+            org.junit.Assert.assertEquals(1.0, thinkingBody.optDouble("temperature", Double.NaN), 0.0);
+            org.junit.Assert.assertEquals(0.6, nonThinkingBody.optDouble("temperature", Double.NaN), 0.0);
+        } finally {
+            OpenAiCompatibleProtocol.HardTemperatureCache.clearForTest();
+        }
     }
 
     private static final class LocalSseServer implements AutoCloseable {
