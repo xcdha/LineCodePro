@@ -697,11 +697,12 @@ final class GenerationFlowController {
             if (finalText.trim().length() == 0 && finalReasoning.trim().length() == 0 && !hasToolCalls) {
                 finalText = "模型没有返回文本。";
             }
-            // 重试成功:先清理本 generation 插入的重试通知,再原位替换 assistant 消息内容,
-            // 避免"正在重试(2/3)"残留在历史中跑到下一条消息上。
-            removePendingRetryNotices();
+            // 重试成功:先原位替换 assistant 消息内容,再清理本 generation 插入的重试通知。
+            // 顺序不能颠倒——重试通知位于 assistant 消息之前,先移除会使列表前移,
+            // 导致上面的 index 越界(IndexOutOfBoundsException)。
             messages.set(index, message.withContent(finalText, finalReasoning, false)
                     .withToolCalls(toolCalls, false));
+            removePendingRetryNotices();
             if (hasToolCalls) {
                 if (!generationController.canExecuteToolCalls(selectedModel, usedToolCallCount, toolCalls.size())) {
                     messages.add(new ChatMessage(host.nextId(), ChatMessage.Role.ASSISTANT,
